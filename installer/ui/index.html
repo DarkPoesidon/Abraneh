@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>نصب ابرانه · WIHM Cloudflare</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="نصب ابرانه"><img src="/icon.svg" alt="" width="40" height="40"><span>ابرانه <small dir="ltr">WIHM Cloudflare</small></span></a>
+      <span class="local">نصب‌کنندهٔ شخصی</span>
+    </header>
+    <div class="layout">
+      <aside class="rail" aria-label="مراحل نصب">
+        <p class="rail-title">از اینجا شروع می‌کنیم</p>
+        <ol id="steps">
+          <li aria-current="step"><span class="step-number">۱</span><span>اتصال حساب<small>اجازهٔ نصب روی کلادفلر</small></span></li>
+          <li><span class="step-number">۲</span><span>نام پیام‌رسان<small>انتخاب حساب و نام آدرس</small></span></li>
+          <li><span class="step-number">۳</span><span>نصب خودکار<small>ساخت، انتشار و بررسی</small></span></li>
+        </ol>
+        <p class="rail-note">پیام‌رسان روی حساب کلادفلر شما اجرا می‌شود. بعد از نصب، روشن ماندن این دستگاه لازم نیست.</p>
+      </aside>
+      <main id="main">
+        <div id="session-error" class="notice error" hidden>نشانی نصب‌کننده کامل نیست. لینک نمایش‌داده‌شده در پنجرهٔ نصب را دوباره باز کنید.</div>
+        <section id="connect-panel" aria-labelledby="connect-title">
+          <h1 id="connect-title" tabindex="-1">پیام‌رسانت را راه بینداز.</h1>
+          <p class="intro">یک بار به کلادفلر دسترسی بده؛ ساخت دیتابیس، تنظیمات و انتشار را ما انجام می‌دهیم.</p>
+          <div class="auth-instructions">
+            <h2>اجازهٔ نصب را بگیر</h2>
+            <p>کلادفلر برای نصب به یک کد دسترسی به نام <bdi>API Token</bdi> نیاز دارد. رمز حساب خودت را اینجا وارد نکن.</p>
+            <a id="token-link" class="button secondary" href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">ساخت کد دسترسی ↗</a>
+            <ol class="instructions">
+              <li>دکمهٔ بالا را بزن و وارد کلادفلر شو. مجوزهای لازم در فرم آماده‌اند.</li>
+              <li>در <bdi>Account Resources</bdi> حساب خودت را انتخاب کن؛ سپس <bdi>Continue to summary</bdi> و <bdi>Create Token</bdi> را بزن.</li>
+              <li>کد را کپی کن و در کادر پایین بچسبان. اگر بعد از ورود، فرم آماده را ندیدی، دوباره دکمهٔ بالا را بزن.</li>
+            </ol>
+            <details>
+              <summary>اگر فرم آماده باز نشد</summary>
+              <ol class="instructions">
+                <li>وارد حساب کلادفلر شو. اگر حساب نداری، <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">حساب بساز</a> و ایمیل را تأیید کن.</li>
+                <li>در صفحهٔ بازشده، <bdi>Create Token</bdi> و سپس <bdi>Create Custom Token</bdi> را بزن.</li>
+                <li>نام را <bdi>WIHM Installer</bdi> بگذار و این سه مجوز را اضافه کن:</li>
+              </ol>
+              <div class="permissions" dir="ltr" aria-label="مجوزهای لازم">
+                <p>Account → Account Settings → Read</p>
+                <p>Account → Workers Scripts → Edit</p>
+                <p>Account → D1 → Edit</p>
+              </div>
+              <ol class="instructions" start="4">
+                <li>در <bdi>Account Resources</bdi>، گزینهٔ <bdi>Include → Specific account</bdi> و حساب خودت را انتخاب کن.</li>
+                <li><bdi>Continue to summary</bdi> و <bdi>Create Token</bdi> را بزن. کد را کپی کن و به همین صفحه برگرد.</li>
+              </ol>
+            </details>
+          </div>
+          <form id="connect-form">
+            <label for="token">کد دسترسی کلادفلر</label>
+            <div class="token-row"><input id="token" type="password" dir="ltr" autocomplete="off" spellcheck="false" required minlength="20" maxlength="256" aria-describedby="token-help connect-error"><button id="toggle-token" class="text-button" type="button" aria-pressed="false">نمایش</button></div>
+            <p class="helper" id="token-help">کد فقط در حافظهٔ این نصب‌کننده نگه داشته می‌شود و در فایل ذخیره نمی‌شود.</p>
+            <p id="connect-error" class="error-text" role="alert" hidden></p>
+            <button class="button" type="submit" id="connect-button">اتصال حساب</button>
+          </form>
+        </section>
+        <section id="configure-panel" aria-labelledby="configure-title" hidden>
+          <h1 id="configure-title" tabindex="-1">یک نام برای آدرس انتخاب کن.</h1>
+          <p class="intro">این نام بخشی از لینک پیام‌رسان می‌شود. بقیهٔ تنظیمات را نصب‌کننده می‌سازد.</p>
+          <form id="configure-form">
+            <label for="account">حساب کلادفلر</label>
+            <select id="account" required></select>
+            <label for="name">نام آدرس پیام‌رسان</label>
+            <input id="name" dir="ltr" value="wihm-chat" required minlength="3" maxlength="40" pattern="[a-z][a-z0-9\-]{1,38}[a-z0-9]" autocomplete="off" spellcheck="false" aria-describedby="name-help configure-error">
+            <p id="name-help" class="helper">۳ تا ۴۰ حرف کوچک انگلیسی، عدد یا خط تیره؛ مثل <bdi>my-family-chat</bdi>.</p>
+            <p id="configure-error" class="error-text" role="alert" hidden></p>
+            <div class="actions"><button class="button" type="submit" id="plan-button">بررسی نام و حساب</button><button class="text-button" type="button" id="change-account">تغییر دسترسی</button></div>
+          </form>
+          <div id="review" class="review" hidden>
+            <h2 id="review-title">آمادهٔ نصب</h2>
+            <p id="review-description"></p>
+            <dl><div><dt>نام برنامه</dt><dd id="review-name" dir="ltr"></dd></div><div><dt>محل اجرا</dt><dd>حساب کلادفلر انتخاب‌شده</dd></div><div><dt>دیتابیس و کلید امنیتی</dt><dd id="review-data">ساخت خودکار</dd></div></dl>
+            <p class="helper">نصب از سهمیهٔ سرویس‌های حساب شما استفاده می‌کند. محدودیت‌های پلن کلادفلر برقرار است؛ نصب‌کننده پلن پولی فعال نمی‌کند.</p>
+            <button class="button" type="button" id="install-button">نصب پیام‌رسان</button>
+          </div>
+        </section>
+        <section id="progress-panel" aria-labelledby="progress-title" hidden>
+          <h1 id="progress-title" tabindex="-1">در حال آماده‌کردن پیام‌رسان…</h1>
+          <p class="intro" id="progress-intro">این صفحه و پنجرهٔ نصب را تا پایان کار باز نگه دار.</p>
+          <ol class="progress-list" id="progress-list">
+            <li data-phase="check">بررسی حساب و نصب قبلی</li>
+            <li data-phase="address">آماده‌کردن آدرس اینترنتی</li>
+            <li data-phase="database">ساخت یا اتصال دیتابیس</li>
+            <li data-phase="schema">آماده‌کردن جدول‌ها</li>
+            <li data-phase="assets">بارگذاری رابط پیام‌رسان</li>
+            <li data-phase="publish">تنظیم کلید امنیتی و انتشار</li>
+            <li data-phase="verify">بررسی سلامت پیام‌رسان</li>
+          </ol>
+          <p class="helper" id="current-status" role="status" aria-live="polite"></p>
+          <div id="install-error" class="notice error" role="alert" hidden><h2>این مرحله کامل نشد.</h2><p id="install-error-text"></p><p>اطلاعات ساخته‌شده حفظ می‌شود. بعد از رفع مشکل دوباره تلاش کن.</p><div class="actions"><button class="button" id="retry" type="button">تلاش دوباره</button><button class="text-button" id="back-configure" type="button">اصلاح تنظیمات</button></div></div>
+          <div id="result" class="result" hidden>
+            <h2 id="result-title">پیام‌رسان آماده است.</h2>
+            <p id="result-description">لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.</p>
+            <a id="app-url" class="app-url" dir="ltr" target="_blank" rel="noreferrer"></a>
+            <div class="actions"><a id="open-app" class="button" target="_blank" rel="noreferrer">باز کردن پیام‌رسان ↗</a><button type="button" id="copy-url" class="button secondary">کپی لینک</button><button type="button" id="save-receipt" class="text-button">ذخیرهٔ مشخصات</button></div>
+            <p id="copy-status" role="status" class="helper"></p>
+            <p class="helper">از منوی مرورگر، «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را انتخاب کن. بعد از پایان نصب می‌توانی توکن را از صفحهٔ <bdi>API Tokens</bdi> کلادفلر حذف کنی؛ پیام‌رسان فعال می‌ماند.</p>
+            <button type="button" id="finish" class="text-button">پایان و بستن نصب‌کننده</button>
+          </div>
+        </section>
+        <section id="closed-panel" hidden><h1 tabindex="-1">نصب‌کننده بسته شد.</h1><p>حالا می‌توانی این صفحه و پنجرهٔ نصب را ببندی. پیام‌رسان روی کلادفلر فعال می‌ماند.</p></section>
+      </main>
+    </div>
+    <footer><span>فایل‌ها و تنظیمات، خودکار آماده می‌شوند.</span><span dir="ltr">WIHM Installer · 1.0.0</span></footer>
+  </div>
+</body>
+</html>

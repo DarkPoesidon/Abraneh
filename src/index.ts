@@ -58,6 +58,16 @@ export default {
       return errorResponse('کلید امنیتی سرور تنظیم نشده است؛ JWT_SECRET باید حداقل ۳۲ بایت باشد.', 503);
     }
 
+    if (url.pathname === '/api/health' && request.method === 'GET') {
+      try {
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages')").first<{ n: number }>();
+        const ready = row?.n === 4;
+        return jsonResponse({ app: 'wihm-cloudflare', database: ready }, ready ? 200 : 503);
+      } catch {
+        return jsonResponse({ app: 'wihm-cloudflare', database: false }, 503);
+      }
+    }
+
     // ==========================================
     // 1. WebSocket Gateway (/ws or /api/ws)
     // ==========================================

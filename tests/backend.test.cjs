@@ -46,6 +46,15 @@ async function account(name, displayName = name) {
   return accounts[name];
 }
 
+test('readiness endpoint checks schema without exposing configuration', async () => {
+  const ready = await api('/api/health');
+  assert.equal(ready.status, 200);
+  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', database: true });
+  const missingSecret = await api('/api/health', { runtime: unconfigured });
+  assert.equal(missingSecret.status, 503);
+  assert.ok(!JSON.stringify(missingSecret.data).includes(secret));
+});
+
 async function dm(a, b) {
   const response = await api('/api/chats', { token: a.token, body: { targetUserId: b.user.id } });
   assert.ok([200, 201].includes(response.status));

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "installer:build": "node scripts/build-installer.mjs",
+    "installer:start": "node dist/WIHM-Installer/start.mjs",
+    "test:installer": "node --test tests/installer.test.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-concurrency=1 tests/*.test.cjs",
     "dev": "wrangler dev",
