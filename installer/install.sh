@@ -12,7 +12,10 @@ if [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/* ]]; t
   is_termux=true
   printf 'Preparing Termux packages...\n'
   pkg update -y
-  pkg install -y nodejs-lts curl tar
+  pkg install -y curl tar
+  if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' 2>/dev/null; then
+    pkg install -y nodejs-lts
+  fi
 fi
 if ! command -v curl >/dev/null; then
   printf 'curl is required. On Ubuntu/Debian: sudo apt install curl ca-certificates\n' >&2

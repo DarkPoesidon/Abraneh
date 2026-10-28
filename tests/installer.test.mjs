@@ -164,6 +164,9 @@ test('loopback wizard rejects foreign origins, untrusted Host, absent session, b
   assert.equal((await fetch(app.origin + '/api/start', { method: 'POST', headers, body: '{' })).status, 400);
   const connect = await fetch(app.origin + '/api/connect', { method: 'POST', headers, body: JSON.stringify({ token }) });
   assert.equal(connect.status, 200); assert.ok(!(await connect.text()).includes(token));
+  const plan = await fetch(app.origin + '/api/plan', { method: 'POST', headers, body: JSON.stringify({ name, accountId }) });
+  assert.equal(plan.status, 200);
+  assert.deepEqual(await plan.json(), { mode: 'new', name });
   const request = () => fetch(app.origin + '/api/start', { method: 'POST', headers, body: JSON.stringify({ name, accountId }) });
   assert.equal((await request()).status, 202); assert.equal((await request()).status, 409);
   const status = await (await fetch(app.origin + '/api/status', { headers })).json();
