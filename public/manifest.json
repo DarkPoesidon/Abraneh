@@ -1,0 +1,21 @@
+{
+  "name": "پیام‌رسان ابرانه",
+  "short_name": "پیام‌رسان",
+  "description": "پیام‌رسان متن‌پایه سریع و سبک روی بستر سرورلس کلادفلر",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "orientation": "portrait-primary",
+  "dir": "rtl",
+  "lang": "fa-IR",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

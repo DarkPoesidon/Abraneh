@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0284c7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="پیام‌رسان">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <div id="app-container">
+
+    <!-- Auth Overlay (Login / Register) -->
+    <div id="auth-overlay" class="auth-overlay">
+      <div class="auth-card">
+        <div class="auth-header">
+          <img src="/icon.svg" alt="Logo" class="auth-logo">
+          <h1 class="auth-title">پیام‌رسان ابرانه</h1>
+          <p class="auth-desc">پیام‌رسان امن و سریع روی سرورلس کلادفلر</p>
+        </div>
+
+        <div class="auth-tabs">
+          <button id="tab-login" class="auth-tab active" type="button">ورود</button>
+          <button id="tab-register" class="auth-tab" type="button">ثبت‌نام</button>
+        </div>
+
+        <div id="auth-error" class="error-banner"></div>
+
+        <form id="auth-form">
+          <div class="form-group" id="display-name-group" style="display: none;">
+            <label class="form-label" for="input-display-name">نام نمایشی</label>
+            <input type="text" id="input-display-name" class="form-input" placeholder="مثال: علی احمدی">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="input-username">نام کاربری</label>
+            <input type="text" id="input-username" class="form-input" placeholder="مثال: ali_dev" required autocomplete="username">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="input-password">رمز عبور</label>
+            <input type="password" id="input-password" class="form-input" placeholder="حداقل ۶ کاراکتر" required autocomplete="current-password">
+          </div>
+
+          <button type="submit" id="auth-submit-btn" class="btn-primary">ورود به حساب</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main Sidebar (Chat List) -->
+    <aside id="sidebar" class="sidebar">
+      <header class="sidebar-header">
+        <div class="user-profile-badge">
+          <div id="user-avatar" class="avatar">؟</div>
+          <div class="user-info">
+            <span id="user-display-name" class="user-name">کاربر</span>
+            <span id="user-username-badge" class="user-handle">@username</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="btn-open-search" class="icon-btn" title="گفتگوی جدید" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <button id="btn-logout" class="icon-btn" title="خروج" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="search-box">
+        <div class="search-input-wrapper">
+          <input type="text" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها...">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+      </div>
+
+      <div id="chats-list" class="chats-list">
+        <!-- Rendered by JS -->
+      </div>
+    </aside>
+
+    <!-- Main Chat Window -->
+    <main id="chat-main" class="chat-main">
+      
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-chat-state">
+        <img src="/icon.svg" width="80" height="80" alt="Logo" style="opacity: 0.7;">
+        <h3>یک گفتگو را برای شروع انتخاب کنید</h3>
+        <p>یا با زدن دکمه <strong>+</strong> در بالای سایدبار، با کاربر جدیدی گفتگو را آغاز کنید.</p>
+      </div>
+
+      <!-- Active Chat Container -->
+      <div id="active-chat-wrapper" style="display: none; height: 100%; flex-direction: column;">
+        <header class="chat-header">
+          <div class="chat-header-info">
+            <button id="btn-back-to-chats" class="back-btn" title="بازگشت" type="button">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+            <div id="chat-header-avatar" class="avatar" style="width: 38px; height: 38px; font-size: 0.95rem;">؟</div>
+            <div>
+              <div id="active-chat-title" class="chat-header-title">نام گفتگو</div>
+              <div id="active-chat-status" class="chat-status">
+                <span id="status-indicator-dot" class="status-dot"></span>
+                <span id="status-text">متصل</span>
+              </div>
+            </div>
+          </div>
+          <button id="btn-add-members" class="icon-btn" type="button" style="display: none;">افزودن عضو</button>
+        </header>
+
+        <button id="btn-load-older" class="history-button" type="button" hidden>پیام‌های قبلی</button>
+        <div id="messages-container" class="messages-container">
+          <!-- Messages will be rendered here -->
+        </div>
+
+        <div id="typing-bar" class="typing-indicator-bar"></div>
+        <div id="chat-error" class="chat-error" role="status" aria-live="polite"></div>
+
+        <footer class="chat-input-area">
+          <textarea id="message-input" class="message-input" rows="1" placeholder="پیام خود را بنویسید... (Enter برای ارسال)"></textarea>
+          <button id="btn-send-message" class="send-btn" title="ارسال" type="button">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </footer>
+      </div>
+
+    </main>
+
+    <!-- Modal: Search Users to Start New Chat -->
+    <div id="search-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="search-modal-title">شروع گفتگوی جدید</h3>
+          <button id="btn-close-modal" class="icon-btn" type="button">✕</button>
+        </div>
+        <div class="modal-body">
+          <button id="btn-group-mode" class="install-btn" type="button">ساخت گروه</button>
+          <input id="group-title-input" class="form-input group-title-input" type="text" maxlength="100" placeholder="نام گروه" aria-label="نام گروه" hidden>
+          <div class="search-input-wrapper" style="margin-bottom: 12px;">
+            <input type="text" id="modal-search-input" class="search-input" placeholder="جستجوی نام کاربری...">
+          </div>
+          <div id="selected-members" class="selected-members"></div>
+          <div id="search-results-list">
+            <!-- Search Results -->
+          </div>
+          <button id="btn-save-group" class="btn-primary" type="button" hidden>ساخت گروه</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PWA Install Banner -->
+    <div id="install-banner" class="install-banner">
+      <div>
+        <strong>نصب اپلیکیشن پیام‌رسان</strong>
+        <p style="font-size: 0.775rem; color: var(--text-secondary); margin-top: 2px;">برای دسترسی سریع‌تر، اپلیکیشن را روی گوشی یا رایانه نصب کنید.</p>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="btn-install-pwa" class="install-btn">نصب</button>
+        <button id="btn-dismiss-install" class="icon-btn" style="font-size: 0.8rem;">✕</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

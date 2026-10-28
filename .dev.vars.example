@@ -1,0 +1,2 @@
+# Generate a local key using the command in README.md; never deploy this file.
+JWT_SECRET=""

@@ -1,0 +1,20 @@
+{
+  "name": "cloudflare-messenger",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 tests/*.test.cjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init:local": "wrangler d1 execute messenger-db --local --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute messenger-db --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261028.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.154.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261023.1-beta"
+  }
+}
