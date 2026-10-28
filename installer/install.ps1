@@ -25,7 +25,7 @@ try {
     New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null
     $PackageRoot = $PSScriptRoot
     if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot 'payload\worker.mjs'))) {
-        $Release = 'https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/installer-v1.0.0'
+        $Release = 'https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download'
         $DownloadRoot = Join-Path $CacheRoot ('download-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $DownloadRoot | Out-Null
         Write-Host 'Downloading WIHM Installer...'

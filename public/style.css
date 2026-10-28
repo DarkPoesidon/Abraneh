@@ -629,6 +629,21 @@ body {
 .chat-header, .chat-input-area { flex-shrink: 0; }
 .messages-container { min-height: 0; }
 .chat-main, #active-chat-wrapper, .message-input { min-width: 0; }
+.unread-badge { display: inline-flex; min-width: 22px; padding: 0 6px; margin-inline-start: 6px; border-radius: 20px; background: var(--accent-color); color: var(--text-primary); font-size: .75rem; justify-content: center; }
+.message-status { display: inline-block; margin-inline-start: 8px; font-size: .75rem; color: var(--text-primary); }
+.message-bubble.pending { opacity: .8; border: 1px dashed var(--text-secondary); }
+.message-bubble.failed { border-color: var(--danger-color); }
+.message-retry { border: 1px solid var(--text-secondary); color: var(--text-primary); background: transparent; border-radius: 6px; min-height: 36px; padding: 4px 10px; margin: 8px 0 0 6px; cursor: pointer; }
+.unread-divider { align-self: center; color: var(--text-secondary); font-size: .8rem; padding: 8px; }
+.session-help { color: var(--text-secondary); font-size: .85rem; margin-bottom: 16px; }
+.session-row { padding: 12px 0; border-bottom: 1px solid var(--border-color); overflow-wrap: anywhere; }
+.session-row p { font-size: .8rem; color: var(--text-secondary); margin: 6px 0; }
+#sessions-list { max-height: 48dvh; overflow-y: auto; margin-bottom: 16px; }
+#btn-sessions { font-size: .7rem; }
+.app-version { display: block; font-size: .65rem; color: var(--text-secondary); }
+.update-banner { position: fixed; bottom: 16px; inset-inline: 16px; z-index: 200; background: var(--bg-secondary); color: var(--text-primary); padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
+:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media (max-width: 768px) {
   .sidebar {
     width: 100%;

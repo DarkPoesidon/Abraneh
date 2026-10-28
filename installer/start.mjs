@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { createJournal } from './journal.mjs';
 import { startServer } from './server.mjs';
 
@@ -13,7 +13,8 @@ if (Number(process.versions.node.split('.')[0]) < 22) {
 const directory = dirname(fileURLToPath(import.meta.url));
 try {
   await access(join(directory, 'payload', 'worker.mjs'));
-  const app = await startServer({ uiDir: join(directory, 'ui'), payloadDir: join(directory, 'payload'), journal: createJournal(join(homedir(), '.wihm-cloudflare', 'installations')) });
+  const manifest = JSON.parse(await readFile(join(directory, 'build.json'), 'utf8'));
+  const app = await startServer({ uiDir: join(directory, 'ui'), payloadDir: join(directory, 'payload'), journal: createJournal(join(homedir(), '.wihm-cloudflare', 'installations')), version: manifest.appVersion });
   console.log('\nWIHM Cloudflare — نصب‌کننده\n');
   console.log('این پنجره را تا پایان نصب باز نگه دارید. نشانی زیر فقط روی همین دستگاه باز می‌شود:\n');
   console.log(app.url + '\n');

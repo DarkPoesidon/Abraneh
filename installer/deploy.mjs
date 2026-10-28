@@ -2,8 +2,15 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { CloudflareError } from './cloudflare.mjs';
+import { applyMigrations } from './migrations.mjs';
 
-export const APP_MARKER = 'wihm-cloudflare-v1';
+export const APP_MARKER = 'wihm-cloudflare-v2';
+const legacyMarker = 'wihm-cloudflare-v1';
+export const isNewer = (a, b) => {
+  const left = String(a).split('.').map(Number), right = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] > right[i];
+  return false;
+};
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml' };
 export const validAccount = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
 export const validName = name => typeof name === 'string' && /^[a-z][a-z0-9-]{2,39}$/.test(name) && !name.endsWith('-');
@@ -23,13 +30,14 @@ export async function inspect(api, accountId, name) {
   const settings = await settingsFor(api, path + '/settings');
   if (settings) {
     const binding = key => settings.bindings?.find(b => b.name === key);
-    if (binding('WIHM_INSTALLER')?.text !== APP_MARKER || binding('DB')?.type !== 'd1'
+    if (![APP_MARKER, legacyMarker].includes(binding('WIHM_INSTALLER')?.text) || binding('DB')?.type !== 'd1'
         || binding('CHAT_ROOM')?.type !== 'durable_object_namespace' || binding('CHAT_ROOM')?.class_name !== 'ChatRoom'
         || binding('JWT_SECRET')?.type !== 'secret_text') {
       throw new Error('برنامه‌ای با این نام از قبل وجود دارد و متعلق به این نصب‌کننده نیست. نام دیگری انتخاب کنید.');
     }
   }
-  return { accountId, name, mode: settings ? 'update' : 'new', settings };
+  const installedVersion = settings ? settings.bindings?.find(binding => binding.name === 'WIHM_VERSION')?.text || '1.0.0' : null;
+  return { accountId, name, mode: settings ? 'update' : 'new', installedVersion, settings };
 }
 
 async function uploadAssets(api, accountId, name, directory) {
@@ -63,6 +71,9 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
   progress('check');
   // Revalidate immediately before mutations, including retries after a lost upload response.
   const plan = await inspect(api, accountId, name);
+  const release = JSON.parse(await readFile(join(payloadDir, 'release.json'), 'utf8'));
+  if (!/^\d+\.\d+\.\d+$/.test(release.appVersion)) throw new Error('نسخهٔ بسته معتبر نیست. نصب‌کنندهٔ رسمی را دریافت کنید.');
+  if (plan.installedVersion && isNewer(plan.installedVersion, release.appVersion)) throw new Error('نسخهٔ نصب‌شده جدیدتر از این نصب‌کننده است. آخرین بسته را دریافت کنید.');
   const root = `/accounts/${accountId}`;
   const scriptPath = `${root}/workers/scripts/${name}`;
   const [worker, schema] = await Promise.all([readFile(join(payloadDir, 'worker.mjs'), 'utf8'), readFile(join(payloadDir, 'schema.sql'), 'utf8')]);
@@ -92,12 +103,13 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
     let owned = false;
     try {
       const rows = await api.query(accountId, database.uuid, 'SELECT app, worker_name FROM wihm_installation WHERE id = 1');
-      owned = rows[0]?.results?.[0]?.app === APP_MARKER && rows[0]?.results?.[0]?.worker_name === name;
+      owned = [APP_MARKER, legacyMarker].includes(rows[0]?.results?.[0]?.app) && rows[0]?.results?.[0]?.worker_name === name;
     } catch { /* An unrelated database must never be initialized or adopted. */ }
     if (!owned) throw new Error('دیتابیسی با این نام از قبل وجود دارد. برای دست‌نخورده ماندن آن، نام دیگری انتخاب کنید.');
   }
   progress('schema');
   await api.query(accountId, database.uuid, schema);
+  await applyMigrations(api, accountId, database.uuid, payloadDir, release);
   await api.query(accountId, database.uuid, 'CREATE TABLE IF NOT EXISTS wihm_installation (id INTEGER PRIMARY KEY CHECK (id = 1), app TEXT NOT NULL, worker_name TEXT NOT NULL)');
   await api.query(accountId, database.uuid, 'INSERT OR IGNORE INTO wihm_installation (id, app, worker_name) VALUES (1, ?, ?)', [APP_MARKER, name]);
   await journal.set(accountId, name, { databaseId: database.uuid });
@@ -112,6 +124,7 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
       { name: 'CHAT_ROOM', type: 'durable_object_namespace', class_name: 'ChatRoom' },
       { name: 'ASSETS', type: 'assets' },
       { name: 'WIHM_INSTALLER', type: 'plain_text', text: APP_MARKER },
+      { name: 'WIHM_VERSION', type: 'plain_text', text: release.appVersion },
       plan.settings ? { name: 'JWT_SECRET', type: 'inherit' } : { name: 'JWT_SECRET', type: 'secret_text', text: randomBytes(48).toString('base64url') },
     ],
     assets: { jwt, config: { html_handling: 'auto-trailing-slash', not_found_handling: 'none' } },
@@ -129,11 +142,11 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
     try {
       const response = await fetcher(url + '/api/health', { redirect: 'error', signal: AbortSignal.timeout(10_000) });
       const health = await response.json();
-      if (response.ok && health.app === 'wihm-cloudflare' && health.database === true) {
-        return { url, verified: true, mode: plan.mode };
+      if (response.ok && health.app === 'wihm-cloudflare' && health.database === true && health.version === release.appVersion) {
+        return { url, verified: true, mode: plan.mode, version: release.appVersion };
       }
     } catch { /* DNS and Worker propagation can lag a successful deployment. */ }
     if (attempt < 11) await pause(1500);
   }
-  return { url, verified: false, mode: plan.mode };
+  return { url, verified: false, mode: plan.mode, version: release.appVersion };
 }

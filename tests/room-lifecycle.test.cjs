@@ -11,7 +11,7 @@ vm.runInNewContext(code, { module: moduleScope, exports: moduleScope.exports, re
 
 test('legacy sockets without a bound room fail closed before any database write or broadcast', async () => {
   let writes = 0, broadcasts = 0, closed = null;
-  const ctx = { storage: { sql: { exec() { writes++; } } }, getWebSockets() { broadcasts++; return []; } };
+  const ctx = { storage: { sql: { exec() { writes++; return { toArray: () => [] }; } }, transactionSync(fn) { return fn(); } }, getWebSockets() { broadcasts++; return []; } };
   const room = new moduleScope.exports.ChatRoom(ctx, { DB: { batch() { throw new Error('Must not reach D1'); } } });
   writes = 0;
   const socket = { deserializeAttachment: () => ({ userId: 'old-user', username: 'old', displayName: 'Old' }), close: (...args) => { closed = args; }, send() { throw new Error('Must not send a success'); } };

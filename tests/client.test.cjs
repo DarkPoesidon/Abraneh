@@ -8,7 +8,7 @@ const reply = (data, status = 200) => ({ ok: status < 400, status, json: async (
 const message = (id, text = id, createdAt = 1) => ({ id, text, createdAt, senderId: 'other', senderName: 'Other' });
 const initialChats = () => [{ id: 'a', title: 'Chat A', type: 'dm', updatedAt: 1 }, { id: 'b', title: 'Chat B', type: 'dm', updatedAt: 1 }];
 
-function harness(handler) {
+function harness(handler, { storageEntries = [], failStorage = false, online = true } = {}) {
   function element() {
     let html = '', text = '';
     return {
@@ -30,13 +30,14 @@ function harness(handler) {
     send(value) { this.sent.push(JSON.parse(value)); }
     close() { this.readyState = 3; }
   }
-  const storage = new Map([['cf_msg_token', 'session-token'], ['cf_msg_user', JSON.stringify({ id: 'self', username: 'self', displayName: 'Self' })]]);
+  const storage = new Map([['cf_msg_token', 'session-token'], ['cf_msg_user', JSON.stringify({ id: 'self', username: 'self', displayName: 'Self' })], ...storageEntries]);
+  const navigator = { onLine: online };
   const document = { visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
   const sandbox = {
-    console, WebSocket, navigator: {}, document,
+    console, WebSocket, navigator, document,
     window: { innerWidth: 1200, addEventListener: (type, fn) => { windowEvents[type] = fn; } },
     location: { protocol: 'http:', host: 'localhost', reload() {} },
-    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
+    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => { if (failStorage) throw new Error('QuotaExceededError'); storage.set(key, value); }, removeItem: key => storage.delete(key) },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
     setInterval: (fn, delay) => { const id = ++timerId; intervals.set(id, { fn, delay }); return id; }, clearInterval: id => intervals.delete(id),
     fetch: (path, options) => { calls.push({ path, options }); return handler(path, options); },
@@ -44,7 +45,7 @@ function harness(handler) {
   };
   vm.runInNewContext(readFileSync('public/app.js', 'utf8'), sandbox);
   return {
-    elements, sockets, timers, intervals, windowEvents, documentEvents, document, calls,
+    elements, sockets, timers, intervals, windowEvents, documentEvents, document, calls, storage, navigator,
     el: id => elements.get(id),
     click: id => elements.get(id).listeners.click(),
     open: index => elements.get('chats-list').children[index].listeners.click(),
@@ -156,4 +157,69 @@ test('expired sessions stop polling and reconnecting', async () => {
   assert.equal(app.intervals.size, 0);
   assert.equal(app.timers.size, 0);
   assert.equal(app.sockets.at(-1).readyState, 3);
+});
+
+test('offline outbox survives a reload and a server acknowledgement replaces the pending bubble exactly once', async () => {
+  const handler = path => reply(path === '/api/chats' ? initialChats() : []);
+  const offline = harness(handler, { online: false });
+  await settle(); await offline.open(0);
+  offline.el('message-input').value = 'پیام آفلاین'; offline.click('btn-send-message');
+  assert.equal(offline.el('message-input').value, '');
+  const stored = JSON.parse(offline.storage.get('cf_msg_outbox_self'));
+  assert.equal(stored.length, 1); assert.equal(stored[0].text, 'پیام آفلاین');
+  assert.match(offline.texts(), /در انتظار اتصال/);
+  const restored = harness(handler, { online: false, storageEntries: [...offline.storage] });
+  await settle(); await restored.open(0);
+  assert.match(restored.texts(), /پیام آفلاین/);
+  restored.navigator.onLine = true; restored.windowEvents.online(); await settle();
+  const socket = restored.sockets.at(-1);
+  const sent = socket.sent.find(action => action.action === 'send_message');
+  assert.equal(sent.clientMsgId, stored[0].clientMsgId);
+  const confirmed = { id: 'server-message', chatId: 'a', senderId: 'self', senderName: 'Self', text: sent.text, createdAt: Date.now(), clientMsgId: sent.clientMsgId };
+  socket.onmessage({ data: JSON.stringify({ event: 'new_message', message: confirmed }) });
+  socket.onmessage({ data: JSON.stringify({ event: 'new_message', message: confirmed }) });
+  assert.equal(restored.el('messages-container').children.length, 1);
+  assert.match(restored.texts(), /ارسال شد/);
+  assert.deepEqual(JSON.parse(restored.storage.get('cf_msg_outbox_self')), []);
+});
+
+test('outbox storage failure preserves the composer and does not attempt an untracked send', async () => {
+  const app = harness(path => reply(path === '/api/chats' ? initialChats() : []), { failStorage: true });
+  await settle(); await app.open(0);
+  app.el('message-input').value = 'متن باید بماند'; app.click('btn-send-message');
+  assert.equal(app.el('message-input').value, 'متن باید بماند');
+  assert.match(app.el('chat-error').textContent, /فضای ذخیره/);
+  assert.ok(app.sockets.every(socket => !socket.sent.some(action => action.action === 'send_message')));
+});
+
+test('hidden tabs report delivery but not reading; visibility and receipts update sender status', async () => {
+  const posts = [];
+  const history = [{ ...message('mine', 'Own message', 1), chatId: 'a', senderId: 'self' }];
+  const app = harness((path, options = {}) => {
+    if (path === '/api/chats') return reply(initialChats());
+    if (path.endsWith('/receipts') && options.method === 'POST') { const body = JSON.parse(options.body); posts.push(body); return reply({ userId: 'self', readAt: body.read ? 1 : 0 }); }
+    if (path.endsWith('/receipts')) return reply([]);
+    return reply(history);
+  });
+  await settle(); await app.open(0); await settle(); posts.length = 0;
+  app.document.visibilityState = 'hidden';
+  app.sockets.at(-1).onmessage({ data: JSON.stringify({ event: 'new_message', message: { ...message('incoming', 'Received hidden', 2), chatId: 'a' } }) });
+  await settle(); assert.ok(posts.length); assert.ok(posts.every(post => post.read === false));
+  app.document.visibilityState = 'visible'; app.documentEvents.visibilitychange(); await settle();
+  assert.ok(posts.some(post => post.read === true));
+  app.sockets.at(-1).onmessage({ data: JSON.stringify({ event: 'receipt', chatId: 'a', userId: 'other', deliveredAt: 1, deliveredId: 'mine', readAt: 0, readId: '' }) });
+  assert.match(app.texts(), /تحویل شد/);
+  app.sockets.at(-1).onmessage({ data: JSON.stringify({ event: 'receipt', chatId: 'a', userId: 'other', deliveredAt: 1, deliveredId: 'mine', readAt: 1, readId: 'mine' }) });
+  assert.match(app.texts(), /خوانده شد/);
+});
+
+test('explicit logout clears this account outbox even if the server has already expired the session', async () => {
+  const queued = [{ chatId: 'a', clientMsgId: 'logout-queued', text: 'private pending text', createdAt: 1 }];
+  const app = harness(path => path === '/api/auth/logout' ? reply({ error: 'نشست پایان یافته' }, 401) : reply(path === '/api/chats' ? initialChats() : []), {
+    online: false, storageEntries: [['cf_msg_outbox_self', JSON.stringify(queued)], ['cf_msg_outbox_someone_else', 'other-account-data']],
+  });
+  await settle(); await app.click('btn-logout');
+  assert.equal(app.storage.has('cf_msg_outbox_self'), false);
+  assert.equal(app.storage.get('cf_msg_outbox_someone_else'), 'other-account-data');
+  assert.equal(app.storage.has('cf_msg_token'), false);
 });

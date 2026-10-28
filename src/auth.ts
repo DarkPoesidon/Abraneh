@@ -122,6 +122,7 @@ export async function verifyJwt(token: string, secret: string | undefined): Prom
       || typeof payload.displayName !== 'string') {
       return null; // Expired
     }
+    if (payload.sid !== undefined && (typeof payload.sid !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(payload.sid))) return null;
 
     return payload;
   } catch {

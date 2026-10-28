@@ -19,6 +19,7 @@
 <body>
 
   <div id="app-container">
+    <div id="update-banner" class="update-banner" hidden><span>نسخهٔ جدید آماده است.</span><button id="btn-apply-update" class="install-btn" type="button">دریافت نسخهٔ جدید</button></div>
 
     <!-- Auth Overlay (Login / Register) -->
     <div id="auth-overlay" class="auth-overlay">
@@ -65,9 +66,11 @@
           <div class="user-info">
             <span id="user-display-name" class="user-name">کاربر</span>
             <span id="user-username-badge" class="user-handle">@username</span>
+            <span class="app-version" dir="ltr">WIHM 1.1.0</span>
           </div>
         </div>
         <div class="header-actions">
+          <button id="btn-sessions" class="icon-btn" title="دستگاه‌های متصل" aria-label="دستگاه‌های متصل" type="button">دستگاه‌ها</button>
           <button id="btn-open-search" class="icon-btn" title="گفتگوی جدید" type="button">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 5v14M5 12h14"/>
@@ -129,6 +132,7 @@
         </header>
 
         <button id="btn-load-older" class="history-button" type="button" hidden>پیام‌های قبلی</button>
+        <button id="btn-first-unread" class="history-button" type="button" hidden>اولین پیام نخوانده</button>
         <div id="messages-container" class="messages-container">
           <!-- Messages will be rendered here -->
         </div>
@@ -148,6 +152,18 @@
       </div>
 
     </main>
+
+    <div id="sessions-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-title" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-header"><h3 id="sessions-title">دستگاه‌های متصل</h3><button id="btn-close-sessions" class="icon-btn" type="button" aria-label="بستن">✕</button></div>
+        <div class="modal-body">
+          <p class="session-help">نشست‌های فعال حساب شما؛ نام دستگاه از اطلاعات مرورگر گرفته شده است.</p>
+          <div id="sessions-list"></div>
+          <p id="sessions-error" class="chat-error" role="status"></p>
+          <button id="btn-revoke-others" class="btn-primary" type="button">خروج از سایر دستگاه‌ها</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Modal: Search Users to Start New Chat -->
     <div id="search-modal" class="modal-overlay">

@@ -28,10 +28,11 @@ after(async () => {
   await Promise.all([mf?.dispose(), unconfigured?.dispose()]);
 });
 
-async function api(path, { body, token, runtime = mf } = {}) {
+async function api(path, { body, token, runtime = mf, headers = {} } = {}) {
+  if (path === '/api/auth/register' && !headers['CF-Connecting-IP']) headers = { ...headers, 'CF-Connecting-IP': '198.51.100.' + (body?.username?.charCodeAt(0) || 1) };
   const response = await runtime.dispatchFetch('http://localhost' + path, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    headers: { 'Content-Type': 'application/json', ...headers, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   return { status: response.status, data: await response.json() };
@@ -49,7 +50,7 @@ async function account(name, displayName = name) {
 test('readiness endpoint checks schema without exposing configuration', async () => {
   const ready = await api('/api/health');
   assert.equal(ready.status, 200);
-  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', database: true });
+  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.1.0', database: true });
   const missingSecret = await api('/api/health', { runtime: unconfigured });
   assert.equal(missingSecret.status, 503);
   assert.ok(!JSON.stringify(missingSecret.data).includes(secret));
@@ -230,4 +231,142 @@ test('group creation, member invitations, and authorization work end to end', as
   const privateId = await dm(a, outsider);
   assert.equal((await api(`/api/chats/${privateId}/members`, { token: a.token, body: { userIds: [c.user.id] } })).status, 400);
   assert.equal((await api('/api/chats', { token: a.token, body: { type: 'group', memberIds: ['missing-user'] } })).status, 400);
+});
+
+test('repeated sends and concurrent retries acknowledge one canonical message, scoped to its sender', async () => {
+  const a = await account('dedupe_a'), b = await account('dedupe_b');
+  const chatId = await dm(a, b), first = await connect(a, chatId), second = await connect(a, chatId), peer = await connect(b, chatId);
+  const seen = [];
+  peer.addEventListener('message', event => { const data = JSON.parse(event.data); if (data.event === 'new_message') seen.push(data.message); });
+  const action = { action: 'send_message', chatId, text: 'stable message', clientMsgId: 'same-client-key' };
+  const response = nextEvent(first, 'new_message'); first.send(JSON.stringify(action));
+  const original = (await response).message;
+  const retried = nextEvent(second, 'new_message'); second.send(JSON.stringify(action));
+  assert.equal((await retried).message.id, original.id);
+  const mismatch = nextEvent(first, 'error'); first.send(JSON.stringify({ ...action, text: 'different body' }));
+  assert.equal((await mismatch).retryable, false);
+  assert.equal((await db.prepare('SELECT count(*) AS n FROM messages WHERE chat_id = ?').bind(chatId).first()).n, 1);
+  assert.equal(seen.length, 1);
+  const other = nextEvent(peer, 'new_message'); peer.send(JSON.stringify(action));
+  assert.notEqual((await other).message.id, original.id);
+  const history = await api(`/api/chats/${chatId}/messages`, { token: a.token });
+  assert.equal(history.data.length, 2);
+  assert.ok(history.data.every(message => message.clientMsgId === action.clientMsgId));
+});
+
+test('delivery and read receipts are distinct, authorized and monotonic, including tied timestamps', async () => {
+  const a = await account('receipts_a'), b = await account('receipts_b'), outsider = await account('receipts_out');
+  const chatId = await dm(a, b), sender = await connect(a, chatId);
+  const response = nextEvent(sender, 'new_message'); sender.send(JSON.stringify({ action: 'send_message', chatId, text: 'read me', clientMsgId: 'receipt-1' }));
+  const message = (await response).message;
+  const unread = async () => (await api('/api/chats', { token: b.token })).data.find(chat => chat.id === chatId);
+  assert.equal((await unread()).unreadCount, 1); assert.equal((await unread()).firstUnreadId, message.id);
+  const event = nextEvent(sender, 'receipt');
+  const delivered = await api(`/api/chats/${chatId}/receipts`, { token: b.token, body: { messageId: message.id, read: false } });
+  assert.equal(delivered.status, 200); assert.equal(delivered.data.readAt, 0); assert.equal((await event).userId, b.user.id);
+  assert.equal((await unread()).unreadCount, 1);
+  await api(`/api/chats/${chatId}/receipts`, { token: b.token, body: { messageId: message.id, read: true } });
+  assert.equal((await unread()).unreadCount, 0);
+  assert.equal((await api(`/api/chats/${chatId}/receipts`, { token: outsider.token })).status, 403);
+  assert.equal((await api(`/api/chats/${chatId}/receipts`, { token: b.token, body: { messageId: 'missing', read: true } })).status, 404);
+  const tied = 'receipt-ties';
+  await db.batch([
+    db.prepare("INSERT INTO chats VALUES (?, 'dm', NULL, 1, 1)").bind(tied),
+    ...[a, b].map(user => db.prepare('INSERT INTO chat_members (chat_id,user_id,joined_at) VALUES (?,?,1)').bind(tied, user.user.id)),
+    ...['a', 'b', 'c'].map(id => db.prepare('INSERT INTO messages VALUES (?,?,?,?,?)').bind('receipt_tie_' + id, tied, a.user.id, id, 1000)),
+    db.prepare('INSERT INTO message_metadata VALUES (?,?)').bind('receipt_tie_a', 'fallback-client-id'),
+  ]);
+  await api(`/api/chats/${tied}/receipts`, { token: b.token, body: { messageId: 'receipt_tie_b', read: true } });
+  const regressed = await api(`/api/chats/${tied}/receipts`, { token: b.token, body: { messageId: 'receipt_tie_a', read: true } });
+  assert.equal(regressed.data.readId, 'receipt_tie_b');
+  const remaining = (await api('/api/chats', { token: b.token })).data.find(chat => chat.id === tied);
+  assert.equal(remaining.unreadCount, 1); assert.equal(remaining.firstUnreadId, 'receipt_tie_c');
+  assert.equal((await api(`/api/chats/${tied}/messages`, { token: b.token })).data[0].clientMsgId, 'fallback-client-id');
+});
+
+test('device revocation notifies live sockets and rejects legacy tokens first used after logout-others', async () => {
+  const user = await account('device_owner'), other = await account('device_peer');
+  const loggedIn = await api('/api/auth/login', { body: { username: 'device_owner', password: 'testpass123' } });
+  const second = { user: user.user, token: loggedIn.data.token };
+  const chatId = await dm(user, other), socket = await connect(second, chatId);
+  const sessions = (await api('/api/auth/sessions', { token: user.token })).data;
+  assert.equal(sessions.filter(session => session.current).length, 1); assert.equal(sessions.length, 2);
+  const target = sessions.find(session => !session.current);
+  assert.equal((await api('/api/auth/sessions/revoke', { token: other.token, body: { id: target.id } })).status, 404);
+  const revoked = nextEvent(socket, 'session_revoked');
+  assert.equal((await api('/api/auth/sessions/revoke', { token: user.token, body: { id: target.id } })).status, 200);
+  assert.equal((await revoked).event, 'session_revoked');
+  assert.equal((await api('/api/auth/me', { token: second.token })).status, 401);
+  const legacyPayload = { userId: user.user.id, username: user.user.username, displayName: 'Old client', exp: Math.floor(Date.now() / 1000) + 3600 };
+  const knownLegacy = tokenFor(legacyPayload), unseenLegacy = tokenFor({ ...legacyPayload, exp: legacyPayload.exp + 1 });
+  assert.equal((await api('/api/auth/me', { token: knownLegacy })).status, 200);
+  await api('/api/auth/sessions/revoke', { token: user.token, body: { others: true } });
+  assert.equal((await api('/api/auth/me', { token: knownLegacy })).status, 401);
+  assert.equal((await api('/api/auth/me', { token: unseenLegacy })).status, 401);
+  assert.equal((await api('/api/auth/me', { token: user.token })).status, 200);
+  await api('/api/auth/logout', { token: user.token, body: {} });
+  assert.equal((await api('/api/auth/me', { token: user.token })).status, 401);
+});
+
+test('login and registration limits survive independent requests and return actionable 429 errors', async () => {
+  for (let i = 0; i < 15; i++) assert.equal((await api('/api/auth/login', { body: { username: 'rate_unknown', password: 'incorrect' }, headers: { 'CF-Connecting-IP': '192.0.2.44' } })).status, 401);
+  const limited = await api('/api/auth/login', { body: { username: 'rate_unknown', password: 'incorrect' }, headers: { 'CF-Connecting-IP': '192.0.2.44' } });
+  assert.equal(limited.status, 429); assert.match(limited.data.error, /۱۵/);
+  assert.equal((await api('/api/auth/login', { body: { username: 'rate_unknown', password: 'incorrect' }, headers: { 'CF-Connecting-IP': '192.0.2.99' } })).status, 401);
+  // Invalid input still consumes the per-IP registration budget; no accounts are created.
+  for (let i = 0; i < 30; i++) assert.equal((await api('/api/auth/register', { body: { username: 'x', password: 'short' }, headers: { 'CF-Connecting-IP': '192.0.2.45' } })).status, 400);
+  assert.equal((await api('/api/auth/register', { body: { username: 'x', password: 'short' }, headers: { 'CF-Connecting-IP': '192.0.2.45' } })).status, 429);
+});
+
+test('a failed global-index write preserves the canonical message and a later retry repairs D1 without duplication', async () => {
+  const a = await account('repair_a'), b = await account('repair_b');
+  const chatId = await dm(a, b), socket = await connect(a, chatId);
+  // Simulate a D1 batch failure while session validation remains available.
+  await db.prepare('DROP TABLE message_metadata').run();
+  const action = { action: 'send_message', chatId, text: 'durable during index failure', clientMsgId: 'repair-stable-id' };
+  let original;
+  try {
+    const received = nextEvent(socket, 'new_message'); socket.send(JSON.stringify(action));
+    original = (await received).message;
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM messages WHERE chat_id = ?').bind(chatId).first()).n, 0);
+  } finally {
+    await db.prepare('CREATE TABLE message_metadata (message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE, client_msg_id TEXT NOT NULL)').run();
+  }
+  const retried = nextEvent(socket, 'new_message'); socket.send(JSON.stringify(action));
+  assert.equal((await retried).message.id, original.id);
+  // D1 synchronization happens after the duplicate acknowledgement.
+  for (let i = 0; i < 20; i++) {
+    if ((await db.prepare('SELECT count(*) AS n FROM messages WHERE chat_id = ?').bind(chatId).first()).n === 1) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.equal((await db.prepare('SELECT count(*) AS n FROM messages WHERE chat_id = ?').bind(chatId).first()).n, 1);
+  assert.equal((await api(`/api/chats/${chatId}/messages`, { token: a.token })).data.length, 1);
+});
+
+test('room send budget rejects flooding while duplicate acknowledgements remain available', async () => {
+  const a = await account('flood_a'), b = await account('flood_b'), chatId = await dm(a, b), socket = await connect(a, chatId);
+  let limited = null, firstId = null;
+  for (let i = 0; i < 245; i++) {
+    const response = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('No send result')), 5000);
+      function listener(event) {
+        const data = JSON.parse(event.data);
+        if (!['new_message', 'error'].includes(data.event)) return;
+        clearTimeout(timer); socket.removeEventListener('message', listener); resolve(data);
+      }
+      socket.addEventListener('message', listener);
+    });
+    socket.send(JSON.stringify({ action: 'send_message', chatId, text: 'budget ' + i, clientMsgId: 'budget_' + i }));
+    const event = await response;
+    if (i === 0) firstId = event.message.id;
+    if (event.event === 'error') { limited = event; break; }
+  }
+  assert.equal(limited?.retryable, true);
+  const retry = nextEvent(socket, 'new_message'); socket.send(JSON.stringify({ action: 'send_message', chatId, text: 'budget 0', clientMsgId: 'budget_0' }));
+  assert.equal((await retry).message.id, firstId);
+});
+
+test('malformed and oversized JSON is rejected before hashing a password', async () => {
+  assert.equal((await api('/api/auth/login', { body: null })).status, 400);
+  assert.equal((await api('/api/auth/login', { body: { username: 'nobody', password: 'x'.repeat(65000) } })).status, 413);
 });

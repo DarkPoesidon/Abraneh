@@ -1,6 +1,10 @@
 import { Env, User, UserRow, Chat } from "./types.js";
-import { hashPassword, verifyPassword, generateSalt, signJwt, verifyJwt, hasJwtSecret } from "./auth.js";
+import { hashPassword, verifyPassword, generateSalt, hasJwtSecret } from "./auth.js";
 import { historyOptions } from "./history.js";
+import { requestIdentity, issueSession, revokeSessions } from './sessions.js';
+import { allowRequest } from './limits.js';
+import { APP_VERSION } from './version.js';
+import { listReceipts, saveReceipt } from './receipts.js';
 export { ChatRoom } from "./chatRoom.js";
 
 // CORS Response Helper
@@ -31,18 +35,26 @@ async function validatedMembers(value: unknown, env: Env, self: string): Promise
 }
 
 // Authenticate request via Bearer token or ?token=
-async function authenticate(request: Request, env: Env): Promise<{ userId: string; username: string; displayName: string } | null> {
-  const authHeader = request.headers.get("Authorization");
-  let token = "";
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.substring(7).trim();
-  } else {
-    const url = new URL(request.url);
-    token = url.searchParams.get("token") || "";
-  }
+const authenticate = requestIdentity;
 
-  if (!token) return null;
-  return await verifyJwt(token, env.JWT_SECRET);
+class InputError extends Error { constructor(message: string, public status = 400) { super(message); } }
+async function inputJson(request: Request): Promise<any> {
+  const reader = request.body?.getReader();
+  if (!reader) throw new InputError('محتوای درخواست خالی است.');
+  const decoder = new TextDecoder();
+  let size = 0, text = '';
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    size += chunk.value.byteLength;
+    if (size > 64_000) { await reader.cancel(); throw new InputError('حجم درخواست بیش از حد مجاز است.', 413); }
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+  text += decoder.decode();
+  let value;
+  try { value = JSON.parse(text); } catch { throw new InputError('فرمت درخواست معتبر نیست.'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('فرمت درخواست معتبر نیست.');
+  return value;
 }
 
 export default {
@@ -60,11 +72,11 @@ export default {
 
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages')").first<{ n: number }>();
-        const ready = row?.n === 4;
-        return jsonResponse({ app: 'wihm-cloudflare', database: ready }, ready ? 200 : 503);
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts')").first<{ n: number }>();
+        const ready = row?.n === 9;
+        return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
-        return jsonResponse({ app: 'wihm-cloudflare', database: false }, 503);
+        return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
       }
     }
 
@@ -104,6 +116,7 @@ export default {
       doUrl.searchParams.set("userId", auth.userId);
       doUrl.searchParams.set("username", auth.username);
       doUrl.searchParams.set("displayName", auth.displayName);
+      doUrl.searchParams.set('sessionId', auth.sid);
 
       return stub.fetch(new Request(doUrl.toString(), request));
     }
@@ -115,7 +128,8 @@ export default {
       try {
         // --- AUTH: REGISTER ---
         if (url.pathname === "/api/auth/register" && request.method === "POST") {
-          const body = await request.json<any>();
+          if (!await allowRequest(env, 'register', request.headers.get('CF-Connecting-IP') || 'unknown', 30, 3600_000)) return errorResponse('تعداد ثبت‌نام از این اتصال زیاد است. یک ساعت دیگر دوباره تلاش کنید.', 429);
+          const body = await inputJson(request);
           const username = String(body.username || "").trim().toLowerCase();
           const password = String(body.password || "");
           const displayName = String(body.displayName || username).trim() || username;
@@ -151,16 +165,18 @@ export default {
           ).bind(userId, username, passwordHash, salt, displayName, now).run();
 
           const user: User = { id: userId, username, displayName, createdAt: now };
-          const token = await signJwt({ userId, username, displayName }, env.JWT_SECRET);
+          const token = await issueSession(request, env, user);
 
           return jsonResponse({ token, user }, 201);
         }
 
         // --- AUTH: LOGIN ---
         if (url.pathname === "/api/auth/login" && request.method === "POST") {
-          const body = await request.json<any>();
+          const body = await inputJson(request);
           const username = String(body.username || "").trim().toLowerCase();
           const password = String(body.password || "");
+          const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+          if (!await allowRequest(env, 'login-ip', ip, 100, 15 * 60_000) || !await allowRequest(env, 'login-name', ip + ':' + username, 15, 15 * 60_000)) return errorResponse('تعداد تلاش ورود زیاد است. ۱۵ دقیقه دیگر دوباره تلاش کنید.', 429);
 
           if (!username || !password) {
             return errorResponse("نام کاربری و رمز عبور الزامی است.");
@@ -185,7 +201,7 @@ export default {
             displayName: row.display_name,
             createdAt: row.created_at,
           };
-          const token = await signJwt({ userId: user.id, username: user.username, displayName: user.displayName }, env.JWT_SECRET);
+          const token = await issueSession(request, env, user);
 
           return jsonResponse({ token, user });
         }
@@ -194,6 +210,31 @@ export default {
         const auth = await authenticate(request, env);
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
+        }
+
+        if (url.pathname === '/api/auth/sessions' && request.method === 'GET') {
+          const { results } = await env.DB.prepare('SELECT id,label,created_at AS createdAt,expires_at AS expiresAt FROM user_sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC')
+            .bind(auth.userId, Date.now()).all();
+          return jsonResponse(results.map(row => ({ ...row, current: row.id === auth.sid })));
+        }
+        if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+          await revokeSessions(env, auth.userId, [auth.sid]);
+          return jsonResponse({ ok: true });
+        }
+        if (url.pathname === '/api/auth/sessions/revoke' && request.method === 'POST') {
+          const body = await inputJson(request);
+          let ids: string[];
+          if (body.others === true) {
+            await env.DB.prepare('INSERT INTO session_policy (user_id,legacy_disabled) VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET legacy_disabled = 1').bind(auth.userId).run();
+            const { results } = await env.DB.prepare('SELECT id FROM user_sessions WHERE user_id = ? AND id != ? AND revoked_at IS NULL AND expires_at > ?').bind(auth.userId, auth.sid, Date.now()).all<{ id: string }>();
+            ids = results.map(row => row.id);
+          } else if (typeof body.id === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(body.id)) {
+            const exists = await env.DB.prepare('SELECT id FROM user_sessions WHERE user_id = ? AND id = ?').bind(auth.userId, body.id).first();
+            if (!exists) return errorResponse('نشست پیدا نشد.', 404);
+            ids = [body.id];
+          } else return errorResponse('نشست مورد نظر را انتخاب کنید.');
+          await revokeSessions(env, auth.userId, ids);
+          return jsonResponse({ ok: true });
         }
 
         // --- AUTH: GET CURRENT USER ---
@@ -258,11 +299,18 @@ export default {
                 JOIN users snd ON m.sender_id = snd.id
                 WHERE m.chat_id = c.id 
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1
-              ) as lastMessageSender
+              ) as lastMessageSender,
+              (SELECT count(*) FROM messages m WHERE m.chat_id = c.id AND m.sender_id != cm.user_id
+                AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))) AS unreadCount,
+              (SELECT m.id FROM messages m WHERE m.chat_id = c.id AND m.sender_id != cm.user_id
+                AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))
+                ORDER BY m.created_at,m.id LIMIT 1) AS firstUnreadId,
+              COALESCE(r.read_at,0) AS readAt, COALESCE(r.read_id,'') AS readId
             FROM chats c
             JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = ?
             LEFT JOIN chat_members pm ON c.id = pm.chat_id AND pm.user_id != ? AND c.type = 'dm'
             LEFT JOIN users u ON pm.user_id = u.id
+            LEFT JOIN chat_receipts r ON r.chat_id = c.id AND r.user_id = cm.user_id
             ORDER BY c.updated_at DESC
           `).bind(auth.userId, auth.userId).all<any>();
 
@@ -277,6 +325,10 @@ export default {
               partnerUsername: row.partnerUsername,
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
+              unreadCount: row.unreadCount,
+              firstUnreadId: row.firstUnreadId,
+              readAt: row.readAt,
+              readId: row.readId,
               lastMessage: row.lastMessageText ? {
                 id: row.lastMessageId,
                 text: row.lastMessageText,
@@ -291,7 +343,7 @@ export default {
 
         // --- CHATS: CREATE OR GET DM/GROUP ---
         if (url.pathname === "/api/chats" && request.method === "POST") {
-          const body = await request.json<any>();
+          const body = await inputJson(request);
           const type = body.type === "group" ? "group" : "dm";
           const now = Date.now();
 
@@ -353,7 +405,7 @@ export default {
           if (!member) return errorResponse('شما عضو این گفتگو نیستید.', 403);
           if (request.method === 'POST') {
             if (member.type !== 'group') return errorResponse('افزودن عضو فقط برای گروه امکان‌پذیر است.');
-            const body = await request.json<any>();
+            const body = await inputJson(request);
             const users = await validatedMembers(body.userIds, env, auth.userId);
             if (!users) return errorResponse('اعضای انتخاب‌شده نامعتبر هستند.');
             // Existing members are harmless duplicates; only current members may invite.
@@ -364,6 +416,18 @@ export default {
           const { results } = await env.DB.prepare(`SELECT u.id, u.username, u.display_name as displayName
             FROM users u JOIN chat_members cm ON cm.user_id = u.id WHERE cm.chat_id = ? ORDER BY cm.joined_at, u.id`).bind(chatId).all();
           return jsonResponse(results);
+        }
+
+        const receiptsMatch = url.pathname.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/receipts$/);
+        if (receiptsMatch && (request.method === 'GET' || request.method === 'POST')) {
+          const chatId = receiptsMatch[1];
+          const member = await env.DB.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').bind(chatId, auth.userId).first();
+          if (!member) return errorResponse('شما عضو این گفتگو نیستید.', 403);
+          if (request.method === 'GET') return jsonResponse(await listReceipts(env, chatId));
+          const body = await inputJson(request);
+          if (!body || typeof body.messageId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(body.messageId) || typeof body.read !== 'boolean') return errorResponse('رسید پیام معتبر نیست.');
+          const receipt = await saveReceipt(env, chatId, auth.userId, body.messageId, body.read);
+          return receipt ? jsonResponse(receipt) : errorResponse('پیام پیدا نشد.', 404);
         }
 
         // --- CHATS: GET MESSAGES HISTORY ---
@@ -407,9 +471,11 @@ export default {
               m.sender_id as senderId, 
               u.display_name as senderName, 
               m.text, 
-              m.created_at as createdAt 
+              m.created_at as createdAt,
+              md.client_msg_id AS clientMsgId
             FROM messages m
             JOIN users u ON m.sender_id = u.id
+            LEFT JOIN message_metadata md ON md.message_id = m.id
             WHERE m.chat_id = ? AND (? IS NULL OR m.created_at < ? OR (m.created_at = ? AND m.id < ?))
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT ?
@@ -423,8 +489,9 @@ export default {
 
         return errorResponse("مسیر درخواستی یافت نشد.", 404);
       } catch (err: any) {
+        if (err instanceof InputError) return errorResponse(err.message, err.status);
         console.error("API Error:", err);
-        return errorResponse(err?.message || "خطای داخلی سرور", 500);
+        return errorResponse('خطای موقت سرور؛ دوباره تلاش کنید و در صورت ادامه، نسخه و سلامت نصب را بررسی کنید.', 500);
       }
     }
 

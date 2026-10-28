@@ -58,6 +58,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: wihm-installer
@@ -66,4 +67,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" package/* --repo "$GITHUB_REPOSITORY" --title 'WIHM Installer 1.0.0' --notes 'نصب‌کنندهٔ فارسی برای Windows، macOS، Linux و Android/Termux؛ ساخت دیتابیس، تنظیم کلید امنیتی و انتشار خودکار. راهنمای کوتاه: https://github.com/DarkPoesidon/WIHM-Cloudflare/blob/main/docs/EASY-INSTALL.fa.md'
+          version="${GITHUB_REF_NAME#installer-v}"
+          gh release create "$GITHUB_REF_NAME" package/* --repo "$GITHUB_REPOSITORY" --title "WIHM Cloudflare $version" --notes-file "docs/releases/$version.fa.md"

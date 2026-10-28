@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cloudflare-messenger-v2';
+const CACHE_NAME = 'cloudflare-messenger-1.1.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -22,7 +22,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key !== CACHE_NAME && key.startsWith('cloudflare-messenger-')) {
             return caches.delete(key);
           }
         })
@@ -40,22 +40,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-While-Revalidate for app shell assets
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return networkResponse;
-        })
-        .catch(() => cachedResponse);
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-      return cachedResponse || fetchPromise;
-    })
+  // Fetch the current shell when online; keep a complete offline copy for reconnects.
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(event.request);
+        if (response.ok && ASSETS_TO_CACHE.includes(url.pathname)) await cache.put(event.request, response.clone());
+        if (response.ok) return response;
+        return await cache.match(event.request) || response;
+      } catch {
+        return await cache.match(event.request) || new Response('اتصال اینترنت برقرار نیست.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+    })()
   );
 });

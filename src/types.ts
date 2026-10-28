@@ -50,6 +50,7 @@ export interface JwtPayload {
   username: string;
   displayName: string;
   exp: number;
+  sid?: string;
 }
 
 // WebSocket Message Types
@@ -61,8 +62,10 @@ export type ClientWsAction =
 
 export type ServerWsEvent =
   | { event: 'auth_ok'; user: User }
+  | { event: 'session_revoked' }
   | { event: 'new_message'; message: Message }
   | { event: 'typing'; chatId: string; userId: string; username: string; isTyping: boolean }
   | { event: 'presence'; userId: string; status: 'online' | 'offline' }
   | { event: 'pong'; timestamp: number }
-  | { event: 'error'; message: string };
+  | { event: 'receipt'; chatId: string; userId: string; deliveredAt: number; deliveredId: string; readAt: number; readId: string }
+  | { event: 'error'; message: string; clientMsgId?: string; retryable?: boolean };

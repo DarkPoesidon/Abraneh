@@ -3,11 +3,11 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Cloudflare } from './cloudflare.mjs';
-import { deploy, inspect, validAccount, validName } from './deploy.mjs';
+import { deploy, inspect, validAccount, validName, isNewer } from './deploy.mjs';
 
 const FILES = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'application/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
 
-export async function startServer({ uiDir, payloadDir, journal, makeApi = token => new Cloudflare(token), runDeploy = deploy, port = 0 }) {
+export async function startServer({ uiDir, payloadDir, journal, makeApi = token => new Cloudflare(token), runDeploy = deploy, port = 0, version = 'development' }) {
   const session = randomBytes(32).toString('hex');
   let api = null, accounts = [], busy = false;
   let status = { state: 'idle', phase: null, url: null, error: null, result: null };
@@ -30,7 +30,7 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
       }
       const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? '';
       if (supplied.length !== session.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(session))) return send(401, { error: 'نشست معتبر نیست. نشانی کامل نمایش‌داده‌شده در نصب‌کننده را باز کنید.' });
-      if (path === '/api/status' && req.method === 'GET') return send(200, { ...status, connected: !!api, accounts });
+      if (path === '/api/status' && req.method === 'GET') return send(200, { ...status, connected: !!api, accounts, version });
       if (req.method !== 'POST' || req.headers.origin !== origin || req.headers['content-type'] !== 'application/json') return send(403, { error: 'درخواست معتبر نیست.' });
       if (busy) return send(409, { error: 'نصب در حال انجام است. تا پایان این مرحله صبر کنید.' });
       let body = '', size = 0;
@@ -67,9 +67,10 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
         busy = true;
         try {
           const plan = await inspect(api, input.accountId, input.name);
+          if (plan.installedVersion && isNewer(plan.installedVersion, version)) throw new Error('این نصب‌کننده قدیمی‌تر از نسخهٔ نصب‌شده است. آخرین بسته را دریافت کنید.');
           // Check D1 read permission before asking the user to start installation.
           await api.request(`/accounts/${input.accountId}/d1/database?per_page=10`);
-          return send(200, { mode: plan.mode, name: input.name });
+          return send(200, { mode: plan.mode, name: input.name, installedVersion: plan.installedVersion, targetVersion: version });
         } finally { busy = false; }
       }
       if (path === '/api/start') {

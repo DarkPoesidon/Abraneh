@@ -67,7 +67,7 @@ $('configure-form').onsubmit = async event => {
     if (candidate.accountId !== $('account').value || candidate.name !== $('name').value.trim()) return;
     config = candidate; sessionStorage.setItem('wihm-config', JSON.stringify(config));
     $('review-name').textContent = config.name;
-    $('review-title').textContent = plan.mode === 'update' ? 'آمادهٔ به‌روزرسانی' : 'آمادهٔ نصب';
+    $('review-title').textContent = plan.mode === 'update' ? `به‌روزرسانی از ${plan.installedVersion} به ${plan.targetVersion}` : `نصب نسخهٔ ${plan.targetVersion}`;
     $('review-description').textContent = plan.mode === 'update' ? 'نصب قبلی پیدا شد. نسخهٔ برنامه به‌روزرسانی می‌شود و پیام‌ها و حساب‌های قبلی باقی می‌مانند.' : 'با زدن دکمهٔ زیر، پیام‌رسان و دیتابیس آن روی حساب شما ساخته می‌شود.';
     $('review-data').textContent = plan.mode === 'update' ? 'حفظ دیتابیس و کلید قبلی' : 'ساخت خودکار';
     $('install-button').textContent = plan.mode === 'update' ? 'به‌روزرسانی پیام‌رسان' : 'نصب پیام‌رسان';
@@ -101,8 +101,8 @@ function renderStatus(status) {
     currentResult = status.result;
     $('progress-title').textContent = status.result.verified ? 'نصب تمام شد.' : 'منتشر شد؛ بررسی اتصال باقی ماند.';
     $('progress-intro').textContent = status.result.verified ? 'سرور و دیتابیس پاسخ می‌دهند. حالا می‌توانی وارد پیام‌رسان شوی.' : 'کلادفلر انتشار را تأیید کرده، اما این دستگاه هنوز پاسخ سالم نگرفته است.';
-    $('result-title').textContent = status.result.verified ? 'پیام‌رسان آماده است.' : 'لینک پیام‌رسان را بررسی کن.';
-    $('result-description').textContent = status.result.verified ? 'لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.' : 'ممکن است فعال‌شدن آدرس کمی زمان ببرد یا شبکهٔ فعلی به workers.dev دسترسی نداشته باشد. لینک را با شبکهٔ دیگر هم بررسی کن. نصب دوباره با همین نام اطلاعات را حفظ می‌کند.';
+    $('result-title').textContent = status.result.verified ? `نسخهٔ ${status.result.version || ''} آماده است.` : 'لینک پیام‌رسان را بررسی کن.';
+    $('result-description').textContent = status.result.verified ? status.result.mode === 'update' ? 'سرور به‌روز شد و اطلاعات قبلی حفظ شدند. پیام‌رسان را روی دستگاه‌ها کامل ببند و دوباره باز کن تا رابط تازه هم دریافت شود؛ در صورت نیاز صفحه را یک بار نوسازی کن.' : 'لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.' : 'ممکن است فعال‌شدن آدرس کمی زمان ببرد یا شبکهٔ فعلی به workers.dev دسترسی نداشته باشد. لینک را با شبکهٔ دیگر هم بررسی کن. نصب دوباره با همین نام اطلاعات را حفظ می‌کند.';
     // URLs come only from our fixed workers.dev deployment path; never render API HTML.
     if (!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(status.result.url)) return showFailure('آدرس خروجی معتبر نیست.');
     for (const id of ['app-url', 'open-app']) $(id).href = status.result.url;
