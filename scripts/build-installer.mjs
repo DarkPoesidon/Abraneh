@@ -20,7 +20,8 @@ for (const name of ['start.mjs', 'server.mjs', 'cloudflare.mjs', 'deploy.mjs', '
 }
 await cp('installer/ui', join(output, 'ui'), { recursive: true });
 await copyFile('public/icon.svg', join(output, 'ui/icon.svg'));
-await copyFile('docs/EASY-INSTALL.fa.md', join(output, 'راهنما.md'));
+const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replaceAll('(UPDATE.fa.md)','(docs/UPDATE.fa.md)').replaceAll('(DAILY-USE.fa.md)','(docs/DAILY-USE.fa.md)');
+await writeFile(join(output,'راهنما.md'),bundledGuide);
 await mkdir(join(output, 'docs/releases'), { recursive: true });
 for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
 await copyFile(join('docs/releases', version + '.fa.md'), join(output, 'docs/releases', version + '.fa.md'));
