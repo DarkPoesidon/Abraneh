@@ -40,6 +40,7 @@ function decrypt(calls){
 }
 test('Web Push uses decryptable RFC 8291 encryption and a verifiable VAPID signature, with preview hidden by default',async()=>{
   const calls=await trigger();assert.equal(calls.length,1);assert.equal(calls[0].endpoint,endpoint);assert.equal(calls[0].headers['content-encoding'],'aes128gcm');
+  assert.ok(calls[0].body.length<1024,'Short notifications must not be padded to the push service limit');
   let payload=decrypt(calls);assert.equal(payload.chatId,'room');assert.ok(!payload.body.includes('متن خصوصی'));assert.ok(!payload.title.includes('فرستنده'));
   const jwt=calls[0].headers.authorization.match(/t=([^, ]+)/)[1],parts=jwt.split('.'),claims=JSON.parse(Buffer.from(parts[1],'base64url'));
   assert.equal(claims.aud,'https://fcm.googleapis.com');

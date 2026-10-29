@@ -32,9 +32,10 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
   }
   const storage = new Map([['cf_msg_token', 'session-token'], ['cf_msg_user', JSON.stringify({ id: 'self', username: 'self', displayName: 'Self' })], ...storageEntries]);
   const navigator = { onLine: online };
-  const document = { visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
+  const document = { documentElement:{style:{setProperty(){},removeProperty(){}}}, visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
   const sandbox = {
     console, URLSearchParams, WebSocket, navigator, document,
+    requestAnimationFrame:fn=>{fn();return 1;},cancelAnimationFrame(){},
     window: { innerWidth: 1200, addEventListener: (type, fn) => { windowEvents[type] = fn; } },
     location: { protocol: 'http:', host: 'localhost', reload() {} },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => { if (failStorage) throw new Error('QuotaExceededError'); storage.set(key, value); }, removeItem: key => storage.delete(key) },

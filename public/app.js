@@ -66,6 +66,21 @@
   const btnLoadOlder = document.getElementById('btn-load-older');
   const chatError = document.getElementById('chat-error');
   const btnAddMembers = document.getElementById('btn-add-members');
+  let viewportFrame=0;
+  function fitMobileViewport(){
+    cancelAnimationFrame(viewportFrame);viewportFrame=requestAnimationFrame(()=>{
+      const root=document.documentElement,viewport=window.visualViewport;
+      if(window.innerWidth>768||viewport&&viewport.scale!==1){root.style.removeProperty('--app-height');root.style.removeProperty('--app-top');return;}
+      const atEnd=nearBottom();
+      root.style.setProperty('--app-height',(viewport?.height||window.innerHeight)+'px');
+      root.style.setProperty('--app-top',(viewport?.offsetTop||0)+'px');
+      if(atEnd)requestAnimationFrame(scrollToBottom);
+    });
+  }
+  window.visualViewport?.addEventListener('resize',fitMobileViewport);
+  window.visualViewport?.addEventListener('scroll',fitMobileViewport);
+  window.addEventListener('resize',fitMobileViewport);
+  fitMobileViewport();
   const btnFirstUnread = document.getElementById('btn-first-unread');
   const sessionsModal = document.getElementById('sessions-modal');
   const sessionsList = document.getElementById('sessions-list');

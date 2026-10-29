@@ -1,4 +1,4 @@
-import { buildPushPayload } from '@block65/webcrypto-web-push';
+import { encryptNotification, vapidHeaders } from '@block65/webcrypto-web-push';
 import { Env, Message } from './types.js';
 import { SESSION_VERSION_SQL, tokenHash } from './access.js';
 import { InputError } from './http.js';
@@ -19,7 +19,12 @@ export function validatePush(input: any) {
 }
 async function deliver(env:Env,row:any,data:any,ttl:number,topic:string,fetcher:typeof fetch) {
   if(!validPushEndpoint(row.endpoint))throw new InputError('اشتراک اعلان معتبر نیست؛ دوباره اعلان این دستگاه را فعال کنید.',409);
-  const payload=await buildPushPayload({data,options:{ttl,topic}},{endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}},{subject:'https://github.com/DarkPoesidon/WIHM-Cloudflare',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
+  const subscription={endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}};
+  const {headers}=await vapidHeaders(subscription,{subject:'https://github.com/DarkPoesidon/WIHM-Cloudflare',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
+  // Padding every short notification to 4096 bytes causes HTTP 413 on affected push services.
+  const body=await encryptNotification(subscription,new TextEncoder().encode(JSON.stringify(data)),{pad:false});
+  if(body.byteLength>4096)throw new InputError('حجم اعلان بیش از حد مجاز است.',413);
+  const payload={method:'POST',headers:{...headers,ttl:String(ttl),topic,'content-encoding':'aes128gcm','content-type':'application/octet-stream'},body};
   let response:Response;
   try{response=await fetcher(row.endpoint,{...payload,redirect:'manual',signal:AbortSignal.timeout(10_000)});}catch{throw new InputError('ارتباط سرور با سرویس اعلان مرورگر برقرار نشد؛ دوباره تلاش کنید.',502);}
   await response.body?.cancel();

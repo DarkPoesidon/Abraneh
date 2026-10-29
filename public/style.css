@@ -899,7 +899,9 @@ button:disabled { opacity:.6; cursor:wait; }
   .message-more {width:36px;min-height:36px;height:36px;}
   .chat-input-area {padding:8px 12px max(12px,env(safe-area-inset-bottom));gap:8px;}
   .modal-overlay {padding:12px;}
-  .modal-card {max-height:calc(100dvh - 24px);}
+  body {position:fixed;inset-inline:0;top:var(--app-top,0px);height:var(--app-height,100dvh);}
+  .modal-overlay,.auth-overlay {top:var(--app-top,0px);bottom:auto;height:var(--app-height,100dvh);}
+  .modal-card {max-height:calc(var(--app-height,100dvh) - 24px);}
   .feature-card .modal-body {padding:16px;}
   .form-input,.search-input,.message-input {font-size:16px;}
 }
