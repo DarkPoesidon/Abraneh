@@ -1,11 +1,12 @@
 /* Hallmark · macrostructure: Narrative Workflow · nav: N3 Side-rail · footer: Ft2 Inline rule
  * theme: existing WIHM · genre: modern-minimal · motion: cut
  * Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4 */
+@font-face {font-family:"Vazir";src:url('/fonts/Vazir-Variable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap;}
 :root {
   --bg: #0f172a; --surface: #1e293b; --raised: #263449; --rule: #64748b;
   --ink: #f8fafc; --muted: #b4c1d3; --accent: #0369a1; --hover: #075985;
   --focus: #7dd3fc; --danger: #fda4af; --success: #86efac; --clear: transparent;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Vazirmatn", "IRANSans", system-ui, sans-serif;
+  --font-body: "Vazir", system-ui, sans-serif;
   --font-code: ui-monospace, monospace;
   --space-xs: .5rem; --space-sm: .75rem; --space-md: 1rem; --space-lg: 1.5rem; --space-xl: 2.5rem; --space-2xl: 4rem;
 }

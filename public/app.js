@@ -25,6 +25,8 @@
   let locatingUnread = null;
   let openingChatId = null;
   let profile = {}, archivedView = false, composerContext = null;
+  let sidebarCompact=false,lastMobileLayout=window.innerWidth<=768;
+  try {sidebarCompact=localStorage.getItem('cf_msg_sidebar_compact')==='1';}catch{/* Preferences are optional when device storage is unavailable. */}
   const hiddenMessages = new Map(), deniedChats = new Set(), chatDetails = new Map();
   let invitation = new URLSearchParams(location.hash?.slice(1) || '');
 
@@ -87,7 +89,6 @@
 
   const installBanner = document.getElementById('install-banner');
   const btnInstallPwa = document.getElementById('btn-install-pwa');
-  const btnDismissInstall = document.getElementById('btn-dismiss-install');
 
   let isRegisterMode = false;
 
@@ -131,7 +132,7 @@
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
-    installBanner.style.display = 'flex';
+    installBanner.hidden=false;
   });
 
   btnInstallPwa.addEventListener('click', async () => {
@@ -139,14 +140,11 @@
     deferredInstallPrompt.prompt();
     const { outcome } = await deferredInstallPrompt.userChoice;
     if (outcome === 'accepted') {
-      installBanner.style.display = 'none';
+      installBanner.hidden=true;
     }
     deferredInstallPrompt = null;
   });
 
-  btnDismissInstall.addEventListener('click', () => {
-    installBanner.style.display = 'none';
-  });
 
   // --- Auth Tabs & Submission ---
   tabLogin.addEventListener('click', () => {
@@ -218,6 +216,7 @@
     hiddenMessages.clear();chatDetails.clear();deniedChats.clear();profile={};cancelComposer();
     for (const key of Object.keys(receiptsByChat)) delete receiptsByChat[key];
     sessionsModal.style.display = 'none';
+    closeMainMenu();
     document.getElementById('feature-modal').style.display='none';
     clearInterval(chatPollInterval);
     chatPollInterval = null;
@@ -309,19 +308,22 @@
   function renderChats(list) {
     chatsList.innerHTML = '';
     if (!list.length) {
-      chatsList.innerHTML = `<div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">گفتگویی وجود ندارد.<br>با کلیک روی دکمه + گفتگوی جدیدی آغاز کنید.</div>`;
+      chatsList.innerHTML = `<div class="chat-list-empty" role="status" aria-label="گفتگویی وجود ندارد">${uiIcon('compose')}<span>گفتگویی وجود ندارد.<br>با دکمهٔ گفتگوی جدید شروع کنید.</span></div>`;
       return;
     }
 
     list.forEach((chat) => {
-      const item = document.createElement('div');
+      const item = document.createElement('button');item.type='button';
+      item.dataset.chatId=chat.id;item.title=chat.title||'گفتگو';
+      item.setAttribute('aria-label',(chat.title||'گفتگو')+(chat.unreadCount?'، '+Number(chat.unreadCount).toLocaleString('fa-IR')+' پیام نخوانده':''));
+      item.setAttribute('aria-current',activeChat?.id===chat.id?'true':'false');
       item.className = `chat-item ${activeChat?.id === chat.id ? 'active' : ''}`;
-      const initials = (chat.title || '؟')[0].toUpperCase();
+
       const timeStr = chat.lastMessage ? formatTime(chat.lastMessage.createdAt) : '';
       const lastText = (chat.pinned?'⌖ ':'')+(chat.muted?'بی‌صدا · ':'')+(chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است');
 
       item.innerHTML = `
-        <div class="avatar">${avatarHtml(chat.avatar,chat.title)}</div>
+        <span class="chat-avatar-wrap"><span class="avatar" style="--avatar-hue:${avatarHue(chat.id)}">${avatarHtml(chat.avatar,chat.title)}</span>${chat.unreadCount?`<span class="rail-unread" aria-hidden="true">${Number(chat.unreadCount)>99?'۹۹+':Number(chat.unreadCount).toLocaleString('fa-IR')}</span>`:''}</span>
         <div class="chat-meta">
           <div class="chat-top-row">
             <span class="chat-title">${escapeHtml(chat.title)}</span>
@@ -331,7 +333,7 @@
         </div>
       `;
 
-      item.addEventListener('click', () => openChat(chat));
+      item.addEventListener('click', () => {if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');reportReceipt(chat.id);return;}return openChat(chat);});
       chatsList.appendChild(item);
     });
   }
@@ -501,7 +503,7 @@
       ${msg.replyTo && !msg.deletedAt ? `<button class="reply-quote" type="button" data-reply="${escapeHtml(msg.replyTo.id)}"><strong>${escapeHtml(msg.replyTo.senderName)}</strong><span>${escapeHtml(msg.replyTo.deleted ? 'پیام حذف شده' : msg.replyTo.text.slice(0,180))}</span></button>` : ''}
       <div class="message-text${msg.deletedAt ? ' deleted-message' : ''}">${msg.deletedAt ? 'این پیام حذف شده است' : escapeHtml(msg.text)}</div>
       ${!msg.deletedAt && msg.reactions?.length ? `<div class="reactions">${msg.reactions.map(r=>`<button type="button" class="reaction-chip ${r.users.includes(currentUser.id)?'selected':''}" data-emoji="${escapeHtml(r.emoji)}" aria-label="واکنش ${escapeHtml(r.emoji)}">${escapeHtml(r.emoji)} ${r.users.length.toLocaleString('fa-IR')}</button>`).join('')}</div>` : ''}
-      <div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div>
+      <div class="message-footer"><div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div></div>
     `;
     if (!msg.pending) addMessageControls(bubble,msg);
     if (msg.pending) {
@@ -870,8 +872,8 @@
       }
     } catch (error) { sessionsError.textContent = error.message; sessionsList.textContent = ''; }
   }
-  document.getElementById('btn-sessions').addEventListener('click', () => { sessionsModal.style.display = 'flex'; document.getElementById('btn-close-sessions').focus(); loadSessions(); });
-  document.getElementById('btn-close-sessions').addEventListener('click', () => { sessionsModal.style.display = 'none'; document.getElementById('btn-sessions').focus(); });
+  document.getElementById('btn-sessions').addEventListener('click', () => {closeFeature();sessionsModal.style.display='flex';document.getElementById('btn-close-sessions').focus();loadSessions();});
+  document.getElementById('btn-close-sessions').addEventListener('click',()=>{sessionsModal.style.display='none';document.getElementById('btn-settings').focus();settings().then(()=>document.getElementById('btn-sessions').focus()).catch(featureError);});
   document.getElementById('btn-revoke-others').addEventListener('click', async () => {
     if (!confirm('همهٔ دستگاه‌های دیگر از حساب خارج شوند؟')) return;
     const button = document.getElementById('btn-revoke-others'); button.disabled = true;
@@ -1034,15 +1036,42 @@
   // Daily-use tools share the authenticated session, outbox and message store.
   const byId = id => document.getElementById(id);
   const featureModal = byId('feature-modal'), featureContent = byId('feature-content');
+  const mainMenu=byId('main-menu'),mainMenuButton=byId('btn-main-menu');
   let featureGeneration = 0, lastFeatureFocus = null, avatarDraft = '';
   const roleName = role => ({owner:'مالک',admin:'مدیر',member:'عضو'})[role] || 'عضو';
   const isManager = chat => ['owner','admin'].includes(chat?.role);
   const post = (path,body={}) => api(path,{method:'POST',body:JSON.stringify(body)});
   const patch = (path,body) => api(path,{method:'PATCH',body:JSON.stringify(body)});
+  function uiIcon(name) {return `<svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;}
+  function avatarHue(id) {let hash=0;for(const ch of id||'')hash=(hash*31+ch.charCodeAt(0))>>>0;hash^=hash>>>16;hash=Math.imul(hash,0x45d9f3b)>>>0;hash^=hash>>>16;return (hash>>>0)%360;}
+  function closeMainMenu(restoreFocus=false) {mainMenu.hidden=true;mainMenuButton.setAttribute('aria-expanded','false');if(restoreFocus)mainMenuButton.focus();}
+  function applySidebarLayout() {
+    const mobile=window.innerWidth<=768,compact=!mobile&&sidebarCompact;
+    if(compact)sidebar.classList.add('collapsed');else sidebar.classList.remove('collapsed');
+    if(mobile&&!lastMobileLayout&&activeChat)sidebar.classList.add('hidden');
+    lastMobileLayout=mobile;
+    const label=compact?'بازکردن فهرست گفتگوها':'جمع‌کردن فهرست گفتگوها',button=byId('btn-toggle-sidebar');
+    button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-expanded',String(!compact));
+    if(mobile&&document.activeElement===button)mainMenuButton.focus();
+    closeMainMenu();
+  }
+  byId('btn-toggle-sidebar').addEventListener('click',()=>{sidebarCompact=!sidebarCompact;try{localStorage.setItem('cf_msg_sidebar_compact',sidebarCompact?'1':'0');}catch{/* The panel still works when storage is disabled. */}applySidebarLayout();});
+  window.addEventListener('resize',applySidebarLayout);
+  mainMenuButton.addEventListener('click',()=>{const open=mainMenu.hidden;mainMenu.hidden=!open;mainMenuButton.setAttribute('aria-expanded',String(open));if(open)mainMenu.querySelector('button')?.focus();});
+  mainMenu.addEventListener('click',event=>{if(event.target.closest('button'))closeMainMenu();});
+  document.addEventListener('pointerdown',event=>{if(!mainMenu.hidden&&!mainMenu.contains(event.target)&&!mainMenuButton.contains(event.target))closeMainMenu();});
+  byId('btn-menu-settings').addEventListener('click',()=>settings().catch(featureError));
+  byId('btn-menu-group').addEventListener('click',()=>openSearch('group'));
+  byId('btn-menu-archive').addEventListener('click',()=>setArchivedView(true));
+  function setArchivedView(archived) {
+    archivedView=archived;byId('archive-label').textContent=archived?'همهٔ گفتگوها':'آرشیو';
+    const button=byId('btn-archive');button.setAttribute('aria-pressed',String(archived));button.title=archived?'بازگشت به همهٔ گفتگوها':'گفتگوهای آرشیوشده';button.setAttribute('aria-label',button.title);renderFilteredChats();
+  }
+  applySidebarLayout();
   function closeFeature() { featureGeneration++; featureModal.style.display='none'; lastFeatureFocus?.focus?.(); }
   function showFeature(title,html) {
-    lastFeatureFocus=document.activeElement;
-    byId('feature-title').textContent=title; featureContent.innerHTML=html;
+    if(featureModal.style.display!=='flex')lastFeatureFocus=mainMenu.contains(document.activeElement)?mainMenuButton:document.activeElement;
+    byId('feature-title').textContent=title; featureContent.innerHTML=html;featureContent.dataset.settingsPage='';byId('settings-navigation').hidden=true;byId('btn-settings-back').hidden=true;
     byId('feature-status').textContent=''; featureModal.style.display='flex'; featureGeneration++;
     byId('btn-close-feature').focus?.(); return featureGeneration;
   }
@@ -1052,15 +1081,37 @@
   byId('btn-close-feature').addEventListener('click',closeFeature);
   featureModal.addEventListener('click',e=> { if(e.target===featureModal) closeFeature(); });
   document.addEventListener('keydown',e=> {
+    if(!mainMenu.hidden) {
+      const items=[...mainMenu.querySelectorAll('button')].filter(el=>!el.hidden&&el.offsetParent!==null),index=items.indexOf(document.activeElement);
+      if(e.key==='Escape'){e.preventDefault();closeMainMenu(true);return;}
+      if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?items.length-1:(index+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next]?.focus();return;}
+      if(e.key==='Tab')closeMainMenu(true);
+    }
+    const dialog=sessionsModal.style.display==='flex'?sessionsModal:searchModal.style.display==='flex'?searchModal:featureModal.style.display==='flex'?featureModal:null;
+    if(dialog&&dialog!==featureModal) {
+      if(e.key==='Escape'){e.preventDefault();byId(dialog===sessionsModal?'btn-close-sessions':'btn-close-modal').click();return;}
+      if(e.key==='Tab')trapDialogFocus(dialog,e);return;
+    }
     if(featureModal.style.display!=='flex') return;
     if(e.key==='Escape') { closeFeature(); return; }
-    if(e.key==='Tab') {
-      const nodes=[...featureModal.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea,select,a[href]')].filter(el=>!el.hidden&&el.offsetParent!==null);
+    if(e.key==='Tab')trapDialogFocus(featureModal,e);
+  });
+  function trapDialogFocus(dialog,e) {
+      const nodes=[...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea,select,a[href]')].filter(el=>!el.hidden&&el.offsetParent!==null);
       if(!nodes.length) return; const first=nodes[0],last=nodes[nodes.length-1];
       if(e.shiftKey&&document.activeElement===first) { e.preventDefault();last.focus(); }
       else if(!e.shiftKey&&document.activeElement===last) { e.preventDefault();first.focus(); }
-    }
-  });
+  }
+  async function settings() {
+    if(!currentUser||!token)return;
+    showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>');const generation=featureGeneration;
+    await loadProfile();if(generation!==featureGeneration||!currentUser)return;
+    showFeature('تنظیمات',`<div class="settings-account"><div class="avatar">${avatarHtml(profile.avatar,currentUser.displayName)}</div><div><h4>${escapeHtml(currentUser.displayName)}</h4><p dir="ltr">@${escapeHtml(currentUser.username)}</p>${profile.about?`<p class="settings-about">${escapeHtml(profile.about)}</p>`:''}</div></div>`);
+    byId('settings-navigation').hidden=false;
+  }
+  for(const section of ['profile','appearance','notifications','password'])byId('settings-'+section).addEventListener('click',()=>editSettings(section).catch(featureError));
+  byId('settings-blocks').addEventListener('click',()=>showBlocks().catch(featureError));
+  byId('settings-admin').addEventListener('click',()=>serviceSettings().catch(featureError));
   async function loadProfile() {
     const sessionToken=token, row=await api('/api/profile'); if(!row||sessionToken!==token) return;
     profile=row; currentUser.displayName=row.displayName || currentUser.displayName;
@@ -1072,24 +1123,26 @@
     if(document.documentElement?.dataset) { document.documentElement.dataset.theme=light?'light':'dark'; document.documentElement.dataset.fontSize=size; }
   }
   window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>applyAppearance(profile.theme,profile.font_size));
-  byId('btn-settings').addEventListener('click',()=>settings().catch(featureError));
-  async function settings() {
+  byId('btn-settings').addEventListener('click',()=>{closeMainMenu();settings().catch(featureError);});
+  byId('btn-settings-back').addEventListener('click',()=>settings().catch(featureError));
+  async function editSettings(section='profile') {
     showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>'); const generation=featureGeneration;
     await loadProfile(); if(generation!==featureGeneration) return;
     avatarDraft=profile.avatar||'';
-    showFeature('پروفایل و تنظیمات',`
+    showFeature(({profile:'ویرایش پروفایل',appearance:'ظاهر و نوشته‌ها',notifications:'اعلان‌ها',password:'رمز عبور و امنیت'})[section],`
       <form id="profile-form" class="feature-form">
-        <div class="profile-picture"><div class="avatar" id="profile-avatar">${avatarHtml(avatarDraft,currentUser.displayName)}</div><label class="quiet-button">انتخاب عکس<input id="profile-file" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden"></label><button id="remove-avatar" class="quiet-button" type="button">حذف عکس</button></div>
+        <div class="settings-profile-fields"><div class="profile-picture"><div class="avatar" id="profile-avatar">${avatarHtml(avatarDraft,currentUser.displayName)}</div><label class="quiet-button">انتخاب عکس<input id="profile-file" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden"></label><button id="remove-avatar" class="quiet-button" type="button">حذف عکس</button></div>
         <label>نام نمایشی<input id="profile-name" class="form-input" required maxlength="100" value="${escapeHtml(currentUser.displayName)}"></label>
-        <label>دربارهٔ من<textarea id="profile-about" class="form-input" maxlength="300" rows="2">${escapeHtml(profile.about||'')}</textarea></label>
-        <div class="field-pair"><label>ظاهر<select id="profile-theme" class="form-input"><option value="dark">تیره</option><option value="light">روشن</option><option value="system">هماهنگ با دستگاه</option></select></label><label>اندازهٔ نوشته<select id="profile-font" class="form-input"><option value="small">کوچک</option><option value="normal">معمولی</option><option value="large">بزرگ</option></select></label></div>
-        <label class="check-label"><input id="profile-preview" type="checkbox" ${profile.notification_preview?'checked':''}>نمایش متن پیام در اعلان</label>
-        <p class="session-help">با خاموش بودن این گزینه، اعلان فقط دریافت پیام تازه را نشان می‌دهد.</p>
+        <label>دربارهٔ من<textarea id="profile-about" class="form-input" maxlength="300" rows="2">${escapeHtml(profile.about||'')}</textarea></label></div>
+        <div class="field-pair settings-appearance-fields"><label>ظاهر<select id="profile-theme" class="form-input"><option value="dark">تیره</option><option value="light">روشن</option><option value="system">هماهنگ با دستگاه</option></select></label><label>اندازهٔ نوشته<select id="profile-font" class="form-input"><option value="small">کوچک</option><option value="normal">معمولی</option><option value="large">بزرگ</option></select></label></div>
+        <div class="settings-notification-fields"><label class="check-label"><input id="profile-preview" type="checkbox" ${profile.notification_preview?'checked':''}>نمایش متن پیام در اعلان</label>
+        <p class="session-help">با خاموش بودن این گزینه، اعلان فقط دریافت پیام تازه را نشان می‌دهد.</p></div>
         <button class="btn-primary" type="submit">ذخیرهٔ تنظیمات</button>
       </form>
-      <section class="feature-section"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
-      <section class="feature-section"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
-      <div class="button-row feature-section"><button id="settings-blocks" class="quiet-button" type="button">افراد مسدودشده</button><button id="settings-admin" class="quiet-button" type="button">مدیریت سرویس</button></div>`);
+      <section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
+      <section class="feature-section password-controls"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
+      `);
+    featureContent.dataset.settingsPage=section;byId('btn-settings-back').hidden=false;
     byId('profile-theme').value=profile.theme||'dark'; byId('profile-font').value=profile.font_size||'normal';
     byId('notification-state').textContent=!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)?'این مرورگر اعلان پس‌زمینه را پشتیبانی نمی‌کند.':!profile.pushConfigured?'کلید اعلان سرور تنظیم نیست؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.':`اجازهٔ مرورگر: ${{granted:'فعال',denied:'مسدود؛ از تنظیمات مرورگر باز کنید',default:'هنوز درخواست نشده'}[Notification.permission]}`;
     bind('profile-file',async e=> {
@@ -1102,7 +1155,7 @@
     bind('profile-form',async()=>{await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
     bind('password-form',async()=>{if(byId('password-new').value!==byId('password-confirm').value) throw new Error('تکرار رمز تازه مطابقت ندارد.'); await post('/api/profile/password',{currentPassword:byId('password-current').value,newPassword:byId('password-new').value}); byId('password-form').reset();byId('feature-status').textContent='رمز تغییر کرد؛ سایر دستگاه‌ها خارج شدند.';},'submit');
     bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
-    bind('settings-blocks',showBlocks); bind('settings-admin',serviceSettings);
+
   }
   async function saveProfile(extra={}) {
     await patch('/api/profile',{displayName:byId('profile-name').value.trim(),about:byId('profile-about').value,avatar:avatarDraft,theme:byId('profile-theme').value,fontSize:byId('profile-font').value,notifications:!!profile.notifications,notificationPreview:byId('profile-preview').checked,...extra}); await loadProfile();
@@ -1138,7 +1191,7 @@
     renderFilteredChats();
   }
   function addMessageControls(bubble,msg) {
-    const button=document.createElement('button');button.type='button';button.className='message-more';button.textContent='⋯';button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));bubble.appendChild(button);
+    const button=document.createElement('button');button.type='button';button.className='message-more';button.innerHTML=uiIcon('more');button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));(bubble.querySelector?.('.message-footer')||bubble).appendChild(button);
     bubble.querySelector?.('.reply-quote')?.addEventListener('click',()=>jumpToMessage(msg.chatId,msg.replyTo.id).catch(error=>{chatError.textContent=error.message;}));
     bubble.querySelectorAll?.('[data-emoji]').forEach(button=>button.addEventListener('click',()=>react(msg,button.dataset.emoji).catch(error=>{chatError.textContent=error.message;})));
   }
@@ -1188,7 +1241,7 @@
   }
   byId('btn-pinned-message').addEventListener('click',()=>{if(activeChat)jumpToMessage(activeChat.id,chatDetails.get(activeChat.id)?.pinnedMessageId).catch(error=>{chatError.textContent=error.message;});});
   byId('btn-chat-details').addEventListener('click',()=>{if(activeChat)detailsView(activeChat.id).catch(featureError);});
-  byId('btn-archive').addEventListener('click',()=>{archivedView=!archivedView;byId('btn-archive').textContent=archivedView?'بازگشت به گفتگوها':'آرشیو';byId('btn-archive').setAttribute?.('aria-pressed',String(archivedView));renderFilteredChats();});
+  byId('btn-archive').addEventListener('click',()=>setArchivedView(!archivedView));
   byId('btn-saved').addEventListener('click',()=>savedView().catch(featureError));
   async function detailsView(chatId) {
     showFeature('اطلاعات گفتگو','<p>در حال دریافت…</p>');const generation=featureGeneration,details=await loadChatDetails(chatId);if(generation!==featureGeneration)return;
@@ -1196,10 +1249,10 @@
     const group=details.type==='group',manage=isManager(details),owner=details.role==='owner';
     const blocks=group?[]:await api('/api/blocks'),ownBlock=blocks.some(row=>row.id===chat.partnerId);
     showFeature(chat.title,`<div class="button-row"><button id="pref-archive" class="quiet-button">${chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'}</button><button id="pref-mute" class="quiet-button">${chat.muted?'روشن‌کردن اعلان':'بی‌صدا کردن'}</button><button id="pref-pin" class="quiet-button">${chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو'}</button></div>
-      ${group?`<p class="session-help">نقش شما: ${roleName(details.role)} · ${details.members.length.toLocaleString('fa-IR')} عضو</p>${manage?'<form id="rename-form" class="feature-form"><label>نام گروه<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام گروه</button></form><button id="group-invites" class="quiet-button">دعوت‌نامه‌های گروه</button>':''}<section class="feature-section"><h4>اعضا</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${roleName(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><button id="leave-group" class="quiet-button danger-text">خروج از گروه</button><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row"><button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button></div></div>`}`);
+      ${group?`<p class="session-help">نقش شما: ${roleName(details.role)} · ${details.members.length.toLocaleString('fa-IR')} عضو</p>${manage?'<button id="group-add-members" class="quiet-button" type="button">افزودن عضو</button><form id="rename-form" class="feature-form"><label>نام گروه<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام گروه</button></form><button id="group-invites" class="quiet-button">دعوت‌نامه‌های گروه</button>':''}<section class="feature-section"><h4>اعضا</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${roleName(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><button id="leave-group" class="quiet-button danger-text">خروج از گروه</button><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row"><button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button></div></div>`}`);
     for(const [id,key] of [['pref-archive','archived'],['pref-mute','muted'],['pref-pin','pinned']]) bind(id,async()=>{await patch(`/api/chats/${chatId}/preferences`,{[key]:!chat[key]});await loadChats(true);await detailsView(chatId);});
     if(group) {
-      if(manage) {byId('rename-title').value=chat.title;bind('rename-form',async()=>{await patch(`/api/chats/${chatId}/group`,{action:'rename',title:byId('rename-title').value});await loadChats(true);activeChatTitle.textContent=chats.find(c=>c.id===chatId)?.title||chat.title;byId('feature-status').textContent='نام گروه ذخیره شد.';},'submit');bind('group-invites',()=>invitesView(chatId));}
+      if(manage) {bind('group-add-members',()=>{closeFeature();btnAddMembers.click();});byId('rename-title').value=chat.title;bind('rename-form',async()=>{await patch(`/api/chats/${chatId}/group`,{action:'rename',title:byId('rename-title').value});await loadChats(true);activeChatTitle.textContent=chats.find(c=>c.id===chatId)?.title||chat.title;byId('feature-status').textContent='نام گروه ذخیره شد.';},'submit');bind('group-invites',()=>invitesView(chatId));}
       details.members.forEach((member,i)=>{
         bind('member-role-'+i,async()=>{await patch(`/api/chats/${chatId}/group`,{action:'role',userId:member.id,role:member.role==='admin'?'member':'admin'});await detailsView(chatId);});
         bind('member-transfer-'+i,async()=>{if(!confirm(`مالکیت به «${member.displayName}» منتقل شود؟ شما مدیر می‌مانید و دیگر نمی‌توانید مالک را حذف کنید.`))return;await patch(`/api/chats/${chatId}/group`,{action:'transfer',userId:member.id});await loadChats(true);await detailsView(chatId);});

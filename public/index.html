@@ -15,9 +15,32 @@
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   
   <link rel="stylesheet" href="/style.css">
+  <link rel="preload" href="/fonts/Vazir-Variable.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
 
+  <svg class="icon-sprite" aria-hidden="true" focusable="false"><defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="m9 3-.6 2.5-2 .9L4 5.7 2 9.3l1.8 1.8v1.8L2 14.7l2 3.6 2.4-.7 2 .9L9 21h6l.6-2.5 2-.9 2.4.7 2-3.6-1.8-1.8v-1.8L22 9.3l-2-3.6-2.4.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-compose" viewBox="0 0 24 24"><path d="M13 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-8M9 15l1-4L19 2l3 3-9 9-4 1Z"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16m-7-12 4 4-4 4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 8v12h16V8M9 12h6"/><rect x="3" y="3" width="18" height="5" rx="1"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H4v16h6m3-12 4 4-4 4m-5-4h13"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-3a6 6 0 0 1 12 0v3m3-18a4 4 0 0 1 0 8m2 3a6 6 0 0 1 3 5v2"/></symbol>
+    <symbol id="i-device" viewBox="0 0 24 24"><rect x="2" y="3" width="14" height="12" rx="2"/><path d="M9 15v5m-4 0h8"/><rect x="16" y="9" width="6" height="12" rx="1"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4l-1-1a1 1 0 0 1 1-2h4c4 0 4-5 1-8a10 10 0 0 0-7-3Z"/><path d="M7 9h.01M11 6h.01M16 8h.01M6 14h.01"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M4 17h16l-2-3V9a6 6 0 0 0-12 0v5l-2 3Zm5 4h6"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7" cy="9" r="5"/><path d="m11 13 9 9m-5-5 3-3m0 6 3-3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5-5 9-9 10-4-1-9-5-9-10V6l9-4Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M12 6.5h5M12 17.5h5"/></symbol>
+    <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 2v13m-5-5 5 5 5-5M3 16v5h18v-5"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m10 5 7 7-7 7M4 12h13"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  </defs></svg>
   <div id="app-container">
     <div id="update-banner" class="update-banner" hidden><span>نسخهٔ جدید آماده است.</span><button id="btn-apply-update" class="install-btn" type="button">دریافت نسخهٔ جدید</button></div>
 
@@ -60,47 +83,31 @@
     </div>
 
     <!-- Main Sidebar (Chat List) -->
-    <aside id="sidebar" class="sidebar">
+    <aside id="sidebar" class="sidebar" aria-label="فهرست گفتگوها">
       <header class="sidebar-header">
-        <div class="user-profile-badge">
-          <div id="user-avatar" class="avatar">؟</div>
-          <div class="user-info">
-            <span id="user-display-name" class="user-name">کاربر</span>
-            <span id="user-username-badge" class="user-handle">@username</span>
-            <span class="app-version" dir="ltr">WIHM 1.2.0</span>
-          </div>
-        </div>
-        <div class="header-actions">
-          <button id="btn-settings" class="icon-btn" title="تنظیمات" aria-label="تنظیمات" type="button">⚙</button>
-          <button id="btn-sessions" class="icon-btn" title="دستگاه‌های متصل" aria-label="دستگاه‌های متصل" type="button">دستگاه‌ها</button>
-          <button id="btn-open-search" class="icon-btn" title="گفتگوی جدید" type="button">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </button>
-          <button id="btn-logout" class="icon-btn" title="خروج" type="button">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
-        </div>
+        <button id="btn-main-menu" class="icon-btn" title="منوی اصلی" aria-label="منوی اصلی" aria-haspopup="menu" aria-expanded="false" aria-controls="main-menu" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+        <button id="btn-settings" class="user-profile-badge" title="تنظیمات حساب" aria-label="تنظیمات حساب" type="button">
+          <span id="user-avatar" class="avatar">؟</span>
+          <span class="user-info"><span id="user-display-name" class="user-name">کاربر</span><span id="user-username-badge" class="user-handle" dir="ltr">@username</span></span>
+        </button>
+        <button id="btn-toggle-sidebar" class="icon-btn" title="جمع‌کردن فهرست گفتگوها" aria-label="جمع‌کردن فهرست گفتگوها" aria-expanded="true" aria-controls="sidebar" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-panel"/></svg></button>
       </header>
-
+      <div id="main-menu" class="main-menu" role="menu" aria-label="منوی اصلی" hidden>
+        <button id="btn-menu-settings" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-settings"/></svg><span>تنظیمات</span></button>
+        <button id="btn-saved" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-bookmark"/></svg><span>پیام‌های ذخیره‌شده</span></button>
+        <button id="btn-menu-group" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-users"/></svg><span>ساخت گروه</span></button>
+        <button id="btn-menu-archive" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg><span>گفتگوهای آرشیوشده</span></button>
+        <div id="install-banner" class="menu-install" hidden><button id="btn-install-pwa" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-install"/></svg><span>نصب برنامه روی دستگاه</span></button></div>
+        <div class="menu-divider"></div>
+        <button id="btn-logout" class="menu-item danger-text" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-logout"/></svg><span>خروج از حساب</span></button>
+        <p class="app-version" dir="ltr">WIHM 1.2.1</p>
+      </div>
       <div class="search-box">
-        <div class="search-input-wrapper">
-          <input type="text" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها...">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-        </div>
+        <div class="search-input-wrapper"><input type="search" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها"><svg class="ui-icon search-icon" aria-hidden="true"><use href="#i-search"/></svg></div>
+        <button id="btn-open-search" class="icon-btn compose-button" title="گفتگوی جدید" aria-label="گفتگوی جدید" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-compose"/></svg></button>
       </div>
-
-      <nav class="chat-filters" aria-label="نمایش گفتگوها"><button id="btn-archive" class="quiet-button" type="button" aria-pressed="false">آرشیو</button><button id="btn-saved" class="quiet-button" type="button">پیام‌های ذخیره‌شده</button></nav>
-      <div id="chats-list" class="chats-list">
-        <!-- Rendered by JS -->
-      </div>
+      <nav class="chat-filters" aria-label="نمایش گفتگوها"><span class="sidebar-caption">گفتگوها</span><button id="btn-archive" class="archive-button" type="button" aria-pressed="false" aria-label="گفتگوهای آرشیوشده" title="گفتگوهای آرشیوشده"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg><span id="archive-label">آرشیو</span></button></nav>
+      <div id="chats-list" class="chats-list" aria-label="گفتگوها"></div>
     </aside>
 
     <!-- Main Chat Window -->
@@ -117,7 +124,7 @@
       <div id="active-chat-wrapper" style="display: none; height: 100%; flex-direction: column;">
         <header class="chat-header">
           <div class="chat-header-info">
-            <button id="btn-back-to-chats" class="back-btn" title="بازگشت" type="button">
+            <button id="btn-back-to-chats" class="back-btn" title="بازگشت" aria-label="بازگشت به فهرست گفتگوها" type="button">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -131,7 +138,7 @@
               </div>
             </div>
           </div>
-          <div class="header-actions"><button id="btn-message-search" class="icon-btn" type="button" aria-label="جستجو در گفتگو" title="جستجو در گفتگو">⌕</button><button id="btn-chat-details" class="icon-btn" type="button" aria-label="اطلاعات و تنظیمات گفتگو" title="اطلاعات و تنظیمات گفتگو">⋯</button><button id="btn-add-members" class="icon-btn" type="button" style="display: none;">افزودن عضو</button></div>
+          <div class="header-actions"><button id="btn-message-search" class="icon-btn" type="button" aria-label="جستجو در گفتگو" title="جستجو در گفتگو"><svg class="ui-icon" aria-hidden="true"><use href="#i-search"/></svg></button><button id="btn-chat-details" class="icon-btn" type="button" aria-label="اطلاعات و تنظیمات گفتگو" title="اطلاعات و تنظیمات گفتگو"><svg class="ui-icon" aria-hidden="true"><use href="#i-more"/></svg></button><button id="btn-add-members" class="icon-btn" type="button" style="display: none;" aria-label="افزودن عضو" title="افزودن عضو"><svg class="ui-icon" aria-hidden="true"><use href="#i-users"/></svg></button></div>
         </header>
 
         <button id="btn-pinned-message" class="pinned-message" type="button" hidden></button>
@@ -144,10 +151,10 @@
         <div id="typing-bar" class="typing-indicator-bar"></div>
         <div id="chat-error" class="chat-error" role="status" aria-live="polite"></div>
 
-        <div id="composer-context" class="composer-context" hidden><span id="composer-label"></span><button id="btn-cancel-context" class="icon-btn" type="button" aria-label="لغو پاسخ یا ویرایش">✕</button></div>
+        <div id="composer-context" class="composer-context" hidden><span id="composer-label"></span><button id="btn-cancel-context" class="icon-btn" type="button" aria-label="لغو پاسخ یا ویرایش"><svg class="ui-icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
         <footer class="chat-input-area">
           <textarea id="message-input" class="message-input" rows="1" placeholder="پیام خود را بنویسید... (Enter برای ارسال)"></textarea>
-          <button id="btn-send-message" class="send-btn" title="ارسال" type="button">
+          <button id="btn-send-message" class="send-btn" title="ارسال" aria-label="ارسال" type="button">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"/>
               <polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -160,7 +167,7 @@
 
     <div id="sessions-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-title" style="display:none;">
       <div class="modal-card">
-        <div class="modal-header"><h3 id="sessions-title">دستگاه‌های متصل</h3><button id="btn-close-sessions" class="icon-btn" type="button" aria-label="بستن">✕</button></div>
+        <div class="modal-header"><h3 id="sessions-title">دستگاه‌های متصل</h3><button id="btn-close-sessions" class="icon-btn" type="button" aria-label="بستن"><svg class="ui-icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
         <div class="modal-body">
           <p class="session-help">نشست‌های فعال حساب شما؛ نام دستگاه از اطلاعات مرورگر گرفته شده است.</p>
           <div id="sessions-list"></div>
@@ -171,11 +178,11 @@
     </div>
 
     <!-- Modal: Search Users to Start New Chat -->
-    <div id="search-modal" class="modal-overlay">
+    <div id="search-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="search-modal-title">
       <div class="modal-card">
         <div class="modal-header">
           <h3 id="search-modal-title">شروع گفتگوی جدید</h3>
-          <button id="btn-close-modal" class="icon-btn" type="button">✕</button>
+          <button id="btn-close-modal" class="icon-btn" type="button" aria-label="بستن"><svg class="ui-icon" aria-hidden="true"><use href="#i-close"/></svg></button>
         </div>
         <div class="modal-body">
           <button id="btn-group-mode" class="install-btn" type="button">ساخت گروه</button>
@@ -192,18 +199,7 @@
       </div>
     </div>
 
-    <div id="feature-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="feature-title" style="display:none"><div class="modal-card feature-card"><div class="modal-header"><h3 id="feature-title"></h3><button id="btn-close-feature" class="icon-btn" type="button" aria-label="بستن">✕</button></div><div class="modal-body"><div id="feature-content"></div><p id="feature-status" class="feature-status" role="status" aria-live="polite"></p></div></div></div>
-    <!-- PWA Install Banner -->
-    <div id="install-banner" class="install-banner">
-      <div>
-        <strong>نصب اپلیکیشن پیام‌رسان</strong>
-        <p style="font-size: 0.775rem; color: var(--text-secondary); margin-top: 2px;">برای دسترسی سریع‌تر، اپلیکیشن را روی گوشی یا رایانه نصب کنید.</p>
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <button id="btn-install-pwa" class="install-btn">نصب</button>
-        <button id="btn-dismiss-install" class="icon-btn" style="font-size: 0.8rem;">✕</button>
-      </div>
-    </div>
+    <div id="feature-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="feature-title" style="display:none"><div class="modal-card feature-card"><div class="modal-header"><button id="btn-settings-back" class="icon-btn" type="button" aria-label="بازگشت به تنظیمات" hidden><svg class="ui-icon" aria-hidden="true"><use href="#i-back"/></svg></button><h3 id="feature-title"></h3><button id="btn-close-feature" class="icon-btn" type="button" aria-label="بستن"><svg class="ui-icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><div class="modal-body"><div id="feature-content"></div><div id="settings-navigation" class="settings-list" hidden><button id="settings-profile" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-user"/></svg><span><strong>ویرایش پروفایل</strong><small>نام، عکس و دربارهٔ من</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="settings-appearance" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-palette"/></svg><span><strong>ظاهر و نوشته‌ها</strong><small>پوستهٔ برنامه و اندازهٔ پیام‌ها</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="settings-notifications" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-bell"/></svg><span><strong>اعلان‌ها</strong><small>اجازهٔ اعلان و نمایش متن پیام</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="btn-sessions" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-device"/></svg><span><strong>دستگاه‌های من</strong><small>نشست‌های فعال و خروج از دستگاه‌های دیگر</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="settings-password" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-key"/></svg><span><strong>رمز عبور و امنیت</strong><small>تغییر رمز ورود به حساب</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="settings-blocks" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-shield"/></svg><span><strong>افراد مسدودشده</strong><small>بررسی و برداشتن مسدودیت مخاطبان</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button><button id="settings-admin" class="settings-row" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-server"/></svg><span><strong>مدیریت سرویس</strong><small>ثبت‌نام، دعوت‌نامه‌ها و گزارش‌ها</small></span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-back"/></svg></button></div><p id="feature-status" class="feature-status" role="status" aria-live="polite"></p></div></div></div>
 
   </div>
 

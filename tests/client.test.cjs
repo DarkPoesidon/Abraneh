@@ -10,10 +10,10 @@ const initialChats = () => [{ id: 'a', title: 'Chat A', type: 'dm', updatedAt: 1
 
 function harness(handler, { storageEntries = [], failStorage = false, online = true } = {}) {
   function element() {
-    let html = '', text = '';
+    let html = '', text = ''; const classes=new Set(),attributes={};
     return {
-      style: {}, children: [], listeners: {}, value: '', hidden: false, disabled: false, scrollTop: 0,
-      classList: { add() {}, remove() {} },
+      style: {}, dataset:{}, setAttribute(key,value){attributes[key]=value;},getAttribute(key){return attributes[key];}, children: [], listeners: {}, value: '', hidden: false, disabled: false, scrollTop: 0,
+      classList: { add(...values){values.forEach(value=>classes.add(value));},remove(...values){values.forEach(value=>classes.delete(value));},contains(value){return classes.has(value);} },
       addEventListener(type, fn) { this.listeners[type] = fn; },
       appendChild(child) { this.children.push(child); }, focus() {},
       get scrollHeight() { return this.children.length * 40; },
@@ -45,7 +45,7 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
   };
   vm.runInNewContext(readFileSync('public/app.js', 'utf8'), sandbox);
   return {
-    elements, sockets, timers, intervals, windowEvents, documentEvents, document, calls, storage, navigator,
+    elements, sockets, timers, intervals, windowEvents, documentEvents, document, calls, storage, navigator, window:sandbox.window,
     el: id => elements.get(id),
     click: id => elements.get(id).listeners.click(),
     open: index => elements.get('chats-list').children[index].listeners.click(),
@@ -251,4 +251,17 @@ test('membership removed while offline fails that room outbox after polling, wit
   let list=initialChats();const app=harness(path=>reply(path==='/api/chats'?list:[]));await settle();await app.open(0);await settle();
   app.el('message-input').value='بعد از قطع دسترسی';await app.click('btn-send-message');list=list.filter(chat=>chat.id!=='a');await app.poll();
   assert.equal(JSON.parse(app.storage.get('cf_msg_outbox_self'))[0].failed,true);assert.equal(app.storage.get('cf_msg_token'),'session-token');
+});
+
+
+test('desktop rail preserves the draft and selected chat, persists across reload, and restores mobile list navigation',async()=>{
+  const handler=path=>reply(path==='/api/chats'?initialChats():[]),app=harness(handler);
+  await settle();await app.open(0);app.el('message-input').value='پیش‌نویس من';
+  await app.click('btn-toggle-sidebar');assert.equal(app.el('sidebar').classList.contains('collapsed'),true);
+  assert.equal(app.storage.get('cf_msg_sidebar_compact'),'1');assert.equal(app.el('message-input').value,'پیش‌نویس من');
+  await app.open(0);assert.equal(app.el('message-input').value,'پیش‌نویس من');
+  app.window.innerWidth=375;app.windowEvents.resize();assert.equal(app.el('sidebar').classList.contains('collapsed'),false);assert.equal(app.el('sidebar').classList.contains('hidden'),true);
+  await app.click('btn-back-to-chats');assert.equal(app.el('sidebar').classList.contains('hidden'),false);
+  app.window.innerWidth=1200;app.windowEvents.resize();assert.equal(app.el('sidebar').classList.contains('collapsed'),true);
+  const reopened=harness(handler,{storageEntries:[...app.storage]});await settle();assert.equal(reopened.el('sidebar').classList.contains('collapsed'),true);assert.equal(reopened.storage.get('cf_msg_token'),'session-token');
 });

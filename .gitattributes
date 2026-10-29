@@ -5,3 +5,4 @@
 *.js text eol=lf
 *.yml text eol=lf
 *.png binary
+*.woff2 binary

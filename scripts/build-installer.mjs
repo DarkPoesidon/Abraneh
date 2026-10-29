@@ -19,12 +19,14 @@ for (const name of ['start.mjs', 'server.mjs', 'cloudflare.mjs', 'deploy.mjs', '
   await copyFile(join('installer', name), join(output, name));
 }
 await cp('installer/ui', join(output, 'ui'), { recursive: true });
+await cp('public/fonts',join(output,'ui/fonts'),{recursive:true});
 await copyFile('public/icon.svg', join(output, 'ui/icon.svg'));
 const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replaceAll('(UPDATE.fa.md)','(docs/UPDATE.fa.md)').replaceAll('(DAILY-USE.fa.md)','(docs/DAILY-USE.fa.md)');
 await writeFile(join(output,'راهنما.md'),bundledGuide);
 await mkdir(join(output, 'docs/releases'), { recursive: true });
 for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
-await copyFile(join('docs/releases', version + '.fa.md'), join(output, 'docs/releases', version + '.fa.md'));
+await readFile(join('docs/releases',version+'.fa.md'),'utf8');
+await cp('docs/releases',join(output,'docs/releases'),{recursive:true});
 await copyFile('THIRD-PARTY-NOTICES.md',join(output,'THIRD-PARTY-NOTICES.md'));
 await cp('docs/design-notes',join(output,'docs/design-notes'),{recursive:true});
 await mkdir(join(output, 'assets'), { recursive: true });

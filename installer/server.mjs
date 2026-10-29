@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Cloudflare } from './cloudflare.mjs';
 import { deploy, inspect, validAccount, validName, isNewer } from './deploy.mjs';
 
-const FILES = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'application/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
+const FILES = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'application/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'], '/fonts/Vazir-Variable.woff2':['fonts/Vazir-Variable.woff2','font/woff2'] };
 
 export async function startServer({ uiDir, payloadDir, journal, makeApi = token => new Cloudflare(token), runDeploy = deploy, port = 0, version = 'development' }) {
   const session = randomBytes(32).toString('hex');
@@ -16,7 +16,7 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     const send = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
     try {
       if (req.headers.host !== new URL(origin).host || (req.headers.origin && req.headers.origin !== origin)

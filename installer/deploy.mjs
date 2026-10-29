@@ -11,7 +11,7 @@ export const isNewer = (a, b) => {
   for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] > right[i];
   return false;
 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.woff2':'font/woff2', '.txt':'text/plain; charset=utf-8', '.md':'text/markdown; charset=utf-8' };
 export const validAccount = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
 export const validName = name => typeof name === 'string' && /^[a-z][a-z0-9-]{2,39}$/.test(name) && !name.endsWith('-');
 

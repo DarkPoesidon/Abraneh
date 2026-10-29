@@ -1,11 +1,12 @@
-const CACHE_NAME = 'cloudflare-messenger-1.2.0';
+const CACHE_NAME = 'cloudflare-messenger-1.2.1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
   '/manifest.json',
-  '/icon.svg'
+  '/icon.svg',
+  '/fonts/Vazir-Variable.woff2'
 ];
 
 self.addEventListener('install', (event) => {
