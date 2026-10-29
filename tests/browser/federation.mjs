@@ -15,6 +15,7 @@ try{
   await db.prepare('INSERT INTO discovery_profiles VALUES (?,1)').bind(account.user.id).run();
   const context=await browser.newContext({viewport:{width:i?375:1280,height:900},locale:'fa-IR',serviceWorkers:'block'});contexts.push(context);
   await context.routeWebSocket('**',socket=>socket.close());
+  if(i)await context.addInitScript(()=>{window.Android={saveAuthToken(){},clearAuthToken(){},isKeepAliveEnabled:()=>false,isBatteryOptimizationIgnored:()=>false};});
   await context.addInitScript(account=>{localStorage.setItem('cf_msg_token',account.token);localStorage.setItem('cf_msg_user',JSON.stringify(account.user));},account);
   await context.route(origins[i]+'/**',async route=>{
    const r=route.request(),url=new URL(r.url());
@@ -29,7 +30,7 @@ try{
  }
  const [a,b]=pages;
  await a.locator('#btn-open-search').click();await a.locator('#modal-search-input').fill('sara@beta.network.workers.dev');await a.locator('#remote-start-chat').click();await a.locator('#secure-choice-0').waitFor();
- await b.locator('#btn-main-menu').click();await b.locator('#btn-menu-settings').click();await b.locator('#settings-secure').click();await b.locator('#secure-lookup').waitFor();
+ await b.locator('#btn-main-menu').click();await b.locator('#btn-menu-settings').click();await b.locator('#settings-notifications').click();await b.locator('#android-power-status').waitFor();await b.locator('#btn-settings-back').click();await b.locator('#settings-secure').click();await b.locator('#secure-lookup').waitFor();
  const bKey=(await b.locator('details code').textContent()).trim(),aKey=(await a.locator('details code').textContent()).trim();
  await a.locator('#secure-choice-0').click();await a.locator('#secure-fp').fill(bKey);await a.locator('#secure-verify button').click();await a.locator('#secure-compose').waitFor();
  const text='گفتگوی یکپارچه بین دو سرور مستقل';await a.locator('#secure-text').fill(text);await a.locator('#secure-compose button').click();await a.locator('#secure-text').waitFor();
@@ -41,5 +42,5 @@ try{
  await b.locator('#btn-close-feature').click();await b.locator('.chat-item').filter({hasText:'nila@alpha.network.workers.dev'}).waitFor({timeout:25000});
  await a.locator('#secure-text').fill('پیش‌نویس حفظ شود');await a.waitForTimeout(16000);assert.equal(await a.locator('#secure-text').inputValue(),'پیش‌نویس حفظ شود');
  for(const [i,page] of pages.entries()){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:directory+'/server-'+i+'.png',fullPage:true});}
- assert.deepEqual(errors,[]);await writeFile(directory+'/results.json',JSON.stringify({passed:true,servers:2,separateDatabases:true,automaticPairing:true,ordinarySearch:true,sharedChatList:true,verifiedDevices:true,bidirectionalMLS:true,automaticRefresh:true,draftPreserved:true,widths:[1280,375],errors},null,2));console.log('Two-server browser scenario passed.');
+ assert.deepEqual(errors,[]);await writeFile(directory+'/results.json',JSON.stringify({passed:true,servers:2,separateDatabases:true,automaticPairing:true,ordinarySearch:true,sharedChatList:true,verifiedDevices:true,bidirectionalMLS:true,automaticRefresh:true,draftPreserved:true,androidBridgeSettingsStub:true,widths:[1280,375],errors},null,2));console.log('Two-server browser scenario passed.');
 }catch(e){for(const [i,context]of contexts.entries()){const page=context.pages()[0];if(page){await writeFile(directory+'/failure-'+i+'.txt',await page.locator('body').innerText());await page.screenshot({path:directory+'/failure-'+i+'.png',fullPage:true});}}throw e;}finally{await Promise.all(contexts.map(c=>c.close()));await browser.close();await Promise.all(fixtures.map(f=>f.close()));}

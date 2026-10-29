@@ -1255,7 +1255,7 @@
       `);
     featureContent.dataset.settingsPage=section;byId('btn-settings-back').hidden=false;
     byId('profile-theme').value=profile.theme||'dark'; byId('profile-font').value=profile.font_size||'normal';
-    byId('notification-state').textContent=!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)?'این مرورگر اعلان پس‌زمینه را پشتیبانی نمی‌کند.':!profile.pushConfigured?'کلید اعلان سرور تنظیم نیست؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.':`اجازهٔ مرورگر: ${{granted:'فعال',denied:'مسدود؛ از تنظیمات مرورگر باز کنید',default:'هنوز درخواست نشده'}[Notification.permission]}`;
+    if(byId('notification-state'))byId('notification-state').textContent=!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)?'این مرورگر اعلان پس‌زمینه را پشتیبانی نمی‌کند.':!profile.pushConfigured?'کلید اعلان سرور تنظیم نیست؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.':`اجازهٔ مرورگر: ${{granted:'فعال',denied:'مسدود؛ از تنظیمات مرورگر باز کنید',default:'هنوز درخواست نشده'}[Notification.permission]}`;
     bind('profile-file',async e=> {
       const file=e.target.files[0]; if(!file) return; if(file.size>8*1024*1024) throw new Error('عکس حداکثر ۸ مگابایت انتخاب کنید.');
       const bitmap=await createImageBitmap(file); const canvas=document.createElement('canvas'); canvas.width=canvas.height=96;
