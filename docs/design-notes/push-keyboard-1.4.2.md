@@ -24,4 +24,6 @@ The new size assertion fails against the previous committed sender. The integrat
 
 Verdict: fix the shared notification padding and mobile viewport, with no unrelated feature work.
 
-Not checked: production Cloudflare credentials, the user's phone settings or actual delivery to that phone. A separate temporary real-Chrome Push subscription attempt was denied by the test browser; it does not establish a problem with the user's subscription.
+Android follow-up: Chrome on an isolated Android 16 emulator was tested with its actual soft keyboard. The visual viewport shrank from 628.19 to 344 CSS pixels; the composer ended at 344 and the chat header remained at 0. The composer and newest message were inspected in an Android screenshot. This is an emulator check, not the user's physical phone.
+
+Not checked: production Cloudflare credentials, the user's phone settings or actual delivery to that phone. A temporary private Chrome Push subscription was denied; a regular temporary profile's subscription then timed out. Neither attempt established real Push delivery in this environment or a problem with the user's subscription.
