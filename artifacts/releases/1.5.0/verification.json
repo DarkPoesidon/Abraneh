@@ -1,0 +1,35 @@
+{
+  "documents": 12,
+  "localLinks": 117,
+  "sectionLinks": 43,
+  "utf8": true,
+  "codeFences": true,
+  "htmlContainersBalanced": true,
+  "poster": {
+    "width": 1122,
+    "height": 1402,
+    "bytes": 1505717,
+    "sha256": "79b6806e44a1b4fa3a0e6f6fff16adc57f7a3412526b86dfb3850bb1996f3bae",
+    "visuallyChecked": true
+  },
+  "telegramCaptionUTF16Units": 508,
+  "sentToTelegram": false,
+  "runtimeVersion": "1.5.0",
+  "packagedGuideLinksAndWindowsStartup": "passed",
+  "guideBrowserQA": {
+    "rendering": "GitHub Markdown API with local RTL preview styling",
+    "pages": 8,
+    "widths": [
+      375,
+      1280
+    ],
+    "horizontalOverflow": false,
+    "imagesLoaded": true,
+    "visuallyInspected": [
+      "start-phone",
+      "user-guide-desktop"
+    ]
+  },
+  "freshInstallerDocumentLinks": 121,
+  "freshBuild": true
+}

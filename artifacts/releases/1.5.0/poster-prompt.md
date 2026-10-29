@@ -1,0 +1,11 @@
+# Poster generation record
+
+Method: built-in `image_gen`; new image generated with two visual references. No API-key CLI fallback and no programmatic image editing were used.
+
+References: `docs/assets/wihm-cloudflare-poster.png` (existing branding) and the local, synthetic-data mobile browser QA screenshot `server-1.png` (current conversation-card layout).
+
+Final prompt:
+
+> Create a polished NEW portrait Telegram announcement poster, 4:5 aspect ratio, for the real Persian messenger WIHM Cloudflare / ابرانه, version 1.5.0. The supplied first image is brand reference only (blue rounded speech-bubble app icon with three dots, navy RTL chat UI), not an edit target. The second is a screenshot of the current app, reference for authentic navy/blue UI and compact rounded conversation cards. Do not copy real account addresses from references. Composition: warm ivory/off-white background with quiet pale-blue accents, clear editorial typography, generous margins. Big beautiful Persian word ابرانه at top, WIHM Cloudflare small below, blue modest version badge 1.5.0. Hero in middle: realistic desktop screen and Android-style phone showing coherent dark navy Persian RTL text messenger, rounded slate incoming bubbles and cyan-blue outgoing bubbles, right-hand conversation list. Native app branding, no Telegram logo, no fake features, no call/video screens, no padlock promising audited encryption. Main slogan exactly «پیام‌رسان شخصی روی کلادفلر». Three small, clean captions exactly: «نصب آسان، حتی با گوشی» / «گفتگو بین سرورهای مستقل» / «راهنمای کامل، قدم‌به‌قدم». Small but legible factual footnote exactly «رمزگذاری سرتاسری: آزمایشی». Footer in clean Latin type exactly «github.com/DarkPoesidon/WIHM-Cloudflare». Persian letters must connect correctly and text must be right-to-left and spelled accurately. Crisp print-quality composition suitable for sharing in Telegram. Avoid visual clutter, marketing superlatives, guarantees, and giant 3D icons. Keep device screens highly faithful to supplied app UI.
+
+QA: visually checked headline, Persian captions, repository address, experimental-encryption notice, device framing and margins. Small illustrative chat text is not an operating instruction. Output is the sibling PNG; its dimensions and checksum are in `verification.json` after validation.
