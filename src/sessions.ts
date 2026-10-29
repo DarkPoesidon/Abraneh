@@ -1,15 +1,17 @@
 import { Env, JwtPayload, User } from './types.js';
 import { signJwt, verifyJwt } from './auth.js';
+import { InputError } from './http.js';
 import { SESSION_VERSION_SQL } from './access.js';
 
 export async function issueSession(request: Request, env: Env, user: User, passwordVersion = 1): Promise<string> {
   const sid = crypto.randomUUID();
   const now = Date.now();
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO user_sessions (id,user_id,label,created_at,expires_at) VALUES (?,?,?,?,?)')
-      .bind(sid, user.id, (request.headers.get('User-Agent') || 'مرورگر').slice(0, 200), now, now + 7 * 86400_000),
-    env.DB.prepare('INSERT INTO session_security VALUES (?,?)').bind(sid,passwordVersion),
+  const created=await env.DB.batch([
+    env.DB.prepare('INSERT INTO user_sessions (id,user_id,label,created_at,expires_at) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM service_user_state WHERE user_id=? AND disabled_at IS NOT NULL)')
+      .bind(sid, user.id, (request.headers.get('User-Agent') || 'مرورگر').slice(0, 200), now, now + 7 * 86400_000,user.id),
+    env.DB.prepare('INSERT INTO session_security SELECT ?,? WHERE EXISTS(SELECT 1 FROM user_sessions WHERE id=?)').bind(sid,passwordVersion,sid),
   ]);
+  if(!created[0].meta.changes)throw new InputError('این حساب توسط مدیر سرویس غیرفعال شده است.',403);
   return signJwt({ userId: user.id, username: user.username, displayName: user.displayName, sid }, env.JWT_SECRET);
 }
 

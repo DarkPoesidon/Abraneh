@@ -115,6 +115,11 @@ export class ChatRoom extends DurableObject<Env> {
       const {ids,chatId}=await request.json<{ids:string[];chatId:string}>();
       return Response.json(ids.map(id=>this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',id).toArray()[0]).filter(Boolean).map(row=>this.payload(row,chatId)));
     }
+    if (url.pathname === '/revoke-user' && request.method==='POST') {
+      const {userId}=await request.json<{userId:string}>();
+      for(const socket of this.ctx.getWebSockets())if((socket.deserializeAttachment() as WsAttachment|null)?.userId===userId)try{socket.send(JSON.stringify({event:'session_revoked'}));socket.close(4001,'Account disabled');}catch{}
+      return new Response(null,{status:204});
+    }
     if (url.pathname === '/refresh-access') { await this.authorizedSockets(); return new Response(null,{status:204}); }
     if (url.pathname === '/message-action' && request.method==='POST') {
       try { return Response.json({message:await this.applyMessageAction(await request.json<any>())}); }

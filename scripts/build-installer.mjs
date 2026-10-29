@@ -26,7 +26,7 @@ await copyFile('public/icon.svg', join(output, 'ui/icon.svg'));
 const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replace(/\]\(((?:UPDATE|DAILY-USE|AUTO-UPDATE|TELEGRAM)\.fa\.md)\)/g,'](docs/$1)');
 await writeFile(join(output,'راهنما.md'),bundledGuide);
 await mkdir(join(output, 'docs/releases'), { recursive: true });
-for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md','AUTO-UPDATE.fa.md','AUTO-UPDATE-DESIGN.fa.md','TELEGRAM.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
+for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md','AUTO-UPDATE.fa.md','AUTO-UPDATE-DESIGN.fa.md','TELEGRAM.fa.md','SERVICE-MANAGEMENT.fa.md','FEDERATION-E2EE-DESIGN.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
 await readFile(join('docs/releases',version+'.fa.md'),'utf8');
 await cp('docs/releases',join(output,'docs/releases'),{recursive:true});
 await copyFile('THIRD-PARTY-NOTICES.md',join(output,'THIRD-PARTY-NOTICES.md'));

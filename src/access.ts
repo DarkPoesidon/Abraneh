@@ -1,6 +1,6 @@
 import { Env } from './types.js';
 
-export const SESSION_VERSION_SQL = `COALESCE((SELECT password_version FROM session_security ss WHERE ss.session_id = s.id),1) = COALESCE((SELECT password_version FROM account_security ac WHERE ac.user_id = s.user_id),1)`;
+export const SESSION_VERSION_SQL = `NOT EXISTS (SELECT 1 FROM service_user_state disabled WHERE disabled.user_id=s.user_id AND disabled.disabled_at IS NOT NULL) AND COALESCE((SELECT password_version FROM session_security ss WHERE ss.session_id = s.id),1) = COALESCE((SELECT password_version FROM account_security ac WHERE ac.user_id = s.user_id),1)`;
 export async function chatAccess(env: Env, chatId: string, userId: string) {
   return env.DB.prepare(`SELECT c.type,c.title,COALESCE(gr.role,'member') AS role FROM chats c JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = ? LEFT JOIN group_roles gr ON gr.chat_id = c.id AND gr.user_id = cm.user_id WHERE c.id = ?`).bind(userId,chatId).first<{ type: string; title: string; role: string }>();
 }

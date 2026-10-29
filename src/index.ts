@@ -10,6 +10,8 @@ import { chatAccess, isBlocked } from './access.js';
 import { handleFeatures, registrationMode, registrationGate, enrichMessages, enrichChats } from './features.js';
 import { handleUpdates, scheduledUpdates } from './updates.js';
 import { handleTelegram, telegramWebhook, scheduledTelegram } from './telegram.js';
+import { handleManagement } from './management.js';
+import { publicDiscovery, handleDiscovery } from './discovery.js';
 export { ChatRoom } from "./chatRoom.js";
 
 async function validatedMembers(value: unknown, env: Env, self: string): Promise<string[] | null> {
@@ -39,11 +41,12 @@ export default {
       return errorResponse('کلید امنیتی سرور تنظیم نشده است؛ JWT_SECRET باید حداقل ۳۲ بایت باشد.', 503);
     }
 
+    const discoveryPublic=await publicDiscovery(request,env);if(discoveryPublic)return discoveryPublic;
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts')").first<{ n: number }>();
-        const ready = row?.n === 32;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit')").first<{ n: number }>();
+        const ready = row?.n === 35;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -188,6 +191,8 @@ export default {
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
+        const management=await handleManagement(request,env,auth);if(management)return management;
+        const discovery=await handleDiscovery(request,env,auth);if(discovery)return discovery;
         const updates=await handleUpdates(request,env,auth);if(updates)return updates;
         const telegram=await handleTelegram(request,env,auth);if(telegram)return telegram;
         const featureResponse = await handleFeatures(request,env,auth,ctx);

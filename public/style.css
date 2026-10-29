@@ -904,3 +904,8 @@ button:disabled { opacity:.6; cursor:wait; }
   .form-input,.search-input,.message-input {font-size:16px;}
 }
 @media (max-width:600px) {#btn-add-members {display:none!important;}.chat-header-info>.avatar {display:none;}.message-more {width:44px;min-width:44px;height:44px;min-height:44px;}}
+
+.service-metrics { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+.service-metrics div { border:1px solid var(--border-color);border-radius:12px;padding:12px;overflow-wrap:anywhere; }
+.service-metrics dt { font-size:.85rem;opacity:.75; }
+.service-metrics dd { margin:8px 0 0;font-size:1.3rem;font-weight:700; }
