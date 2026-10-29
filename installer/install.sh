@@ -11,10 +11,13 @@ is_termux=false
 if [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/* ]]; then
   is_termux=true
   printf 'Preparing Termux packages...\n'
-  pkg update -y
-  pkg install -y curl tar
+  # Termux does not support partial upgrades. Use apt directly so this also
+  # repairs an old curl/OpenSSL mismatch before pkg's curl-based mirror check.
+  apt-get update
+  apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade
+  apt-get install -y curl tar termux-tools
   if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' 2>/dev/null; then
-    pkg install -y nodejs-lts
+    apt-get install -y nodejs-lts
   fi
 fi
 if ! command -v curl >/dev/null; then

@@ -37,12 +37,12 @@ $setup = Join-Path $env:TEMP 'wihm-install.ps1'; Invoke-WebRequest 'https://raw.
 <div dir="ltr">
 
 ```bash
-pkg update -y && pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
+apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
 ```
 
 </div>
 
-4. ابزارهای لازم خودکار نصب می‌شوند و صفحهٔ فارسی در مرورگر گوشی باز می‌شود. نصب به روت، رایانه یا ویرایش فایل نیاز ندارد.
+4. ابتدا بسته‌های ترموکس با هم به‌روز می‌شوند تا ابزار دریافت فایل و کتابخانه‌های آن ناسازگار نشوند؛ تنظیمات موجود حفظ می‌شوند. سپس ابزارهای لازم خودکار نصب می‌شوند و صفحهٔ فارسی در مرورگر گوشی باز می‌شود. نصب به روت، رایانه یا ویرایش فایل نیاز ندارد. بار اول ممکن است چند دقیقه طول بکشد؛ تا پایان کار صبر کنید.
 5. اگر مرورگر باز نشد، لینک `http://127.0.0.1:.../#...` را که ترموکس نشان می‌دهد **کامل** کپی و در مرورگر باز کنید؛ قسمت بعد از `#` هم لازم است.
 6. ترموکس را نبندید و **Force stop** نکنید. هنگام رفتن به مرورگر، آن را در پس‌زمینه نگه دارید. اگر گوشی فرایند را بست، همان دستور را دوباره اجرا کنید و همان نام قبلی پیام‌رسان را وارد کنید.
 

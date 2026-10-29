@@ -19,7 +19,8 @@ try {
   console.log('Keep this window open until installation is complete.');
   console.log('The address below works only on this device. Open it in your browser:\n');
   console.log(app.url + '\n');
-  const command = process.env.TERMUX_VERSION ? ['termux-open-url', [app.url]]
+  const isTermux = process.platform === 'android' || process.env.TERMUX_VERSION || process.env.PREFIX?.startsWith('/data/data/com.termux/');
+  const command = isTermux ? ['termux-open-url', [app.url]]
     : process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', app.url]]
     : process.platform === 'darwin' ? ['open', [app.url]] : ['xdg-open', [app.url]];
   if (!process.env.WIHM_NO_BROWSER) {
