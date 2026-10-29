@@ -8,23 +8,25 @@ const output = 'dist/WIHM-Installer';
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 if (!(await readFile('src/version.ts', 'utf8')).includes(`'${version}'`)) throw new Error('Application/package versions differ');
 if (!(await readFile('public/index.html', 'utf8')).includes(`WIHM ${version}`) || !(await readFile('public/sw.js', 'utf8')).includes(`cloudflare-messenger-${version}`)) throw new Error('Browser shell/package versions differ');
+if(!(await readFile('public/index.html','utf8')).includes(`<meta name="wihm-version" content="${version}">`))throw new Error('Application update metadata/package versions differ');
 if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== 'installer-v' + version) throw new Error('Release tag/package versions differ');
 await mkdir(join(output, 'payload/public'), { recursive: true });
 await build({ entryPoints: ['src/index.ts'], outfile: join(output, 'payload/worker.mjs'), bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', external: ['cloudflare:workers'], minify: true });
+await build({ entryPoints: ['src/updater.ts'], outfile: join(output, 'payload/updater.mjs'), bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', external: ['cloudflare:workers'], minify: true });
 await cp('public', join(output, 'payload/public'), { recursive: true });
 await copyFile('schema.sql', join(output, 'payload/schema.sql'));
 await cp('migrations', join(output, 'payload/migrations'), { recursive: true });
 await writeFile(join(output, 'payload/release.json'), JSON.stringify({ appVersion: version, migrations: (await readdir('migrations')).filter(name => name.endsWith('.sql')).sort() }, null, 2) + '\n');
-for (const name of ['start.mjs', 'server.mjs', 'cloudflare.mjs', 'deploy.mjs', 'journal.mjs', 'migrations.mjs', 'install.ps1', 'install.sh', 'Start-Windows.cmd', 'Start-Mac.command', 'Start-Linux.sh']) {
+for (const name of ['start.mjs', 'server.mjs', 'cloudflare.mjs', 'deploy.mjs', 'updater.mjs', 'journal.mjs', 'migrations.mjs', 'install.ps1', 'install.sh', 'Start-Windows.cmd', 'Start-Mac.command', 'Start-Linux.sh']) {
   await copyFile(join('installer', name), join(output, name));
 }
 await cp('installer/ui', join(output, 'ui'), { recursive: true });
 await cp('public/fonts',join(output,'ui/fonts'),{recursive:true});
 await copyFile('public/icon.svg', join(output, 'ui/icon.svg'));
-const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replaceAll('(UPDATE.fa.md)','(docs/UPDATE.fa.md)').replaceAll('(DAILY-USE.fa.md)','(docs/DAILY-USE.fa.md)');
+const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replace(/\]\(((?:UPDATE|DAILY-USE|AUTO-UPDATE|TELEGRAM)\.fa\.md)\)/g,'](docs/$1)');
 await writeFile(join(output,'راهنما.md'),bundledGuide);
 await mkdir(join(output, 'docs/releases'), { recursive: true });
-for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
+for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md','AUTO-UPDATE.fa.md','AUTO-UPDATE-DESIGN.fa.md','TELEGRAM.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
 await readFile(join('docs/releases',version+'.fa.md'),'utf8');
 await cp('docs/releases',join(output,'docs/releases'),{recursive:true});
 await copyFile('THIRD-PARTY-NOTICES.md',join(output,'THIRD-PARTY-NOTICES.md'));

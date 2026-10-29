@@ -74,7 +74,7 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
           if (plan.installedVersion && isNewer(plan.installedVersion, version)) throw new Error('این نصب‌کننده قدیمی‌تر از نسخهٔ نصب‌شده است. آخرین بسته را دریافت کنید.');
           // Check D1 read permission before asking the user to start installation.
           await api.request(`/accounts/${input.accountId}/d1/database?per_page=10`);
-          return send(200, { mode: plan.mode, name: input.name, installedVersion: plan.installedVersion, targetVersion: version });
+          return send(200, { mode: plan.mode, name: input.name, installedVersion: plan.installedVersion, targetVersion: version, updaterEnabled: !!plan.settings?.bindings?.some(b=>b.name==='UPDATER') });
         } finally { busy = false; }
       }
       if (path === '/api/start') {
@@ -82,7 +82,7 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
         status = { state: 'running', phase: 'check', url: null, error: null, result: null };
         const activeApi = api;
         send(202, { started: true });
-        void runDeploy({ api: activeApi, accountId: input.accountId, name: input.name, payloadDir, journal,
+        void runDeploy({ api: activeApi, accountId: input.accountId, name: input.name, payloadDir, journal, enableUpdater: input.enableUpdater===true,
           progress(phase, url) { status = { ...status, phase, ...(url ? { url } : {}) }; },
         }).then(result => { status = { ...status, state: 'done', url: result.url, result }; })
           .catch(error => { status = { ...status, state: 'error', error: safeError(error) }; })

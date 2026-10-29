@@ -6,12 +6,13 @@ import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 // Ephemeral local data only. No account or resource from a real deployment is used.
-export async function createNavigationFixture() {
+export async function createNavigationFixture({bindings={},serviceBindings={}}={}) {
   const compiled = await build({ entryPoints: ['src/index.ts'], bundle: true, format: 'esm', write: false, platform: 'neutral', external: ['cloudflare:workers'] });
   const mf = new Miniflare(convertV4MiniflareOptions({
     name: 'navigation-qa', modules: true, script: compiled.outputFiles[0].text,
     compatibilityDate: '2026-01-01', compatibilityFlags: ['nodejs_compat'],
-    bindings: { JWT_SECRET: randomBytes(48).toString('hex'), ADMIN_SETUP_TOKEN: 'local-fixture-owner-code' },
+    bindings: { JWT_SECRET: randomBytes(48).toString('hex'), ADMIN_SETUP_TOKEN: 'local-fixture-owner-code', ...bindings },
+    serviceBindings,
     d1Databases: { DB: 'navigation-qa-db' }, durableObjects: { CHAT_ROOM: { className: 'ChatRoom', useSQLite: true } },
     assets: { directory: resolve('public'), binding: 'ASSETS', routerConfig: { has_user_worker: true } },
   }));

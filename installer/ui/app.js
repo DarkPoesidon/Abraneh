@@ -67,6 +67,8 @@ $('configure-form').onsubmit = async event => {
     if (candidate.accountId !== $('account').value || candidate.name !== $('name').value.trim()) return;
     config = candidate; sessionStorage.setItem('wihm-config', JSON.stringify(config));
     $('review-name').textContent = config.name;
+    $('enable-updater').checked=!!plan.updaterEnabled;
+    $('enable-updater').disabled=!!plan.updaterEnabled;
     $('review-title').textContent = plan.mode === 'update' ? `به‌روزرسانی از ${plan.installedVersion} به ${plan.targetVersion}` : `نصب نسخهٔ ${plan.targetVersion}`;
     $('review-description').textContent = plan.mode === 'update' ? 'نصب قبلی پیدا شد. نسخهٔ برنامه به‌روزرسانی می‌شود و پیام‌ها و حساب‌های قبلی باقی می‌مانند.' : 'با زدن دکمهٔ زیر، پیام‌رسان و دیتابیس آن روی حساب شما ساخته می‌شود.';
     $('review-data').textContent = plan.mode === 'update' ? 'حفظ دیتابیس و کلید قبلی' : 'ساخت خودکار';
@@ -79,7 +81,7 @@ async function start() {
   if (!config) { panel('configure'); return; }
   $('install-error').hidden = true; $('result').hidden = true;
   $('install-button').disabled = true; $('retry').disabled = true;
-  try { await api('start', config); panel('progress'); await poll(); }
+  try { await api('start', {...config,enableUpdater:$('enable-updater').checked}); panel('progress'); await poll(); }
   catch (error) { panel('progress'); showFailure(error.message); }
   finally { $('install-button').disabled = false; $('retry').disabled = false; }
 }

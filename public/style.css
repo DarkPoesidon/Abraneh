@@ -29,6 +29,33 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
 }
 
+.update-banner { flex-wrap:wrap; gap:8px; padding:12px 16px; }
+.update-banner > span { flex:1 1 200px; }
+.update-banner.server-update-banner { top:auto; bottom:84px; }
+.update-banner { max-width:600px; margin-inline:auto; }
+/* Notices must remain below dialogs so settings and channel controls stay usable. */
+#app-container .update-banner { z-index:40; }
+.update-actions { margin-block:16px; }
+.release-notes { margin-top:16px; }
+.release-notes summary { cursor:pointer; padding-block:10px; }
+.release-notes p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.875rem; color:var(--text-secondary); line-height:1.9; }
+.channel-list { display:grid; gap:8px; }
+.channel-row { width:100%; display:flex; align-items:center; gap:12px; min-height:76px; padding:12px; text-align:start; color:var(--text-primary); background:var(--bg-primary); border:1px solid var(--border-color); border-radius:var(--radius-md); cursor:pointer; }
+.channel-row:hover { border-color:var(--accent-color); }
+.channel-row > span:nth-child(2) { flex:1; min-width:0; overflow-wrap:anywhere; }
+.channel-row strong,.channel-row small { display:block; }
+.channel-row small { margin-top:6px; color:var(--text-secondary); font-size:.75rem; }
+.channel-mark { display:grid; place-items:center; flex:0 0 40px; height:40px; border-radius:12px; background:var(--bg-card); color:var(--text-secondary); font-size:1.25rem; }
+.channel-unread { background:var(--accent-color); padding:3px 8px; border-radius:12px; font-size:.75rem; }
+.channel-feed { display:grid; gap:16px; margin-block:20px; }
+.channel-post { min-width:0; padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:var(--bg-primary); }
+.channel-post-text { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.95; unicode-bidi:plaintext; }
+.channel-post footer { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; margin-top:18px; font-size:.75rem; color:var(--text-secondary); }
+.channel-post a,.telegram-steps a { color:var(--accent-color); }
+.telegram-steps { padding-inline-start:24px; line-height:2.1; }
+.telegram-steps li { padding-bottom:8px; }
+.main-menu { max-height:calc(100dvh - 92px); overflow-y:auto; }
+
 * {
   box-sizing: border-box;
   margin: 0;

@@ -17,6 +17,19 @@ export function validatePush(input: any) {
   const decode=(key:string)=>atob(key.replace(/-/g,'+').replace(/_/g,'/'));
   if(decode(input.keys.p256dh).length!==65||decode(input.keys.p256dh).charCodeAt(0)!==4||decode(input.keys.auth).length!==16) throw new InputError('کلید اشتراک اعلان معتبر نیست.');
 }
+export async function sendUpdatePush(env:Env,version:string,after='',fetcher:typeof fetch=fetch):Promise<string|null> {
+  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return null;
+  const {results}=await env.DB.prepare(`SELECT ps.* FROM push_subscriptions ps JOIN service_admins a ON a.slot=1 AND a.user_id=ps.user_id
+    JOIN user_sessions s ON s.id=ps.session_id AND s.user_id=ps.user_id JOIN user_profiles p ON p.user_id=ps.user_id AND p.notifications=1
+    WHERE s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL} AND ps.id>? ORDER BY ps.id LIMIT 24`).bind(Date.now(),after).all<any>();
+  await Promise.allSettled(results.map(async row=>{
+    if(!validPushEndpoint(row.endpoint))return;
+    const payload=await buildPushPayload({data:{title:'نسخهٔ جدید ابرانه آماده است',body:`نسخهٔ ${version} منتشر شد؛ برای بررسی و تأیید، به‌روزرسانی را از تنظیمات باز کنید.`,kind:'update'},options:{ttl:86400,topic:'wihm-update'}},{endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}},{subject:'https://github.com/DarkPoesidon/WIHM-Cloudflare',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
+    const response=await fetcher(row.endpoint,{...payload,redirect:'manual',signal:AbortSignal.timeout(10_000)});
+    if([404,410].includes(response.status))await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(row.id).run();await response.body?.cancel();
+  }));
+  return results.length===24?String(results.at(-1).id):null;
+}
 // Small pages keep a large group's fan-out below the per-invocation fetch budget.
 // The room persists the returned cursor and resumes via its alarm.
 export async function sendPush(env: Env, message: Message, fetcher: typeof fetch = fetch, after = ''): Promise<string | null> {
@@ -42,7 +55,7 @@ export async function sendPush(env: Env, message: Message, fetcher: typeof fetch
       const payload = await buildPushPayload({ data, options: { ttl: 3600, topic: (await tokenHash(message.chatId)).slice(0,32) } },
         { endpoint: row.endpoint, expirationTime: null, keys: { p256dh: row.p256dh, auth: row.auth } },
         { subject: 'https://github.com/DarkPoesidon/WIHM-Cloudflare', publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY! });
-      const response = await fetcher(row.endpoint,{ ...payload, redirect: 'error', signal: AbortSignal.timeout(10_000) });
+      const response = await fetcher(row.endpoint,{ ...payload, redirect: 'manual', signal: AbortSignal.timeout(10_000) });
       if ([404,410].includes(response.status)) await env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ?').bind(row.id).run();
       await response.body?.cancel();
     }));

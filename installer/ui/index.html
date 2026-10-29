@@ -83,6 +83,8 @@
             <p id="review-description"></p>
             <dl><div><dt>نام برنامه</dt><dd id="review-name" dir="ltr"></dd></div><div><dt>محل اجرا</dt><dd>حساب کلادفلر انتخاب‌شده</dd></div><div><dt>دیتابیس و کلید امنیتی</dt><dd id="review-data">ساخت خودکار</dd></div></dl>
             <p class="helper">نصب از سهمیهٔ سرویس‌های حساب شما استفاده می‌کند. محدودیت‌های پلن کلادفلر برقرار است؛ نصب‌کننده پلن پولی فعال نمی‌کند.</p>
+            <label class="helper"><input id="enable-updater" type="checkbox"> فعال‌کردن به‌روزرسانی سرور از داخل پیام‌رسان</label>
+            <p class="helper">با انتخاب این گزینه، توکن دسترسی به‌صورت Secret در یک به‌روزرسان جدا روی حساب کلادفلر شما نگه داشته می‌شود؛ در فایل یا مرورگر ذخیره نمی‌شود. بعداً می‌توانید با تأیید خودتان یا خودکار آپدیت کنید. حذف یا انقضای این توکن، آپدیت سرور را متوقف می‌کند. پیش‌فرض، پرسیدن پیش از آپدیت است.</p>
             <button class="button" type="button" id="install-button">نصب پیام‌رسان</button>
           </div>
         </section>
@@ -107,7 +109,7 @@
             <div class="actions"><a id="open-app" class="button" target="_blank" rel="noreferrer">باز کردن پیام‌رسان ↗</a><button type="button" id="copy-url" class="button secondary">کپی لینک</button><button type="button" id="save-receipt" class="text-button">ذخیرهٔ مشخصات</button></div>
             <p id="copy-status" role="status" class="helper"></p>
             <div class="notice"><strong>فعال‌سازی مدیر سرویس</strong><p>با حساب خودت وارد پیام‌رسان شو؛ «تنظیمات ← مدیریت سرویس» را باز کن و این کد را وارد کن. کد را برای دیگران نفرست. اگر مدیر را قبلاً فعال کرده‌ای نیازی به تکرار نیست.</p><input id="admin-code" type="text" readonly dir="ltr" aria-label="کد مدیریت سرویس" autocomplete="off"><button id="copy-admin-code" class="text-button" type="button">کپی کد مدیریت</button></div>
-            <p class="helper">از منوی مرورگر، «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را انتخاب کن. بعد از پایان نصب می‌توانی توکن را از صفحهٔ <bdi>API Tokens</bdi> کلادفلر حذف کنی؛ پیام‌رسان فعال می‌ماند.</p>
+            <p class="helper" id="token-retention-note">از منوی مرورگر، «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را انتخاب کن. اگر به‌روزرسانی سرور را فعال کرده‌ای، توکن را نگه دار؛ حذف آن آپدیت‌های بعدی را متوقف می‌کند. اگر فعال نکرده‌ای، می‌توانی توکن را حذف کنی؛ پیام‌رسان فعال می‌ماند.</p>
             <button type="button" id="finish" class="text-button">پایان و بستن نصب‌کننده</button>
           </div>
         </section>

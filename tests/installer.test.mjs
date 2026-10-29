@@ -18,17 +18,22 @@ async function fixture(t) {
   // Exercise the shipped asset tree, including the font directory, in every deployment.
   await cp(new URL('../public/', import.meta.url),join(directory,'public'),{recursive:true});
   await writeFile(join(directory, 'worker.mjs'), 'export default {fetch(){return new Response("ok")}}');
+  await writeFile(join(directory, 'updater.mjs'), 'export class UpdateManager{}; export default {fetch(){return new Response("ok")}}');
   await writeFile(join(directory, 'schema.sql'), await readFile(new URL('../schema.sql', import.meta.url), 'utf8'));
-  await writeFile(join(directory, 'release.json'), JSON.stringify({ appVersion: '1.2.3', migrations: [] }));
+  await writeFile(join(directory, 'release.json'), JSON.stringify({ appVersion: '1.3.0', migrations: [] }));
   return directory;
 }
 function mockCloudflare() {
-  const state = { calls: [], db: null, settings: null, metadata: [], subdomain: 'my-account', marker: null, failOnce: null, applyThenFail: false, noUploads: false, applied: new Set() };
+  const state = { calls: [], db: null, settings: null, updaterSettings:null, updaterMetadata:[], metadata: [], subdomain: 'my-account', marker: null, failOnce: null, applyThenFail: false, noUploads: false, applied: new Set() };
   const fetcher = async (url, options) => {
     const path = new URL(url).pathname.replace('/client/v4', ''), method = options.method;
     state.calls.push({ path, method, options });
     if (state.failOnce === path) { state.failOnce = null; return failure(503, 10000); }
+    if (path.endsWith('/scripts/'+name+'-updates/settings')) return state.updaterSettings?ok(state.updaterSettings):failure(404,10007);
     if (path.endsWith('/settings')) return state.settings ? ok(state.settings) : failure(404, 10007);
+    if(path.endsWith('/scripts/'+name+'-updates')){const metadata=JSON.parse(await options.body.get('metadata').text());state.updaterMetadata.push(metadata);state.updaterSettings={bindings:metadata.bindings.map(binding=>binding.type==='secret_text'?{name:binding.name,type:binding.type}:binding)};return ok({id:name+'-updates'});}
+    if(path.endsWith('/scripts/'+name+'-updates/subdomain')){assert.deepEqual(JSON.parse(options.body),{enabled:false,previews_enabled:false});return ok({enabled:false});}
+    if(path.endsWith('/schedules')){assert.deepEqual(JSON.parse(options.body),[{cron:'*/15 * * * *'}]);return ok({schedules:[{cron:'*/15 * * * *'}]});}
     if (path === '/accounts') return ok([{ id: accountId, name: 'حساب آزمایشی' }]);
     if (path.endsWith('/workers/subdomain')) {
       if (method === 'PUT') state.subdomain = JSON.parse(options.body).subdomain;
@@ -78,7 +83,7 @@ function mockCloudflare() {
   };
   return { state, api: new Cloudflare(token, fetcher) };
 }
-const health = async () => Response.json({ app: 'wihm-cloudflare', version: '1.2.3', database: true });
+const health = async () => Response.json({ app: 'wihm-cloudflare', version: '1.3.0', database: true });
 
 test('deployment uses multipart assets, a SQLite migration, and a private secret; journal stores identifiers only', async t => {
   const payloadDir = await fixture(t), { api, state } = mockCloudflare();
@@ -114,6 +119,30 @@ test('nested paths preserve duplicate asset URLs and reject unsupported content 
   await writeFile(join(directory,'assets','nested','unsupported.exe'),'not an executable');
   await assert.rejects(uploadAssets(api,accountId,name,directory),/محتوای بستهٔ نصب معتبر نیست/);
   assert.equal(state.calls.length,previous);
+});
+
+test('optional updater keeps cloud credentials out of the app and journal, stays private and preserves Telegram keys on reinstall',async t=>{
+  const payloadDir=await fixture(t),{api,state}=mockCloudflare(),journal=createJournal(join(payloadDir,'journal'));
+  const result=await deploy({api,accountId,name,payloadDir,journal,enableUpdater:true,fetcher:health});
+  assert.equal(result.updaterEnabled,true);assert.equal(state.updaterMetadata.length,2);
+  assert.deepEqual(state.updaterMetadata[0].migrations,{new_tag:'updater-v1',new_sqlite_classes:['UpdateManager']});
+  assert.equal(state.updaterMetadata[1].migrations,undefined);
+  assert.ok(state.updaterMetadata[1].bindings.some(b=>b.name==='MAIN'&&b.service===name));
+  assert.ok(!state.metadata[0].bindings.some(b=>b.name==='CF_TOKEN'));
+  const shared=state.metadata[0].bindings.find(b=>b.name==='UPDATER_AUTH').text;
+  assert.equal(state.updaterMetadata[0].bindings.find(b=>b.name==='UPDATER_AUTH').text,shared);
+  assert.equal(state.updaterMetadata[0].bindings.find(b=>b.name==='CF_TOKEN').text,token);
+  const saved=await readFile(join(payloadDir,'journal',`${accountId}-${name}.json`),'utf8');
+  assert.ok(!saved.includes(shared));assert.ok(!saved.includes(token));
+  await deploy({api,accountId,name,payloadDir,journal,fetcher:health});
+  assert.equal(state.updaterMetadata.length,3);assert.equal(state.updaterMetadata[2].migrations,undefined);
+  assert.deepEqual(state.metadata[1].bindings.find(b=>b.name==='TELEGRAM_KEY'),{name:'TELEGRAM_KEY',type:'inherit'});
+});
+
+test('updater name conflicts are rejected before database creation',async t=>{
+  const payloadDir=await fixture(t),{api,state}=mockCloudflare();state.updaterSettings={bindings:[]};
+  await assert.rejects(deploy({api,accountId,name,payloadDir,journal:createJournal(join(payloadDir,'journal')),enableUpdater:true,fetcher:health}),/برنامه‌ای دیگر/);
+  assert.equal(state.db,null);assert.equal(state.metadata.length,0);assert.equal(state.updaterMetadata.length,0);
 });
 
 test('retry after accepted upload with lost response reuses database and inherits JWT without a new migration', async t => {
@@ -217,7 +246,7 @@ test('loopback wizard rejects foreign origins, untrusted Host, absent session, b
   assert.equal(connect.status, 200); assert.ok(!(await connect.text()).includes(token));
   const plan = await fetch(app.origin + '/api/plan', { method: 'POST', headers, body: JSON.stringify({ name, accountId }) });
   assert.equal(plan.status, 200);
-  assert.deepEqual(await plan.json(), { mode: 'new', name, installedVersion: null, targetVersion: 'development' });
+  assert.deepEqual(await plan.json(), { mode: 'new', name, installedVersion: null, targetVersion: 'development', updaterEnabled:false });
   const request = () => fetch(app.origin + '/api/start', { method: 'POST', headers, body: JSON.stringify({ name, accountId }) });
   assert.equal((await request()).status, 202); assert.equal((await request()).status, 409);
   const status = await (await fetch(app.origin + '/api/status', { headers })).json();
@@ -235,7 +264,7 @@ test('1.0 installer-managed app upgrades its marker and version while retaining 
   const migration = '0001_reliable_delivery.sql', daily = '0002_daily_use.sql';
   await writeFile(join(payloadDir, 'migrations', daily), await readFile(new URL('../migrations/' + daily, import.meta.url), 'utf8'));
   await writeFile(join(payloadDir, 'migrations', migration), await readFile(new URL('../migrations/' + migration, import.meta.url), 'utf8'));
-  await writeFile(join(payloadDir, 'release.json'), JSON.stringify({ appVersion: '1.2.3', migrations: [migration,daily] }));
+  await writeFile(join(payloadDir, 'release.json'), JSON.stringify({ appVersion: '1.3.0', migrations: [migration,daily] }));
   state.db = { uuid: 'existing-database', name: name + '-db' };
   state.settings = { bindings: [
     { name: 'WIHM_INSTALLER', type: 'plain_text', text: 'wihm-cloudflare-v1' },
@@ -246,7 +275,7 @@ test('1.0 installer-managed app upgrades its marker and version while retaining 
   const journal = createJournal(join(payloadDir, 'journal'));
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = await deploy({ api, accountId, name, payloadDir, journal, fetcher: health });
-    assert.equal(result.mode, 'update'); assert.equal(result.version, '1.2.3');
+    assert.equal(result.mode, 'update'); assert.equal(result.version, '1.3.0');
   }
   assert.ok(state.applied.has(migration));
   assert.equal(state.calls.filter(call => call.method === 'POST' && call.path.endsWith('/d1/database')).length, 0);
@@ -254,7 +283,7 @@ test('1.0 installer-managed app upgrades its marker and version while retaining 
   for (const metadata of state.metadata) {
     assert.deepEqual(metadata.bindings.find(binding => binding.name === 'JWT_SECRET'), { name: 'JWT_SECRET', type: 'inherit' });
     assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_INSTALLER').text, APP_MARKER);
-    assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_VERSION').text, '1.2.3');
+    assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_VERSION').text, '1.3.0');
     assert.equal(metadata.migrations, undefined);
   }
   state.settings.bindings.find(binding => binding.name === 'WIHM_VERSION').text = '9.0.0';
@@ -265,10 +294,10 @@ test('1.0 installer-managed app upgrades its marker and version while retaining 
 test('1.1 deployment applies only the daily-use migration and creates push keys without rotating JWT',async t=>{
   const payloadDir=await fixture(t),{api,state}=mockCloudflare();await mkdir(join(payloadDir,'migrations'));
   for(const migration of ['0001_reliable_delivery.sql','0002_daily_use.sql'])await writeFile(join(payloadDir,'migrations',migration),await readFile(new URL('../migrations/'+migration,import.meta.url),'utf8'));
-  await writeFile(join(payloadDir,'release.json'),JSON.stringify({appVersion:'1.2.3',migrations:['0001_reliable_delivery.sql','0002_daily_use.sql']}));
+  await writeFile(join(payloadDir,'release.json'),JSON.stringify({appVersion:'1.3.0',migrations:['0001_reliable_delivery.sql','0002_daily_use.sql']}));
   state.applied.add('0001_reliable_delivery.sql');state.db={uuid:'existing-database',name:name+'-db'};
   state.settings={bindings:[{name:'WIHM_INSTALLER',type:'plain_text',text:APP_MARKER},{name:'WIHM_VERSION',type:'plain_text',text:'1.1.0'},{name:'DB',type:'d1',id:'existing-database'},{name:'JWT_SECRET',type:'secret_text'},{name:'CHAT_ROOM',type:'durable_object_namespace',class_name:'ChatRoom'}]};
-  const result=await deploy({api,accountId,name,payloadDir,journal:createJournal(join(payloadDir,'journal')),fetcher:health});assert.equal(result.version,'1.2.3');
+  const result=await deploy({api,accountId,name,payloadDir,journal:createJournal(join(payloadDir,'journal')),fetcher:health});assert.equal(result.version,'1.3.0');
   assert.deepEqual(state.metadata[0].bindings.find(row=>row.name==='JWT_SECRET'),{name:'JWT_SECRET',type:'inherit'});
   assert.equal(state.metadata[0].bindings.find(row=>row.name==='VAPID_PRIVATE_KEY').type,'secret_text');
   const changes=state.calls.filter(call=>typeof call.options.body==='string'&&JSON.parse(call.options.body).sql?.startsWith('INSERT OR IGNORE INTO schema_migrations'));

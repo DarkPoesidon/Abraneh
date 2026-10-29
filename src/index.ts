@@ -8,6 +8,8 @@ import { listReceipts, saveReceipt } from './receipts.js';
 import { corsResponse, jsonResponse, errorResponse, InputError, inputJson } from './http.js';
 import { chatAccess, isBlocked } from './access.js';
 import { handleFeatures, registrationMode, registrationGate, enrichMessages, enrichChats } from './features.js';
+import { handleUpdates, scheduledUpdates } from './updates.js';
+import { handleTelegram, telegramWebhook, scheduledTelegram } from './telegram.js';
 export { ChatRoom } from "./chatRoom.js";
 
 async function validatedMembers(value: unknown, env: Env, self: string): Promise<string[] | null> {
@@ -22,6 +24,9 @@ async function validatedMembers(value: unknown, env: Env, self: string): Promise
 const authenticate = requestIdentity;
 
 export default {
+  async scheduled(_controller:ScheduledController,env:Env,ctx:ExecutionContext) {
+    ctx.waitUntil(Promise.allSettled([scheduledUpdates(env),scheduledTelegram(env)]));
+  },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
@@ -34,10 +39,11 @@ export default {
       return errorResponse('کلید امنیتی سرور تنظیم نشده است؛ JWT_SECRET باید حداقل ۳۲ بایت باشد.', 503);
     }
 
+    if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions')").first<{ n: number }>();
-        const ready = row?.n === 28;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts')").first<{ n: number }>();
+        const ready = row?.n === 32;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -91,6 +97,7 @@ export default {
     // ==========================================
     if (url.pathname.startsWith("/api/")) {
       try {
+        const webhook=await telegramWebhook(request,env);if(webhook)return webhook;
         if (url.pathname === '/api/bootstrap' && request.method === 'GET') return jsonResponse({ registration: await registrationMode(env) });
         // --- AUTH: REGISTER ---
         if (url.pathname === "/api/auth/register" && request.method === "POST") {
@@ -181,6 +188,8 @@ export default {
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
+        const updates=await handleUpdates(request,env,auth);if(updates)return updates;
+        const telegram=await handleTelegram(request,env,auth);if(telegram)return telegram;
         const featureResponse = await handleFeatures(request,env,auth,ctx);
         if (featureResponse) return featureResponse;
 

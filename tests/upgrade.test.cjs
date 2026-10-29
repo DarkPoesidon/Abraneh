@@ -48,11 +48,11 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
       for (const statement of sql.split(';').map(s => s.trim()).filter(Boolean)) results.push(await db.prepare(statement).bind(...params).all());
       return results;
     } };
-    const manifest = { migrations: ['0001_reliable_delivery.sql','0002_daily_use.sql'] };
+    const manifest = { migrations: ['0001_reliable_delivery.sql','0002_daily_use.sql','0003_updates_telegram.sql'] };
     const payload = resolve('.');
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 2);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 3);
     assert.equal((await db.prepare("SELECT user_id FROM group_roles WHERE chat_id='legacy-group' AND role='owner'").first()).user_id,'legacy-user');
     // Replaying an upgrade must not take ownership back after a real transfer.
     await db.batch([db.prepare("UPDATE group_roles SET role='member' WHERE chat_id='legacy-group'"),db.prepare("INSERT INTO group_roles VALUES ('legacy-group','a-member','owner')")]);
@@ -66,7 +66,7 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
     const claims = Buffer.from(JSON.stringify({ userId: 'legacy-user', username: 'legacy', displayName: 'قدیمی', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
     const token = header + '.' + claims + '.' + createHmac('sha256', secret).update(header + '.' + claims).digest('base64url');
     const health = await (await mf.dispatchFetch('http://localhost/api/health')).json();
-    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.2.3', database: true });
+    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.3.0', database: true });
     const history = await (await mf.dispatchFetch('http://localhost/api/chats/legacy-room/messages', { headers: { Authorization: 'Bearer ' + token } })).json();
     assert.deepEqual(history.map(message => message.id), ['old-a', 'old-b']);
     const response = await mf.dispatchFetch('http://localhost/ws?chatId=legacy-room&token=' + token, { headers: { Upgrade: 'websocket' } });

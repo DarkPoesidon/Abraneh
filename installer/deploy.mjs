@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { CloudflareError } from './cloudflare.mjs';
 import { applyMigrations } from './migrations.mjs';
+import { inspectUpdater, installUpdater } from './updater.mjs';
 
 export const APP_MARKER = 'wihm-cloudflare-v2';
 const legacyMarker = 'wihm-cloudflare-v1';
@@ -75,10 +76,14 @@ export async function uploadAssets(api, accountId, name, directory) {
   return completion;
 }
 
-export async function deploy({ api, accountId, name, payloadDir, journal, progress = () => {}, fetcher = fetch, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function deploy({ api, accountId, name, payloadDir, journal, enableUpdater = false, progress = () => {}, fetcher = fetch, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
   progress('check');
   // Revalidate immediately before mutations, including retries after a lost upload response.
   const plan = await inspect(api, accountId, name);
+  const priorUpdater=plan.settings?.bindings?.find(binding=>binding.name==='UPDATER');
+  if(priorUpdater&&(priorUpdater.type!=='service'||priorUpdater.service!==name+'-updates'))throw new Error('اتصال به‌روزرسان نصب قبلی معتبر نیست.');
+  const updaterEnabled=enableUpdater===true||!!priorUpdater;
+  if(updaterEnabled)await inspectUpdater(api,accountId,name);
   const release = JSON.parse(await readFile(join(payloadDir, 'release.json'), 'utf8'));
   if (!/^\d+\.\d+\.\d+$/.test(release.appVersion)) throw new Error('نسخهٔ بسته معتبر نیست. نصب‌کنندهٔ رسمی را دریافت کنید.');
   if (plan.installedVersion && isNewer(plan.installedVersion, release.appVersion)) throw new Error('نسخهٔ نصب‌شده جدیدتر از این نصب‌کننده است. آخرین بسته را دریافت کنید.');
@@ -130,6 +135,8 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
   const adminCode = randomBytes(32).toString('hex');
   const hasPushKeys = ['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].every(name => plan.settings?.bindings?.some(binding => binding.name === name && binding.type === 'secret_text'));
   const pushKeys = createECDH('prime256v1'); pushKeys.generateKeys();
+  const updaterAuth=updaterEnabled?randomBytes(32).toString('hex'):null;
+  if(updaterEnabled)await installUpdater({api,accountId,name,databaseId:database.uuid,payloadDir,version:release.appVersion,auth:updaterAuth,attachMain:!!plan.settings});
   const metadata = {
     main_module: 'worker.mjs', compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
     bindings: [
@@ -140,6 +147,8 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
       { name: 'WIHM_VERSION', type: 'plain_text', text: release.appVersion },
       plan.settings ? { name: 'JWT_SECRET', type: 'inherit' } : { name: 'JWT_SECRET', type: 'secret_text', text: randomBytes(48).toString('base64url') },
       { name: 'ADMIN_SETUP_TOKEN', type: 'secret_text', text: adminCode },
+      plan.settings?.bindings?.some(binding=>binding.name==='TELEGRAM_KEY'&&binding.type==='secret_text')?{name:'TELEGRAM_KEY',type:'inherit'}:{name:'TELEGRAM_KEY',type:'secret_text',text:randomBytes(32).toString('hex')},
+      ...(updaterEnabled?[{name:'UPDATER',type:'service',service:name+'-updates'},{name:'UPDATER_AUTH',type:'secret_text',text:updaterAuth}]:[]),
       ...['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].map((name,index) => hasPushKeys ? {name,type:'inherit'} : {name,type:'secret_text',text:(index ? pushKeys.getPrivateKey() : pushKeys.getPublicKey()).toString('base64url')}),
     ],
     assets: { jwt, config: { html_handling: 'auto-trailing-slash', not_found_handling: 'none' } },
@@ -150,6 +159,8 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
   form.append('worker.mjs', new Blob([worker], { type: 'application/javascript+module' }), 'worker.mjs');
   await api.request(scriptPath + '?bindings_inherit=strict', { method: 'PUT', form });
   await api.request(scriptPath + '/subdomain', { method: 'POST', json: { enabled: true, previews_enabled: false } });
+  if(updaterEnabled&&!plan.settings)await installUpdater({api,accountId,name,databaseId:database.uuid,payloadDir,version:release.appVersion,auth:updaterAuth,attachMain:true});
+  await api.request(scriptPath+'/schedules',{method:'PUT',json:[{cron:'*/15 * * * *'}]});
 
   const url = `https://${name}.${subdomain}.workers.dev`;
   progress('verify', url);
@@ -158,10 +169,10 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
       const response = await fetcher(url + '/api/health', { redirect: 'error', signal: AbortSignal.timeout(10_000) });
       const health = await response.json();
       if (response.ok && health.app === 'wihm-cloudflare' && health.database === true && health.version === release.appVersion) {
-        return { url, verified: true, mode: plan.mode, version: release.appVersion, adminCode };
+        return { url, verified: true, mode: plan.mode, version: release.appVersion, adminCode, updaterEnabled };
       }
     } catch { /* DNS and Worker propagation can lag a successful deployment. */ }
     if (attempt < 11) await pause(1500);
   }
-  return { url, verified: false, mode: plan.mode, version: release.appVersion, adminCode };
+  return { url, verified: false, mode: plan.mode, version: release.appVersion, adminCode, updaterEnabled };
 }

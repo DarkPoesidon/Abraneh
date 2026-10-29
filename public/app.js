@@ -25,6 +25,7 @@
   let locatingUnread = null;
   let openingChatId = null;
   let profile = {}, archivedView = false, composerContext = null;
+  let extras=null;
   let sidebarCompact=false,lastMobileLayout=window.innerWidth<=768;
   try {sidebarCompact=localStorage.getItem('cf_msg_sidebar_compact')==='1';}catch{/* Preferences are optional when device storage is unavailable. */}
   const hiddenMessages = new Map(), deniedChats = new Set(), chatDetails = new Map();
@@ -115,17 +116,9 @@
   }
 
   // --- Service Worker Registration ---
-  if ('serviceWorker' in navigator) {
-    const hadController = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) document.getElementById('update-banner').hidden = false; });
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
-      console.warn('Service worker registration failed:', err);
-    });
-  }
-  document.getElementById('btn-apply-update').addEventListener('click', () => {
-    if (messageInput.value.trim() && !confirm('متن داخل کادر هنوز ارسال نشده است. پیش از نوسازی آن را کپی کنید یا بفرستید؛ اکنون نوسازی شود؟')) return;
-    if (outbox.length && !saveOutbox()) return;
-    location.reload();
+  window.WihmUpdates?.init({
+    canReload:()=>document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
+    prepareReload:()=>!messageInput.value.trim()&&(!outbox.length||saveOutbox()),
   });
 
   // --- PWA Installation Handling ---
@@ -214,6 +207,7 @@
     backgroundSockets.clear(); outbox = [];
     reportedReceipts.clear(); reportingReceipts.clear();
     hiddenMessages.clear();chatDetails.clear();deniedChats.clear();profile={};cancelComposer();
+    extras?.clearNotice();featureGeneration++;
     for (const key of Object.keys(receiptsByChat)) delete receiptsByChat[key];
     sessionsModal.style.display = 'none';
     closeMainMenu();
@@ -1112,9 +1106,14 @@
   for(const section of ['profile','appearance','notifications','password'])byId('settings-'+section).addEventListener('click',()=>editSettings(section).catch(featureError));
   byId('settings-blocks').addEventListener('click',()=>showBlocks().catch(featureError));
   byId('settings-admin').addEventListener('click',()=>serviceSettings().catch(featureError));
+  extras=window.WihmExtras?.create({api,post,show:showFeature,error:featureError,escape:escapeHtml,profile:()=>profile,generation:()=>featureGeneration});
+  byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
+  byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
+  byId('btn-channels')?.addEventListener('click',()=>{closeMainMenu();extras?.channels().catch(featureError);});
   async function loadProfile() {
     const sessionToken=token, row=await api('/api/profile'); if(!row||sessionToken!==token) return;
     profile=row; currentUser.displayName=row.displayName || currentUser.displayName;
+    extras?.notice(row).catch(()=>{});
     userDisplayName.textContent=currentUser.displayName; userAvatar.innerHTML=avatarHtml(row.avatar,currentUser.displayName);
     localStorage.setItem('cf_msg_user',JSON.stringify(currentUser)); applyAppearance(row.theme||'dark',row.font_size||'normal');
   }

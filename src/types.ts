@@ -6,6 +6,9 @@ export interface Env {
   ADMIN_SETUP_TOKEN?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
+  UPDATER?: Fetcher;
+  UPDATER_AUTH?: string;
+  TELEGRAM_KEY?: string;
 }
 
 export interface User {

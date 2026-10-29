@@ -25,6 +25,14 @@ jobs:
       - run: npm test
       - run: npm run test:installer
       - run: npm run installer:build
+      - name: Build update payload
+        if: runner.os == 'Linux'
+        env:
+          WIHM_UPDATE_SIGNING_KEY: ${{ startsWith(github.ref, 'refs/tags/installer-v') && secrets.WIHM_UPDATE_SIGNING_KEY || '' }}
+        run: node scripts/build-update.mjs
+      - name: Verify update payload
+        if: runner.os == 'Linux'
+        run: node scripts/check-update-bundle.mjs
       - run: node scripts/check-installer-assets.mjs
       - run: node scripts/check-installer.mjs
       - name: Check shell launcher
@@ -43,7 +51,8 @@ jobs:
         run: |
           zip -qr wihm-installer.zip WIHM-Installer
           tar -czf wihm-installer.tar.gz WIHM-Installer
-          sha256sum wihm-installer.zip wihm-installer.tar.gz > SHA256SUMS
+          sha256sum wihm-installer.zip wihm-installer.tar.gz wihm-update.json > SHA256SUMS
+          if [ -f wihm-update.sig ]; then sha256sum wihm-update.sig >> SHA256SUMS; fi
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
@@ -52,6 +61,8 @@ jobs:
             dist/wihm-installer.zip
             dist/wihm-installer.tar.gz
             dist/SHA256SUMS
+            dist/wihm-update.json
+            dist/wihm-update.sig
   publish:
     if: startsWith(github.ref, 'refs/tags/installer-v')
     needs: installer
