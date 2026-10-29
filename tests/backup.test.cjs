@@ -5,6 +5,7 @@ async function runtime(name){const options={name,modules:true,script:compiled,co
 async function api(runtime,path,{user=owner,body,method='GET'}={}){const response=await runtime.mf.dispatchFetch('https://restored-chat.test-account.workers.dev'+path,{method:body===undefined?method:method==='GET'?'POST':method,headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+user.token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:response.status,data:await response.json()};}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 before(async()=>{
+ require('node:child_process').execFileSync(process.execPath,['scripts/build-installer.mjs'],{stdio:'pipe'});
  compiled=(await build({entryPoints:['src/index.ts'],bundle:true,write:false,format:'esm',platform:'neutral',mainFields:['browser','module','main'],external:['cloudflare:workers']})).outputFiles[0].text;
  source=await runtime('backup-source');target=await runtime('backup-target');
  owner=(await api(source,'/api/auth/register',{user:null,body:{username:'backupowner',password:'backuppass123'}})).data;
