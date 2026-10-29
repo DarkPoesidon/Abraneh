@@ -1,7 +1,7 @@
 // The browser shell waits for consent; server deployment is controlled separately.
 (() => {
   const read=(key,fallback)=>{try{return localStorage.getItem(key)||fallback;}catch{return fallback;}};
-  const version=document.querySelector('meta[name="wihm-version"]')?.content||'1.4.0';
+  const version=document.querySelector('meta[name="wihm-version"]')?.content||'1.4.1';
   const state={version,available:null,mode:read('cf_msg_update_mode','notify'),checking:false,message:'',supported:'serviceWorker' in navigator};
   if(!['notify','automatic','manual'].includes(state.mode))state.mode='notify';
   let registration=null,waiting=null,changed=false,applying=false,options={},started=false,automaticTimer=null;
@@ -20,7 +20,7 @@
   async function check(){
     if(!state.supported){state.message='این مرورگر نصب و به‌روزرسانی برنامه را پشتیبانی نمی‌کند.';emit();return;}
     state.checking=true;state.message='در حال بررسی…';emit();
-    try{const response=await fetch('/api/app/version',{cache:'no-store'}),data=await response.json();if(response.ok&&/^\d+\.\d+\.\d+$/.test(data.version)&&data.version!==version)state.available=data.version;registration ||= await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});await registration.update().catch(()=>{});await inspectWaiting();state.message=state.available?'نسخهٔ جدید آماده است.':'نسخهٔ این دستگاه به‌روز است.';automatic();}
+    try{const response=await fetch('/api/app/version',{cache:'no-store'}),data=await response.json();if(response.ok&&/^\d+\.\d+\.\d+$/.test(data.version)&&data.version!==version)state.available=data.version;registration ||= await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});await registration.update().catch(()=>{});await inspectWaiting();state.message=state.available?'نسخهٔ جدید آماده است.':'نسخهٔ دستگاه با سرور فعلی یکسان است؛ دریافت ریلیز تازه نیاز به به‌روزرسانی سرور توسط مدیر دارد.';automatic();}
     catch{state.message='بررسی کامل نشد؛ اتصال اینترنت را بررسی و دوباره تلاش کنید.';}
     finally{state.checking=false;emit();}
   }

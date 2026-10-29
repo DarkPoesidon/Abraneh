@@ -374,7 +374,7 @@ export class ChatRoom extends DurableObject<Env> {
       const job=this.ctx.storage.sql.exec('SELECT q.*,m.* FROM push_queue q JOIN messages m ON m.id=q.message_id ORDER BY m.created_at,m.id LIMIT 1').toArray()[0];
       if(job) {
         const message=this.payload(job,String(job.chat_id));
-        const cursor=message.deletedAt?null:await sendPush(this.env,message,fetch,String(job.after_id));
+        const cursor=message.deletedAt||Date.now()-message.createdAt>3600_000?null:await sendPush(this.env,message,fetch,String(job.after_id));
         if(cursor) this.ctx.storage.sql.exec('UPDATE push_queue SET after_id=? WHERE message_id=?',cursor,job.id);
         else this.ctx.storage.sql.exec('DELETE FROM push_queue WHERE message_id=?',job.id);
       }

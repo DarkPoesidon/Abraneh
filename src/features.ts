@@ -4,7 +4,7 @@ import { chatAccess, isBlocked, manager, validId, tokenHash, inviteToken, normal
 import { allowRequest } from './limits.js';
 import { hashPassword, verifyPassword, generateSalt } from './auth.js';
 import { revokeSessions } from './sessions.js';
-import { validatePush } from './push.js';
+import { validatePush, sendTestPush } from './push.js';
 
 type Identity = JwtPayload & { sid: string };
 function check(condition: unknown, message: string, status = 400): asserts condition { if (!condition) throw new InputError(message,status); }
@@ -165,6 +165,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     await env.DB.prepare('INSERT INTO abuse_reports(id,reporter_id,target_user_id,chat_id,message_id,reason,snapshot,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),userId,body.userId,body.chatId||null,body.messageId||null,body.reason.trim(),snapshot,Date.now()).run();
     return jsonResponse({ok:true},201);
   }
+  if(path==='/api/push/test'&&method==='POST'){check(await allowRequest(env,'push-test',userId,10,3600_000),'آزمایش‌های اعلان زیاد است؛ بعداً تلاش کنید.',429);return jsonResponse(await sendTestPush(env,userId,auth.sid));}
   if (path === '/api/push' && method==='POST') {
     check(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY,'اعلان سرور تنظیم نشده است؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.',503);
     const body=await inputJson(request); validatePush(body);
