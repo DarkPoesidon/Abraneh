@@ -7,6 +7,7 @@ Build from the repository root:
 ```sh
 npm ci
 npm run installer:build
+node scripts/check-installer-assets.mjs
 node scripts/check-installer.mjs
 npm run installer:start
 ```
@@ -38,3 +39,5 @@ Migration 0002 adds daily-use tables without changing the original layouts. Exis
 Resource checks use bounded push fan-out (24 subscriptions per room alarm page), persisted cursors, batched authorization and JSON membership arrays rather than one database call per online member. Saved messages use cursor pages of eight; quoted parents are fetched in a batch. Literal `instr` search avoids D1's LIKE-pattern length limit for Persian UTF-8 input. See the primary [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) and [Workers subrequest update](https://developers.cloudflare.com/changelog/post/2026-02-11-subrequests-limit/). Daily account quotas and device/network delivery still require operational monitoring; these local checks do not establish production capacity.
 
 The 1.2.1 UI patch uses an unmodified local Vazir variable WOFF2 (v30.1.0), bundled license/attribution and an offline font cache. The loopback installer serves the same font through an explicit static route with `font-src 'self'`; the Worker asset uploader labels WOFF2 as `font/woff2`. `tests/browser/navigation.mjs` verifies the font bytes, actual Persian weight loading, offline Service Worker font delivery and responsive navigation; `tests/browser/daily-use.mjs` checks the existing messaging flows through the new menus. Telegram reference observations and REA Evidence IDs are in `docs/design-notes/navigation-1.2.1.fa.md`.
+
+Version 1.2.2 fixes the flat-only asset traversal that rejected the font directory before any upload in 1.2.1. The uploader now walks nested directories, uses slash-separated manifest URLs on every OS, deduplicates content by hash and still rejects links and unsupported files. Deployment tests copy the real public tree, including the font, and cover restarting after an interrupted asset upload without creating another database. `scripts/check-installer-assets.mjs [installer-directory]` invokes the built or downloaded package's uploader with its actual payload against a simulated API; it verifies every manifest path/hash/size, exact multipart bytes, font MIME, multiple buckets and a fully cached retry. It runs in the three-platform CI before packaging. `scripts/check-installer.mjs [installer-directory]` also checks English-only terminal output while the browser UI remains Persian. These checks do not establish deployment success on a real Cloudflare account.

@@ -25,6 +25,7 @@ jobs:
       - run: npm test
       - run: npm run test:installer
       - run: npm run installer:build
+      - run: node scripts/check-installer-assets.mjs
       - run: node scripts/check-installer.mjs
       - name: Check shell launcher
         if: runner.os != 'Windows'

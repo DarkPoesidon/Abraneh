@@ -40,16 +40,24 @@ export async function inspect(api, accountId, name) {
   return { accountId, name, mode: settings ? 'update' : 'new', installedVersion, settings };
 }
 
-async function uploadAssets(api, accountId, name, directory) {
+export async function uploadAssets(api, accountId, name, directory) {
   const manifest = {}, files = new Map();
-  // The shipped public directory is intentionally flat; reject unexpected content.
-  for (const item of await readdir(directory, { withFileTypes: true })) {
-    if (!item.isFile() || !TYPES[extname(item.name)]) throw new Error('محتوای بستهٔ نصب معتبر نیست. بستهٔ رسمی را دوباره دریافت کنید.');
-    const content = await readFile(join(directory, item.name));
-    const hash = createHash('sha256').update(content.toString('base64') + extname(item.name).slice(1)).digest('hex').slice(0, 32);
-    manifest['/' + item.name] = { hash, size: content.length };
-    files.set(hash, { content, type: TYPES[extname(item.name)] });
+  async function collect(current, prefix = '') {
+    for (const item of await readdir(current, { withFileTypes: true })) {
+      // URL paths always use '/', including when the installer runs on Windows.
+      // Keep rejecting links and unsupported files rather than following them.
+      if (item.isSymbolicLink() || item.name.includes('\\')) throw new Error('محتوای بستهٔ نصب معتبر نیست. بستهٔ رسمی را دوباره دریافت کنید.');
+      const assetPath = prefix + item.name;
+      const diskPath = join(current, item.name);
+      if (item.isDirectory()) { await collect(diskPath, assetPath + '/'); continue; }
+      if (!item.isFile() || !TYPES[extname(item.name)]) throw new Error('محتوای بستهٔ نصب معتبر نیست. بستهٔ رسمی را دوباره دریافت کنید.');
+      const content = await readFile(diskPath);
+      const hash = createHash('sha256').update(content.toString('base64') + extname(item.name).slice(1)).digest('hex').slice(0, 32);
+      manifest['/' + assetPath] = { hash, size: content.length };
+      files.set(hash, { content, type: TYPES[extname(item.name)] });
+    }
   }
+  await collect(directory);
   const { result: session } = await api.request(`/accounts/${accountId}/workers/scripts/${name}/assets-upload-session`, { method: 'POST', json: { manifest } });
   if (!session?.jwt || !Array.isArray(session.buckets)) throw new Error('دریافت مجوز بارگذاری فایل‌ها کامل نشد. دوباره تلاش کنید.');
   let completion = session.buckets.length === 0 ? session.jwt : null;

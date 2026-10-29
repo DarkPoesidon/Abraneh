@@ -15,20 +15,21 @@ try {
   await access(join(directory, 'payload', 'worker.mjs'));
   const manifest = JSON.parse(await readFile(join(directory, 'build.json'), 'utf8'));
   const app = await startServer({ uiDir: join(directory, 'ui'), payloadDir: join(directory, 'payload'), journal: createJournal(join(homedir(), '.wihm-cloudflare', 'installations')), version: manifest.appVersion });
-  console.log('\nWIHM Cloudflare — نصب‌کننده\n');
-  console.log('این پنجره را تا پایان نصب باز نگه دارید. نشانی زیر فقط روی همین دستگاه باز می‌شود:\n');
+  console.log('\nWIHM Cloudflare Installer\n');
+  console.log('Keep this window open until installation is complete.');
+  console.log('The address below works only on this device. Open it in your browser:\n');
   console.log(app.url + '\n');
   const command = process.env.TERMUX_VERSION ? ['termux-open-url', [app.url]]
     : process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', app.url]]
     : process.platform === 'darwin' ? ['open', [app.url]] : ['xdg-open', [app.url]];
   if (!process.env.WIHM_NO_BROWSER) {
     const browser = spawn(command[0], command[1], { stdio: 'ignore', windowsHide: true });
-    browser.on('error', () => console.log('مرورگر خودکار باز نشد؛ نشانی بالا را در مرورگر باز کنید.'));
+    browser.on('error', () => console.log('Could not open the browser automatically. Open the address above in your browser.'));
     browser.unref();
   }
   process.once('SIGINT', () => { app.close(); });
   process.once('SIGTERM', () => { app.close(); });
 } catch {
-  console.error('بستهٔ نصب آماده نیست. بستهٔ رسمی نصب‌کننده را دریافت کنید. برای توسعه: npm run installer:build');
+  console.error('The installation package is not ready. Download and extract the official installer. For development: npm run installer:build');
   process.exitCode = 1;
 }

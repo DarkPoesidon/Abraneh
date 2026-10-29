@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 
-const directory = resolve('dist/WIHM-Installer');
+const directory = resolve(process.argv[2] || 'dist/WIHM-Installer');
 const metadata = JSON.parse(await readFile(directory + '/build.json', 'utf8'));
 const digest = createHash('sha256').update(await readFile(directory + '/payload/worker.mjs')).digest('hex');
 assert.equal(digest, metadata.workerSha256);
@@ -38,5 +38,7 @@ try {
   assert.equal(stopped.status, 200);
   if (child.exitCode === null) await once(child, 'exit');
   assert.equal(child.exitCode, 0, errors);
-  console.log('Packaged launcher, Persian UI, session isolation and clean shutdown passed.');
+  assert.match(output, /Keep this window open until installation is complete/);
+  assert.doesNotMatch(output + errors, /[\u0600-\u06ff]/, 'Terminal messages must remain readable without Persian support.');
+  console.log('Packaged launcher, English terminal, Persian UI, session isolation and clean shutdown passed.');
 } finally { if (child.exitCode === null) child.kill(); }
