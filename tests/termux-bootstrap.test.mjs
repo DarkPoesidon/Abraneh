@@ -17,7 +17,8 @@ for (const prefixOnly of [false, true]) {
     await writeFile(join(packageDir, 'payload/worker.mjs'), '');
     await writeFile(join(packageDir, 'start.mjs'), '');
     await cp(new URL('../installer/install.sh', import.meta.url), join(packageDir, 'install.sh'));
-    const executable = (name, text) => writeFile(join(commands, name), '#!/usr/bin/env bash\nset -eu\n' + text, { mode: 0o755 });
+    const interpreter = process.platform === 'android' ? '/data/data/com.termux/files/usr/bin/bash' : '/usr/bin/env bash';
+    const executable = (name, text) => writeFile(join(commands, name), '#!' + interpreter + '\nset -eu\n' + text, { mode: 0o755 });
     await executable('apt-get', `
 printf '%s\\n' "$*" >> "$QA_DIRECTORY/packages.log"
 case "$*" in

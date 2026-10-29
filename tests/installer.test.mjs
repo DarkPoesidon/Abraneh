@@ -200,6 +200,18 @@ test('loopback wizard rejects foreign origins, untrusted Host, absent session, b
     request.on('error', reject); request.end();
   });
   assert.equal(reboundStatus, 403);
+  const navigation = { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' };
+  const requestStatus = (path, extra) => new Promise((resolve, reject) => {
+    const request = httpRequest(app.origin + path, { headers: extra }, response => { response.resume(); resolve(response.statusCode); });
+    request.on('error', reject); request.end();
+  });
+  assert.equal(await requestStatus('/', navigation), 200); // Android browser entry from Termux.
+  assert.equal(await requestStatus('/', { ...navigation, 'Sec-Fetch-Mode': 'cors' }), 403);
+  assert.equal(await requestStatus('/', { ...navigation, 'Sec-Fetch-Dest': 'iframe' }), 403);
+  assert.equal(await requestStatus('/', { ...navigation, Host: 'malicious.example' }), 403);
+  assert.equal(await requestStatus('/', { ...navigation, Origin: 'https://malicious.example' }), 403);
+  assert.equal(await requestStatus('/api/status', { ...navigation, Authorization: headers.Authorization }), 403);
+  assert.equal(await requestStatus('/api/status', { 'Sec-Fetch-Site': 'same-origin' }), 401);
   assert.equal((await fetch(app.origin + '/api/start', { method: 'POST', headers, body: '{' })).status, 400);
   const connect = await fetch(app.origin + '/api/connect', { method: 'POST', headers, body: JSON.stringify({ token }) });
   assert.equal(connect.status, 200); assert.ok(!(await connect.text()).includes(token));

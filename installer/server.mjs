@@ -19,9 +19,13 @@ export async function startServer({ uiDir, payloadDir, journal, makeApi = token 
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     const send = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
     try {
-      if (req.headers.host !== new URL(origin).host || (req.headers.origin && req.headers.origin !== origin)
-          || (req.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(req.headers['sec-fetch-site']))) return send(403, { error: 'این صفحه از نشانی نصب‌کننده باز نشده است.' });
       const path = new URL(req.url, origin).pathname;
+      // Android Chrome marks navigation from the Termux app as cross-site.
+      // Only the public entry document may use that top-level navigation path.
+      const entryNavigation = req.method === 'GET' && path === '/'
+        && req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document';
+      if (req.headers.host !== new URL(origin).host || (req.headers.origin && req.headers.origin !== origin)
+          || (req.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(req.headers['sec-fetch-site']) && !entryNavigation)) return send(403, { error: 'این صفحه از نشانی نصب‌کننده باز نشده است.' });
       if (!path.startsWith('/api/')) {
         if (req.method !== 'GET' || !FILES[path]) return send(404, { error: 'یافت نشد.' });
         const [name, type] = FILES[path];
