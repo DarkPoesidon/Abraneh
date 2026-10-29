@@ -24,6 +24,9 @@
   const reportingReceipts = new Set();
   let locatingUnread = null;
   let openingChatId = null;
+  let profile = {}, archivedView = false, composerContext = null;
+  const hiddenMessages = new Map(), deniedChats = new Set(), chatDetails = new Map();
+  let invitation = new URLSearchParams(location.hash?.slice(1) || '');
 
   // DOM Elements
   const authOverlay = document.getElementById('auth-overlay');
@@ -176,7 +179,7 @@
       authSubmitBtn.textContent = 'در حال پردازش...';
 
       const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
-      const body = { username, password, displayName };
+      const body = { username, password, displayName, inviteToken: invitation.get('register') || '' };
       const res = await api(endpoint, { method: 'POST', body: JSON.stringify(body) });
 
       token = res.token;
@@ -184,6 +187,7 @@
       localStorage.setItem('cf_msg_token', token);
       localStorage.setItem('cf_msg_user', JSON.stringify(currentUser));
 
+      if(invitation.has('register')) {invitation.delete('register');history.replaceState(null,'',location.pathname);}
       setupUserSession();
     } catch (err) {
       authError.textContent = err.message;
@@ -211,8 +215,10 @@
     for (const socket of backgroundSockets.values()) { socket.onmessage = socket.onclose = null; socket.close(); }
     backgroundSockets.clear(); outbox = [];
     reportedReceipts.clear(); reportingReceipts.clear();
+    hiddenMessages.clear();chatDetails.clear();deniedChats.clear();profile={};cancelComposer();
     for (const key of Object.keys(receiptsByChat)) delete receiptsByChat[key];
     sessionsModal.style.display = 'none';
+    document.getElementById('feature-modal').style.display='none';
     clearInterval(chatPollInterval);
     chatPollInterval = null;
     chats = [];
@@ -242,7 +248,9 @@
       for (const item of outbox) { item.attemptedAt = 0; item.attempts = 0; }
     } catch { outbox = []; chatError.textContent = 'خواندن صف پیام‌های این دستگاه انجام نشد.'; }
     for (const item of outbox) addPending(item);
-    loadChats();
+    loadProfile().catch(() => {});
+    redeemInvitation().catch(error => { chatError.textContent=error.message; });
+    loadChats().then(()=>{const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
     if (!chatPollInterval) chatPollInterval = setInterval(() => {
       if (document.visibilityState !== 'hidden') loadChats();
       flushOutbox();
@@ -269,19 +277,24 @@
       // Do not let a list request started before a live message roll its preview back.
       chats = snapshot.map(chat => {
         const live = chats.find(c => c.id === chat.id);
-        return live && live.updatedAt > chat.updatedAt ? { ...chat, lastMessage: live.lastMessage, updatedAt: live.updatedAt } : chat;
-      }).sort((a, b) => b.updatedAt - a.updatedAt);
+        const newerPreview=live?.lastMessage?.id===chat.lastMessage?.id&&Number(live?.lastMessage?.revision||0)>Number(chat.lastMessage?.revision||0);
+        return live && (live.updatedAt > chat.updatedAt || newerPreview) ? { ...chat, lastMessage: live.lastMessage, updatedAt: live.updatedAt } : chat;
+      }).sort((a, b) => Number(!!b.pinned)-Number(!!a.pinned) || b.updatedAt - a.updatedAt);
       renderFilteredChats();
+      for(const chat of chats) if(chat.blocked&&!deniedChats.has(chat.id)) denyChat(chat.id,false);
+      for(const item of outbox) if(!chats.some(chat=>chat.id===item.chatId)&&!deniedChats.has(item.chatId)) denyChat(item.chatId,false);
       if (activeChat) {
         const updated = chats.find(c => c.id === activeChat.id);
         if (updated) {
           activeChat = updated;
+          activeChatTitle.textContent=updated.title;chatHeaderAvatar.innerHTML=avatarHtml(updated.avatar,updated.title);
+          await loadChatDetails(updated.id).catch(()=>{});
           if (updated.lastMessage && !(messagesByChat[updated.id] || []).some(m => m.id === updated.lastMessage.id)) {
             await loadMessages(updated.id, { catchUp: true });
           }
           refreshReceipts(updated.id);
           reportReceipt(updated.id);
-        }
+        } else if(!deniedChats.has(activeChat.id)) denyChat(activeChat.id,false);
       }
     } catch (err) {
       if (token === sessionToken) console.error('Failed to load chats:', err);
@@ -290,7 +303,7 @@
 
   function renderFilteredChats() {
     const q = chatFilterInput.value.trim().toLowerCase();
-    renderChats(chats.filter(chat => (chat.title || '').toLowerCase().includes(q)));
+    renderChats(chats.filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)));
   }
 
   function renderChats(list) {
@@ -305,10 +318,10 @@
       item.className = `chat-item ${activeChat?.id === chat.id ? 'active' : ''}`;
       const initials = (chat.title || '؟')[0].toUpperCase();
       const timeStr = chat.lastMessage ? formatTime(chat.lastMessage.createdAt) : '';
-      const lastText = chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است';
+      const lastText = (chat.pinned?'⌖ ':'')+(chat.muted?'بی‌صدا · ':'')+(chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است');
 
       item.innerHTML = `
-        <div class="avatar">${escapeHtml(initials)}</div>
+        <div class="avatar">${avatarHtml(chat.avatar,chat.title)}</div>
         <div class="chat-meta">
           <div class="chat-top-row">
             <span class="chat-title">${escapeHtml(chat.title)}</span>
@@ -331,12 +344,14 @@
   async function openChat(chat) {
     activeChat = chat;
     openingChatId = chat.id;
+    cancelComposer();
+    loadChatDetails(chat.id).catch(() => {});
     renderFilteredChats();
     typingBar.textContent = '';
     chatError.textContent = '';
     messageInput.value = '';
     btnFirstUnread.hidden = !chat.firstUnreadId;
-    btnAddMembers.style.display = chat.type === 'group' ? 'inline-flex' : 'none';
+    btnAddMembers.style.display = chat.type === 'group' && ['owner','admin'].includes(chat.role) ? 'inline-flex' : 'none';
 
     // Mobile layout adjustment
     if (window.innerWidth <= 768) {
@@ -346,7 +361,7 @@
     emptyState.style.display = 'none';
     activeChatWrapper.style.display = 'flex';
     activeChatTitle.textContent = chat.title;
-    chatHeaderAvatar.textContent = (chat.title || '؟')[0].toUpperCase();
+    chatHeaderAvatar.innerHTML = avatarHtml(chat.avatar,chat.title);
     statusIndicatorDot.className = 'status-dot';
     statusText.textContent = 'در حال اتصال...';
 
@@ -427,9 +442,16 @@
       if (!message.pending && message.clientMsgId) for (const [id, old] of unique) {
         if (old.pending && old.clientMsgId === message.clientMsgId && old.senderId === message.senderId) unique.delete(id);
       }
-      unique.set(message.id, message);
+      const prior = unique.get(message.id);
+      if (!prior || Number(message.revision || 0) >= Number(prior.revision || 0)) unique.set(message.id, message);
     }
-    return [...unique.values()].sort((a, b) => Number(!!a.pending) - Number(!!b.pending) || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const values=[...unique.values()].filter(message => !hiddenMessages.get(message.chatId)?.has(message.id));
+    for(const message of values) if(message.replyToId) {
+      const parent=unique.get(message.replyToId);
+      if(parent) message.replyTo={id:parent.id,senderName:parent.senderName,text:parent.deletedAt?'':parent.text,deleted:!!parent.deletedAt};
+      if(hiddenMessages.get(message.chatId)?.has(message.replyToId)&&message.replyTo) message.replyTo={...message.replyTo,text:'',deleted:true};
+    }
+    return values.sort((a, b) => Number(!!a.pending) - Number(!!b.pending) || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   function cursorFor(message) { return `${message.createdAt}:${message.id}`; }
@@ -455,7 +477,7 @@
       return;
     }
 
-    msgList.forEach((msg) => {
+    msgList.filter(msg => !hiddenMessages.get(msg.chatId)?.has(msg.id)).forEach((msg) => {
       if (activeChat?.firstUnreadId === msg.id) { const divider = document.createElement('div'); divider.className = 'unread-divider'; divider.textContent = 'پیام‌های نخوانده'; messagesContainer.appendChild(divider); }
       appendMessageToUI(msg, !previousIds.has('message-' + msg.id));
     });
@@ -476,9 +498,12 @@
 
     bubble.innerHTML = `
       ${senderHtml}
-      <div class="message-text">${escapeHtml(msg.text)}</div>
-      <div class="message-time">${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div>
+      ${msg.replyTo && !msg.deletedAt ? `<button class="reply-quote" type="button" data-reply="${escapeHtml(msg.replyTo.id)}"><strong>${escapeHtml(msg.replyTo.senderName)}</strong><span>${escapeHtml(msg.replyTo.deleted ? 'پیام حذف شده' : msg.replyTo.text.slice(0,180))}</span></button>` : ''}
+      <div class="message-text${msg.deletedAt ? ' deleted-message' : ''}">${msg.deletedAt ? 'این پیام حذف شده است' : escapeHtml(msg.text)}</div>
+      ${!msg.deletedAt && msg.reactions?.length ? `<div class="reactions">${msg.reactions.map(r=>`<button type="button" class="reaction-chip ${r.users.includes(currentUser.id)?'selected':''}" data-emoji="${escapeHtml(r.emoji)}" aria-label="واکنش ${escapeHtml(r.emoji)}">${escapeHtml(r.emoji)} ${r.users.length.toLocaleString('fa-IR')}</button>`).join('')}</div>` : ''}
+      <div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div>
     `;
+    if (!msg.pending) addMessageControls(bubble,msg);
     if (msg.pending) {
       if (msg.failed) {
         const retry = document.createElement('button'); retry.className = 'message-retry'; retry.textContent = 'تلاش دوباره'; retry.type = 'button';
@@ -516,7 +541,7 @@
   }
 
   function connectWebSocket(chatId) {
-    if (!token || activeChat?.id !== chatId) return;
+    if (!token || activeChat?.id !== chatId || deniedChats.has(chatId)) return;
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${location.host}/ws?chatId=${encodeURIComponent(chatId)}&token=${encodeURIComponent(token)}`;
 
@@ -530,6 +555,7 @@
       statusText.textContent = 'متصل به سرور';
       clearInterval(wsPingInterval);
       loadMessages(chatId, { catchUp: true });
+      refreshLoadedMessages(chatId).catch(error=>{if(activeChat?.id===chatId)chatError.textContent=error.message;});
       flushOutbox();
 
       // Keepalive ping every 25 seconds
@@ -557,6 +583,7 @@
       statusText.textContent = 'در حال اتصال مجدد...';
       if (wsPingInterval) clearInterval(wsPingInterval);
       wsPingInterval = null;
+      if (event?.code === 4003) { denyChat(chatId); return; }
       if (event?.code === 4001) { endSession(); authError.textContent = 'نشست این دستگاه پایان یافته است. دوباره وارد شوید.'; authError.style.display = 'block'; return; }
       if (token && activeChat?.id === chatId) {
         const delay = Math.min(1000 * 2 ** reconnectAttempt++, 30000);
@@ -583,13 +610,15 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && token) {
       loadChats();
-      if (activeChat) loadMessages(activeChat.id, { catchUp: true });
+      if (activeChat) {loadMessages(activeChat.id, { catchUp: true });refreshLoadedMessages(activeChat.id).catch(()=>{});}
       if (activeChat) { refreshReceipts(activeChat.id); reportReceipt(activeChat.id); }
     }
   });
 
   function handleServerWsEvent(data) {
     if (data.event === 'session_revoked') { endSession(); authError.textContent = 'دسترسی این دستگاه لغو شده است. دوباره وارد شوید.'; authError.style.display = 'block'; return; }
+    if (data.event === 'chat_access_revoked') { denyChat(data.chatId); return; }
+    if (data.event === 'message_changed') { acceptMutation(data.message); return; }
     if (data.event === 'new_message') {
       const msg = data.message;
       acknowledgeOutbox(msg);
@@ -649,12 +678,15 @@
   function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !activeChat) return;
+    if (deniedChats.has(activeChat.id)) { chatError.textContent='دسترسی ارسال در این گفتگو بسته است.'; return; }
+    if (composerContext?.mode === 'edit') { commitEdit(text); return; }
     if (text.length > 10000) { chatError.textContent = 'هر پیام باید حداکثر ۱۰٬۰۰۰ کاراکتر باشد.'; return; }
 
     if (outbox.length >= 100) { chatError.textContent = 'صف این دستگاه پر است. ابتدا پیام‌های در انتظار را ارسال یا حذف کنید.'; return; }
-    const item = { chatId: activeChat.id, text, clientMsgId: 'cli_' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + '_' + Math.random().toString(36).slice(2)), createdAt: Date.now(), attemptedAt: 0, attempts: 0, failed: false };
+    const item = { chatId: activeChat.id, text, ...(composerContext?.mode === 'reply' ? {replyToId:composerContext.message.id,replyTo:{id:composerContext.message.id,text:composerContext.message.text,senderName:composerContext.message.senderName}} : {}), clientMsgId: 'cli_' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + '_' + Math.random().toString(36).slice(2)), createdAt: Date.now(), attemptedAt: 0, attempts: 0, failed: false };
     if (!saveOutbox([...outbox, item])) return;
     outbox.push(item); addPending(item);
+    cancelComposer();
     renderMessages(messagesByChat[activeChat.id]);
     chatError.textContent = '';
     messageInput.value = '';
@@ -712,7 +744,7 @@
       if (Date.now() - (item.attemptedAt || 0) < 12_000) continue;
       if ((item.attempts || 0) >= 5) { item.failed = true; addPending(item); continue; }
       item.attemptedAt = Date.now(); item.attempts = (item.attempts || 0) + 1;
-      try { socket.send(JSON.stringify({ action: 'send_message', chatId, text: item.text, clientMsgId: item.clientMsgId })); }
+      try { socket.send(JSON.stringify({ action: 'send_message', chatId, text: item.text, clientMsgId: item.clientMsgId, ...(item.replyToId ? {replyToId:item.replyToId} : {}) })); }
       catch { item.attemptedAt = 0; }
       addPending(item);
     }
@@ -725,6 +757,7 @@
       if (!outbox.some(item => item.chatId === chatId && !item.failed)) { socket.onclose = null; socket.close(); backgroundSockets.delete(chatId); }
     }
     for (const chatId of new Set(outbox.filter(item => !item.failed).map(item => item.chatId))) {
+      if(deniedChats.has(chatId)) {for(const item of outbox.filter(row=>row.chatId===chatId)){item.failed=true;addPending(item);}saveOutbox();continue;}
       if (activeChat?.id === chatId && ws?.readyState === WebSocket.OPEN) { sendQueued(ws, chatId); continue; }
       if (activeChat?.id === chatId && ws && ws.readyState !== WebSocket.CLOSED) continue;
       const previous = backgroundSockets.get(chatId);
@@ -740,6 +773,7 @@
       };
       socket.onclose = event => {
         if (backgroundSockets.get(chatId) === socket) backgroundSockets.delete(chatId);
+        if (event?.code === 4003) denyChat(chatId);
         if (event?.code === 4001 && token === sessionToken) endSession();
       };
       socket.onerror = () => {};
@@ -996,6 +1030,244 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // Daily-use tools share the authenticated session, outbox and message store.
+  const byId = id => document.getElementById(id);
+  const featureModal = byId('feature-modal'), featureContent = byId('feature-content');
+  let featureGeneration = 0, lastFeatureFocus = null, avatarDraft = '';
+  const roleName = role => ({owner:'مالک',admin:'مدیر',member:'عضو'})[role] || 'عضو';
+  const isManager = chat => ['owner','admin'].includes(chat?.role);
+  const post = (path,body={}) => api(path,{method:'POST',body:JSON.stringify(body)});
+  const patch = (path,body) => api(path,{method:'PATCH',body:JSON.stringify(body)});
+  function closeFeature() { featureGeneration++; featureModal.style.display='none'; lastFeatureFocus?.focus?.(); }
+  function showFeature(title,html) {
+    lastFeatureFocus=document.activeElement;
+    byId('feature-title').textContent=title; featureContent.innerHTML=html;
+    byId('feature-status').textContent=''; featureModal.style.display='flex'; featureGeneration++;
+    byId('btn-close-feature').focus?.(); return featureGeneration;
+  }
+  function featureError(error) { byId('feature-status').textContent=error.message || String(error); }
+  function bind(id,callback,event='click') { byId(id)?.addEventListener(event,async e=> { if(event==='submit') e.preventDefault(); try { await callback(e); } catch(error) { featureError(error); } }); }
+  function avatarHtml(value,name) { return /^data:image\/(png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value||'') ? `<img src="${escapeHtml(value)}" alt="">` : escapeHtml((name||'؟')[0]); }
+  byId('btn-close-feature').addEventListener('click',closeFeature);
+  featureModal.addEventListener('click',e=> { if(e.target===featureModal) closeFeature(); });
+  document.addEventListener('keydown',e=> {
+    if(featureModal.style.display!=='flex') return;
+    if(e.key==='Escape') { closeFeature(); return; }
+    if(e.key==='Tab') {
+      const nodes=[...featureModal.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea,select,a[href]')].filter(el=>!el.hidden&&el.offsetParent!==null);
+      if(!nodes.length) return; const first=nodes[0],last=nodes[nodes.length-1];
+      if(e.shiftKey&&document.activeElement===first) { e.preventDefault();last.focus(); }
+      else if(!e.shiftKey&&document.activeElement===last) { e.preventDefault();first.focus(); }
+    }
+  });
+  async function loadProfile() {
+    const sessionToken=token, row=await api('/api/profile'); if(!row||sessionToken!==token) return;
+    profile=row; currentUser.displayName=row.displayName || currentUser.displayName;
+    userDisplayName.textContent=currentUser.displayName; userAvatar.innerHTML=avatarHtml(row.avatar,currentUser.displayName);
+    localStorage.setItem('cf_msg_user',JSON.stringify(currentUser)); applyAppearance(row.theme||'dark',row.font_size||'normal');
+  }
+  function applyAppearance(theme,size) {
+    const light=theme==='light'||(theme==='system'&&window.matchMedia?.('(prefers-color-scheme: light)').matches);
+    if(document.documentElement?.dataset) { document.documentElement.dataset.theme=light?'light':'dark'; document.documentElement.dataset.fontSize=size; }
+  }
+  window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>applyAppearance(profile.theme,profile.font_size));
+  byId('btn-settings').addEventListener('click',()=>settings().catch(featureError));
+  async function settings() {
+    showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>'); const generation=featureGeneration;
+    await loadProfile(); if(generation!==featureGeneration) return;
+    avatarDraft=profile.avatar||'';
+    showFeature('پروفایل و تنظیمات',`
+      <form id="profile-form" class="feature-form">
+        <div class="profile-picture"><div class="avatar" id="profile-avatar">${avatarHtml(avatarDraft,currentUser.displayName)}</div><label class="quiet-button">انتخاب عکس<input id="profile-file" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden"></label><button id="remove-avatar" class="quiet-button" type="button">حذف عکس</button></div>
+        <label>نام نمایشی<input id="profile-name" class="form-input" required maxlength="100" value="${escapeHtml(currentUser.displayName)}"></label>
+        <label>دربارهٔ من<textarea id="profile-about" class="form-input" maxlength="300" rows="2">${escapeHtml(profile.about||'')}</textarea></label>
+        <div class="field-pair"><label>ظاهر<select id="profile-theme" class="form-input"><option value="dark">تیره</option><option value="light">روشن</option><option value="system">هماهنگ با دستگاه</option></select></label><label>اندازهٔ نوشته<select id="profile-font" class="form-input"><option value="small">کوچک</option><option value="normal">معمولی</option><option value="large">بزرگ</option></select></label></div>
+        <label class="check-label"><input id="profile-preview" type="checkbox" ${profile.notification_preview?'checked':''}>نمایش متن پیام در اعلان</label>
+        <p class="session-help">با خاموش بودن این گزینه، اعلان فقط دریافت پیام تازه را نشان می‌دهد.</p>
+        <button class="btn-primary" type="submit">ذخیرهٔ تنظیمات</button>
+      </form>
+      <section class="feature-section"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
+      <section class="feature-section"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
+      <div class="button-row feature-section"><button id="settings-blocks" class="quiet-button" type="button">افراد مسدودشده</button><button id="settings-admin" class="quiet-button" type="button">مدیریت سرویس</button></div>`);
+    byId('profile-theme').value=profile.theme||'dark'; byId('profile-font').value=profile.font_size||'normal';
+    byId('notification-state').textContent=!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)?'این مرورگر اعلان پس‌زمینه را پشتیبانی نمی‌کند.':!profile.pushConfigured?'کلید اعلان سرور تنظیم نیست؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.':`اجازهٔ مرورگر: ${{granted:'فعال',denied:'مسدود؛ از تنظیمات مرورگر باز کنید',default:'هنوز درخواست نشده'}[Notification.permission]}`;
+    bind('profile-file',async e=> {
+      const file=e.target.files[0]; if(!file) return; if(file.size>8*1024*1024) throw new Error('عکس حداکثر ۸ مگابایت انتخاب کنید.');
+      const bitmap=await createImageBitmap(file); const canvas=document.createElement('canvas'); canvas.width=canvas.height=96;
+      const context=canvas.getContext('2d'), edge=Math.min(bitmap.width,bitmap.height); context.drawImage(bitmap,(bitmap.width-edge)/2,(bitmap.height-edge)/2,edge,edge,0,0,96,96); bitmap.close();
+      avatarDraft=canvas.toDataURL('image/webp',.8); if(avatarDraft.length>48000) throw new Error('عکس کوچکتری انتخاب کنید.'); byId('profile-avatar').innerHTML=avatarHtml(avatarDraft,currentUser.displayName);
+    },'change');
+    bind('remove-avatar',()=>{avatarDraft='';byId('profile-avatar').innerHTML=avatarHtml('',currentUser.displayName);});
+    bind('profile-form',async()=>{await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
+    bind('password-form',async()=>{if(byId('password-new').value!==byId('password-confirm').value) throw new Error('تکرار رمز تازه مطابقت ندارد.'); await post('/api/profile/password',{currentPassword:byId('password-current').value,newPassword:byId('password-new').value}); byId('password-form').reset();byId('feature-status').textContent='رمز تغییر کرد؛ سایر دستگاه‌ها خارج شدند.';},'submit');
+    bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
+    bind('settings-blocks',showBlocks); bind('settings-admin',serviceSettings);
+  }
+  async function saveProfile(extra={}) {
+    await patch('/api/profile',{displayName:byId('profile-name').value.trim(),about:byId('profile-about').value,avatar:avatarDraft,theme:byId('profile-theme').value,fontSize:byId('profile-font').value,notifications:!!profile.notifications,notificationPreview:byId('profile-preview').checked,...extra}); await loadProfile();
+  }
+  async function enableNotifications() {
+    if(!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)) throw new Error('این مرورگر از اعلان پس‌زمینه پشتیبانی نمی‌کند.');
+    if(!profile.pushConfigured) throw new Error('سرور را با نصب‌کنندهٔ جدید به‌روز کنید.');
+    const permission=await Notification.requestPermission(); if(permission!=='granted') throw new Error('اجازهٔ اعلان داده نشد. می‌توانید آن را در تنظیمات مرورگر تغییر دهید.');
+    const registration=await navigator.serviceWorker.ready;
+    const bytes=Uint8Array.from(atob(profile.vapidPublicKey.replace(/-/g,'+').replace(/_/g,'/')),ch=>ch.charCodeAt(0));
+    let subscription=await registration.pushManager.getSubscription();
+    if(subscription?.options.applicationServerKey && Array.from(new Uint8Array(subscription.options.applicationServerKey)).join()!==Array.from(bytes).join()) {await subscription.unsubscribe();subscription=null;}
+    subscription ||= await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
+    await saveProfile({notifications:true}); await post('/api/push',subscription.toJSON());
+    byId('notification-state').textContent='اعلان این دستگاه فعال شد. یک پیام از حساب دیگر برای آزمایش بفرستید.';
+  }
+  function cancelComposer() { composerContext=null; byId('composer-context').hidden=true; btnSendMessage.disabled=false; btnSendMessage.title='ارسال'; }
+  byId('btn-cancel-context').addEventListener('click',()=>{if(composerContext?.mode==='edit') messageInput.value='';cancelComposer();messageInput.focus?.();});
+  function setComposer(mode,msg) { if(messageInput.value.trim()&&!confirm('متن فعلی کادر کنار گذاشته شود؟')) return; composerContext={mode,message:msg}; byId('composer-label').textContent=`${mode==='edit'?'ویرایش پیام':'پاسخ به '+msg.senderName}: ${msg.text.slice(0,120)}`;byId('composer-context').hidden=false;messageInput.value=mode==='edit'?msg.text:'';btnSendMessage.title=mode==='edit'?'ذخیرهٔ ویرایش':'ارسال';closeFeature();messageInput.focus?.(); }
+  async function commitEdit(text) {
+    const context=composerContext,chatId=activeChat.id; btnSendMessage.disabled=true;
+    try { const result=await post(`/api/chats/${chatId}/messages/${context.message.id}/edit`,{text});acceptMutation(result.message); if(composerContext===context) {cancelComposer();messageInput.value='';} }
+    catch(error) {chatError.textContent=error.message;}
+    finally {btnSendMessage.disabled=false;}
+  }
+  function acceptMutation(message) {
+    if(!message?.chatId) return; const id=message.chatId;
+    messagesByChat[id]=mergeMessages(messagesByChat[id]||[],[message]);
+    const latest=messagesByChat[id].find(row=>row.id===message.id);if(!latest)return;
+    for(const row of messagesByChat[id]) if(row.replyToId===latest.id) row.replyTo={id:latest.id,senderName:latest.senderName,text:latest.deletedAt?'':latest.text,deleted:!!latest.deletedAt};
+    const chat=chats.find(chat=>chat.id===id); if(chat?.lastMessage?.id===latest.id) chat.lastMessage={...latest,text:latest.deletedAt?'پیام حذف شده':latest.text};
+    if(activeChat?.id===id) {renderMessages(messagesByChat[id],{keepPosition:true});renderPin(id);}
+    renderFilteredChats();
+  }
+  function addMessageControls(bubble,msg) {
+    const button=document.createElement('button');button.type='button';button.className='message-more';button.textContent='⋯';button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));bubble.appendChild(button);
+    bubble.querySelector?.('.reply-quote')?.addEventListener('click',()=>jumpToMessage(msg.chatId,msg.replyTo.id).catch(error=>{chatError.textContent=error.message;}));
+    bubble.querySelectorAll?.('[data-emoji]').forEach(button=>button.addEventListener('click',()=>react(msg,button.dataset.emoji).catch(error=>{chatError.textContent=error.message;})));
+  }
+  async function mutate(msg,action,body={}) { const result=await post(`/api/chats/${msg.chatId}/messages/${msg.id}/${action}`,body);if(result.message) acceptMutation(result.message);return result; }
+  async function react(msg,emoji) { const previous=msg.reactions?.find(row=>row.users.includes(currentUser.id));await mutate(msg,'reaction',{emoji:previous?.emoji===emoji?'':emoji}); }
+  function messageActions(msg) {
+    const chat=chats.find(chat=>chat.id===msg.chatId)||activeChat, own=msg.senderId===currentUser.id;
+    showFeature('گزینه‌های پیام',`<p class="action-preview">${escapeHtml(msg.deletedAt?'پیام حذف شده':msg.text.slice(0,240))}</p><div class="action-grid">
+      ${!msg.deletedAt?`<button id="action-reply" class="quiet-button">پاسخ</button>${own?'<button id="action-edit" class="quiet-button">ویرایش</button>':''}<button id="action-save" class="quiet-button">ذخیرهٔ پیام</button><button id="action-copy" class="quiet-button">کپی متن</button>${chat?.type==='dm'||isManager(chat)?'<button id="action-pin" class="quiet-button">سنجاق / برداشتن سنجاق</button>':''}`:''}
+      <button id="action-hide" class="quiet-button">حذف فقط برای من</button>${own||chat?.type==='group'&&isManager(chat)?'<button id="action-delete" class="quiet-button danger-text">حذف برای همه</button>':''}${!own?'<button id="action-report" class="quiet-button danger-text">گزارش پیام</button>':''}</div>
+      ${!msg.deletedAt?`<p class="session-help">واکنش شما؛ انتخاب دوباره برای برداشتن</p><div class="emoji-picker">${['👍','❤️','😂','😮','😢','🙏'].map((emoji,i)=>`<button id="react-${i}" class="quiet-button" aria-label="واکنش ${emoji}">${emoji}</button>`).join('')}</div>`:''}`);
+    bind('action-reply',()=>setComposer('reply',msg));bind('action-edit',()=>setComposer('edit',msg));
+    bind('action-copy',async()=>{await navigator.clipboard.writeText(msg.text);byId('feature-status').textContent='متن کپی شد.';});
+    bind('action-save',async()=>{await mutate(msg,'save');byId('feature-status').textContent='در پیام‌های ذخیره‌شده قرار گرفت.';});
+    bind('action-hide',async()=>{if(!confirm('این پیام فقط برای حساب شما پنهان شود؟ مخاطب همچنان آن را می‌بیند.'))return;await mutate(msg,'hide');const hidden=hiddenMessages.get(msg.chatId)||new Set();hidden.add(msg.id);hiddenMessages.set(msg.chatId,hidden);messagesByChat[msg.chatId]=(messagesByChat[msg.chatId]||[]).filter(row=>row.id!==msg.id);renderMessages(messagesByChat[msg.chatId],{keepPosition:true});closeFeature();await loadChats(true);});
+    bind('action-delete',async()=>{if(!confirm('متن این پیام برای همه حذف شود؟ این کار برگشت‌پذیر نیست.'))return;await mutate(msg,'delete');closeFeature();});
+    bind('action-pin',async()=>{const details=await api(`/api/chats/${msg.chatId}/details`);await mutate(msg,'pin',{pinned:details.pinnedMessageId!==msg.id});await loadChatDetails(msg.chatId);closeFeature();});
+    bind('action-report',()=>reportForm(msg.senderId,msg));
+    ['👍','❤️','😂','😮','😢','🙏'].forEach((emoji,i)=>bind('react-'+i,async()=>{await react(msg,emoji);closeFeature();}));
+  }
+  function denyChat(chatId,reload=true) {
+    if(!chatId)return;deniedChats.add(chatId);
+    for(const item of outbox.filter(row=>row.chatId===chatId)) {item.failed=true;addPending(item);}saveOutbox();
+    const background=backgroundSockets.get(chatId);if(background){background.onclose=null;background.close();backgroundSockets.delete(chatId);}
+    if(activeChat?.id===chatId) {disconnectWebSocket();statusText.textContent='دسترسی گفتگو بسته است';chatError.textContent='عضویت شما یا امکان ارتباط با این مخاطب تغییر کرده است. از اطلاعات گفتگو وضعیت را بررسی کنید.';}
+    if(reload) loadChats();
+  }
+  async function loadChatDetails(chatId) {
+    const sessionToken=token,details=await api(`/api/chats/${chatId}/details`);if(!details?.type||token!==sessionToken)return;
+    chatDetails.set(chatId,details);hiddenMessages.set(chatId,new Set(details.hidden||[]));
+    if(messagesByChat[chatId]) messagesByChat[chatId]=mergeMessages(messagesByChat[chatId],[]);
+    if(details.blocked) deniedChats.add(chatId);else deniedChats.delete(chatId);
+    if(activeChat?.id===chatId) {activeChat.role=details.role;btnAddMembers.style.display=details.type==='group'&&isManager(details)?'inline-flex':'none';renderPin(chatId);renderMessages(messagesByChat[chatId]||[],{keepPosition:true});}
+    return details;
+  }
+  async function refreshLoadedMessages(chatId) {
+    const sessionToken=token,ids=(messagesByChat[chatId]||[]).filter(row=>!row.pending).map(row=>row.id);
+    await loadChatDetails(chatId);
+    for(let offset=0;offset<ids.length;offset+=100) {
+      const rows=await post(`/api/chats/${chatId}/changes`,{ids:ids.slice(offset,offset+100)});
+      if(token!==sessionToken)return;for(const row of rows)acceptMutation(row);
+    }
+  }
+  function renderPin(chatId) {
+    if(activeChat?.id!==chatId)return;const pin=chatDetails.get(chatId)?.pinnedMessageId, msg=messagesByChat[chatId]?.find(m=>m.id===pin),button=byId('btn-pinned-message');
+    button.hidden=!pin||!!hiddenMessages.get(chatId)?.has(pin);button.textContent=pin?`⌖ پیام سنجاق‌شده · ${msg?(msg.deletedAt?'پیام حذف شده':msg.text.slice(0,90)):'نمایش پیام'}`:'';
+  }
+  byId('btn-pinned-message').addEventListener('click',()=>{if(activeChat)jumpToMessage(activeChat.id,chatDetails.get(activeChat.id)?.pinnedMessageId).catch(error=>{chatError.textContent=error.message;});});
+  byId('btn-chat-details').addEventListener('click',()=>{if(activeChat)detailsView(activeChat.id).catch(featureError);});
+  byId('btn-archive').addEventListener('click',()=>{archivedView=!archivedView;byId('btn-archive').textContent=archivedView?'بازگشت به گفتگوها':'آرشیو';byId('btn-archive').setAttribute?.('aria-pressed',String(archivedView));renderFilteredChats();});
+  byId('btn-saved').addEventListener('click',()=>savedView().catch(featureError));
+  async function detailsView(chatId) {
+    showFeature('اطلاعات گفتگو','<p>در حال دریافت…</p>');const generation=featureGeneration,details=await loadChatDetails(chatId);if(generation!==featureGeneration)return;
+    const chat=chats.find(row=>row.id===chatId)||activeChat; if(!chat||!details)return;
+    const group=details.type==='group',manage=isManager(details),owner=details.role==='owner';
+    const blocks=group?[]:await api('/api/blocks'),ownBlock=blocks.some(row=>row.id===chat.partnerId);
+    showFeature(chat.title,`<div class="button-row"><button id="pref-archive" class="quiet-button">${chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'}</button><button id="pref-mute" class="quiet-button">${chat.muted?'روشن‌کردن اعلان':'بی‌صدا کردن'}</button><button id="pref-pin" class="quiet-button">${chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو'}</button></div>
+      ${group?`<p class="session-help">نقش شما: ${roleName(details.role)} · ${details.members.length.toLocaleString('fa-IR')} عضو</p>${manage?'<form id="rename-form" class="feature-form"><label>نام گروه<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام گروه</button></form><button id="group-invites" class="quiet-button">دعوت‌نامه‌های گروه</button>':''}<section class="feature-section"><h4>اعضا</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${roleName(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><button id="leave-group" class="quiet-button danger-text">خروج از گروه</button><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row"><button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button></div></div>`}`);
+    for(const [id,key] of [['pref-archive','archived'],['pref-mute','muted'],['pref-pin','pinned']]) bind(id,async()=>{await patch(`/api/chats/${chatId}/preferences`,{[key]:!chat[key]});await loadChats(true);await detailsView(chatId);});
+    if(group) {
+      if(manage) {byId('rename-title').value=chat.title;bind('rename-form',async()=>{await patch(`/api/chats/${chatId}/group`,{action:'rename',title:byId('rename-title').value});await loadChats(true);activeChatTitle.textContent=chats.find(c=>c.id===chatId)?.title||chat.title;byId('feature-status').textContent='نام گروه ذخیره شد.';},'submit');bind('group-invites',()=>invitesView(chatId));}
+      details.members.forEach((member,i)=>{
+        bind('member-role-'+i,async()=>{await patch(`/api/chats/${chatId}/group`,{action:'role',userId:member.id,role:member.role==='admin'?'member':'admin'});await detailsView(chatId);});
+        bind('member-transfer-'+i,async()=>{if(!confirm(`مالکیت به «${member.displayName}» منتقل شود؟ شما مدیر می‌مانید و دیگر نمی‌توانید مالک را حذف کنید.`))return;await patch(`/api/chats/${chatId}/group`,{action:'transfer',userId:member.id});await loadChats(true);await detailsView(chatId);});
+        bind('member-remove-'+i,async()=>{if(!confirm(`«${member.displayName}» از گروه حذف شود؟`))return;await patch(`/api/chats/${chatId}/group`,{action:'remove',userId:member.id});await detailsView(chatId);});
+      });
+      bind('leave-group',async()=>{if(!confirm('از گروه خارج می‌شوید؟ دسترسی شما به تاریخچهٔ گروه هم قطع می‌شود.'))return;await post(`/api/chats/${chatId}/leave`);denyChat(chatId);activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='flex';sidebar.classList.remove('hidden');closeFeature();await loadChats(true);});
+    } else {
+      bind('block-user',async()=>{if(!ownBlock&&!confirm('پیام خصوصی با این مخاطب مسدود شود؟'))return;await api('/api/blocks',{method:ownBlock?'DELETE':'POST',body:JSON.stringify({userId:chat.partnerId})});if(ownBlock){deniedChats.delete(chatId);connectWebSocket(chatId);}else denyChat(chatId);await loadChats(true);await detailsView(chatId);});
+      bind('report-user',()=>reportForm(chat.partnerId));
+    }
+  }
+  async function showBlocks() {
+    const rows=await api('/api/blocks');showFeature('افراد مسدودشده',rows.length?rows.map((row,i)=>`<div class="member-row"><span class="member-name">${escapeHtml(row.displayName)} <bdi>@${escapeHtml(row.username)}</bdi></span><button id="unblock-${i}" class="quiet-button">رفع مسدودیت</button></div>`).join(''):'<p class="session-help">کسی را مسدود نکرده‌اید.</p>');
+    rows.forEach((row,i)=>bind('unblock-'+i,async()=>{await api('/api/blocks',{method:'DELETE',body:JSON.stringify({userId:row.id})});await loadChats(true);await showBlocks();}));
+  }
+  function reportForm(userId,msg) {showFeature('گزارش مزاحمت',`<form id="report-form" class="feature-form"><p class="session-help">گزارش برای مدیر این سرویس ارسال می‌شود.${msg?' متن همین پیام هم همراه گزارش است.':''}</p><label>توضیح<textarea id="report-reason" class="form-input" rows="4" minlength="3" maxlength="1000" required></textarea></label><button class="btn-primary" type="submit">فرستادن گزارش</button></form>`);bind('report-form',async()=>{await post('/api/reports',{userId,reason:byId('report-reason').value,...(msg?{chatId:msg.chatId,messageId:msg.id}:{})});byId('feature-status').textContent='گزارش ثبت شد.';byId('report-form').hidden=true;},'submit');}
+  const dateLabel = value => new Date(value).toLocaleString('fa-IR');
+  async function invitesView(chatId=null) {
+    const path=chatId?`/api/chats/${chatId}/invites`:'/api/service/invites',rows=await api(path);
+    showFeature(chatId?'دعوت‌نامه‌های گروه':'دعوت‌نامه‌های ثبت‌نام',`<form id="invite-form" class="feature-form"><p class="session-help">لینک فقط یک بار نمایش داده می‌شود؛ آن را کپی کنید. دعوت گروه به حساب موجود نیاز دارد و جای دعوت ثبت‌نام را نمی‌گیرد.</p><div class="field-pair"><label>اعتبار<select id="invite-hours" class="form-input"><option value="24">یک روز</option><option value="1">یک ساعت</option><option value="168">یک هفته</option></select></label><label>تعداد استفاده<input id="invite-uses" class="form-input" type="number" min="1" max="1000" value="10" required></label></div><button class="btn-primary" type="submit">ساخت لینک دعوت</button></form><div id="created-invite" class="feature-section" hidden><label>لینک دعوت<input id="invite-link" class="form-input" readonly dir="ltr"></label><button id="copy-invite" class="quiet-button">کپی لینک</button></div><section class="feature-section"><h4>دعوت‌های قبلی</h4>${rows.length?rows.map((row,i)=>`<div class="invite-row"><p>${row.revokedAt?'لغوشده':row.expiresAt<=Date.now()?'منقضی':row.uses>=row.useLimit?'مصرف‌شده':'فعال'} · ${row.uses}/${row.useLimit}<small>انقضا: ${dateLabel(row.expiresAt)}</small></p>${!row.revokedAt?`<button id="revoke-invite-${i}" class="quiet-button danger-text">لغو</button>`:''}</div>`).join(''):'<p class="session-help">هنوز دعوتی نساخته‌اید.</p>'}</section>`);
+    bind('invite-form',async()=>{const result=await post(path,{hours:Number(byId('invite-hours').value),uses:Number(byId('invite-uses').value)});byId('created-invite').hidden=false;byId('invite-link').value=location.origin+'/#'+(chatId?'join=':'register=')+result.token;byId('invite-link').select();byId('feature-status').textContent='لینک ساخته شد؛ پیش از بستن پنجره کپی کنید.';},'submit');
+    bind('copy-invite',async()=>{await navigator.clipboard.writeText(byId('invite-link').value);byId('feature-status').textContent='لینک دعوت کپی شد.';});
+    rows.forEach((row,i)=>bind('revoke-invite-'+i,async()=>{if(!confirm('این دعوت‌نامه لغو شود؟'))return;await api(path,{method:'DELETE',body:JSON.stringify({id:row.id})});await invitesView(chatId);}));
+  }
+  async function serviceSettings() {
+    await loadProfile();
+    if(!profile.isServiceAdmin) {
+      showFeature('مدیریت سرویس',profile.adminConfigured?'<p class="session-help">مدیر این سرویس قبلاً تعیین شده است. با حساب مدیر وارد شوید.</p>':'<form id="claim-form" class="feature-form"><p class="session-help">صاحب سرویس می‌تواند با کد نمایش‌داده‌شده در پایان نصب، حساب خودش را مدیر کند. اگر کد را ندارید نصب‌کنندهٔ جدید را با همان حساب کلادفلر و همان نام اجرا کنید.</p><label>کد مدیریت<input id="claim-code" class="form-input" dir="ltr" autocomplete="off" required></label><button class="btn-primary" type="submit">فعال‌سازی مدیریت این حساب</button></form>');
+      bind('claim-form',async()=>{await post('/api/service/claim',{code:byId('claim-code').value.trim()});await serviceSettings();},'submit');return;
+    }
+    const settings=await api('/api/service/settings');
+    showFeature('مدیریت سرویس',`<form id="service-form" class="feature-form"><label>ثبت‌نام<select id="registration-mode" class="form-input"><option value="open">آزاد؛ همه می‌توانند حساب بسازند</option><option value="invite">فقط با دعوت‌نامهٔ ثبت‌نام</option><option value="closed">بسته؛ فقط ورود حساب‌های موجود</option></select></label><button class="btn-primary" type="submit">ذخیرهٔ وضعیت ثبت‌نام</button></form><div class="button-row feature-section"><button id="registration-invites" class="quiet-button">دعوت‌نامه‌های ثبت‌نام</button><button id="service-reports" class="quiet-button">گزارش‌های مزاحمت</button></div><p class="session-help">مدیر سرویس به پایگاه داده دسترسی دارد؛ این نسخه رمزگذاری سرتاسری ندارد.</p>`);
+    byId('registration-mode').value=settings.registration;
+    bind('service-form',async()=>{await patch('/api/service/settings',{registration:byId('registration-mode').value});byId('feature-status').textContent='وضعیت ثبت‌نام ذخیره شد.';},'submit');bind('registration-invites',()=>invitesView());
+    bind('service-reports',async()=>{const rows=await api('/api/service/reports');showFeature('گزارش‌های مزاحمت',rows.length?rows.map((row,i)=>`<section class="feature-section"><p><bdi>@${escapeHtml(row.reporter)}</bdi> ← <bdi>@${escapeHtml(row.target)}</bdi></p><p>${escapeHtml(row.reason)}</p>${row.snapshot?`<blockquote class="action-preview">${escapeHtml(row.snapshot)}</blockquote>`:''}<p class="session-help">${dateLabel(row.created_at)} · ${row.status==='resolved'?'بررسی‌شده':'باز'}</p><button id="resolve-report-${i}" class="quiet-button">${row.status==='resolved'?'باز کردن دوباره':'علامت بررسی‌شده'}</button></section>`).join(''):'<p class="session-help">گزارشی ثبت نشده است.</p>');rows.forEach((row,i)=>bind('resolve-report-'+i,async()=>{await patch('/api/service/reports',{id:row.id,status:row.status==='resolved'?'open':'resolved'});byId('resolve-report-'+i).disabled=true;byId('feature-status').textContent='وضعیت گزارش تغییر کرد.';}));});
+  }
+  byId('btn-message-search').addEventListener('click',()=>{
+    if(!activeChat)return;const chatId=activeChat.id;
+    showFeature('جستجو در گفتگو','<form id="message-search-form" class="feature-form"><label>متن پیام<input id="message-search-query" class="form-input" maxlength="100" required placeholder="عبارت فارسی یا انگلیسی…"></label><button type="submit" class="btn-primary">جستجو</button></form><div id="message-search-results" class="feature-section"></div><button id="more-search-results" class="quiet-button" hidden>نتایج بیشتر</button>');
+    let cursor='',query='',results=[],requestGeneration=0;
+    async function search(older=false) {
+      const generation=++requestGeneration;byId('feature-status').textContent='در حال جستجو…';
+      const page=await api(`/api/chats/${chatId}/search?q=${encodeURIComponent(query)}${older&&cursor?'&before='+encodeURIComponent(cursor):''}`);if(generation!==requestGeneration)return;
+      results=older?[...results,...page]:page;cursor=page.length?cursorFor(page[page.length-1]):'';byId('more-search-results').hidden=page.length<50;
+      byId('message-search-results').innerHTML=results.length?results.map((msg,i)=>`<button id="search-hit-${i}" class="result-card"><strong>${escapeHtml(msg.senderName)}</strong><span>${escapeHtml(msg.text)}</span><small>${dateLabel(msg.createdAt)}</small></button>`).join(''):'<p class="session-help">پیامی پیدا نشد.</p>';
+      results.forEach((msg,i)=>bind('search-hit-'+i,()=>jumpToMessage(chatId,msg.id)));byId('feature-status').textContent='';
+    }
+    bind('message-search-form',async()=>{query=byId('message-search-query').value.trim();await search();},'submit');bind('more-search-results',()=>search(true));byId('message-search-query').focus();
+  });
+  async function jumpToMessage(chatId,messageId) {
+    if(!messageId)return;let chat=chats.find(row=>row.id===chatId);if(!chat){await loadChats(true);chat=chats.find(row=>row.id===chatId);}if(!chat)throw new Error('دیگر به این گفتگو دسترسی ندارید.');
+    if(activeChat?.id!==chatId)await openChat(chat);
+    let rounds=0;while(!(messagesByChat[chatId]||[]).some(row=>row.id===messageId)&&historyState[chatId]?.hasOlder&&rounds++<100)await loadMessages(chatId,{older:true});
+    if(!(messagesByChat[chatId]||[]).some(row=>row.id===messageId))throw new Error('پیام پیدا نشد یا فقط برای حساب شما حذف شده است.');
+    closeFeature();const node=byId('message-'+messageId);node?.scrollIntoView?.({block:'center'});node?.classList.add('highlight-message');setTimeout(()=>node?.classList.remove('highlight-message'),2000);
+  }
+  async function savedView(previous=[],cursor='') {
+    const page=await api('/api/saved'+(cursor?'?before='+encodeURIComponent(cursor):'')),rows=[...previous,...page];showFeature('پیام‌های ذخیره‌شده',`<p class="session-help">این فهرست نشانه‌گذاری پیام اصلی است. ویرایش، حذف یا خروج از گفتگوی اصلی روی دسترسی به آن اثر می‌گذارد. نتایج صفحه‌بندی شده‌اند؛ برای ادامه «ذخیره‌های قبلی» را بزنید.</p>${rows.length?rows.map((msg,i)=>`<div class="saved-row"><button id="saved-open-${i}" class="result-card"><strong>${escapeHtml(msg.senderName)}</strong><span>${escapeHtml(msg.deletedAt?'پیام حذف شده':msg.text)}</span><small>${dateLabel(msg.createdAt)}</small></button><button id="saved-remove-${i}" class="quiet-button danger-text">برداشتن از ذخیره‌ها</button></div>`).join(''):'<p class="session-help">هنوز پیامی ذخیره نکرده‌اید. از دکمهٔ ⋯ کنار هر پیام استفاده کنید.</p>'}<button id="saved-more" class="quiet-button" ${page.length<8?'hidden':''}>ذخیره‌های قبلی</button>`);
+    bind('saved-more',()=>savedView(rows,page.length?page.at(-1).savedAt+':'+page.at(-1).id:''));
+    rows.forEach((msg,i)=>{bind('saved-open-'+i,()=>jumpToMessage(msg.chatId,msg.id));bind('saved-remove-'+i,async()=>{await mutate(msg,'save',{saved:false});await savedView();});});
+  }
+  async function redeemInvitation() {
+    const join=invitation.get('join');if(!join||!token)return;if(!/^[a-f0-9]{64}$/.test(join))throw new Error('دعوت‌نامه معتبر نیست.');
+    const result=await post('/api/invites/'+join+'/join');invitation.delete('join');history.replaceState(null,'',location.pathname);await loadChats(true);const chat=chats.find(row=>row.id===result.chatId);if(chat)await openChat(chat);
+  }
+  window.addEventListener('hashchange',()=>{invitation=new URLSearchParams(location.hash.slice(1));redeemInvitation().catch(error=>{chatError.textContent=error.message;});});
+  api('/api/bootstrap').then(data=>{if(!data)return;byId('registration-help').textContent=data.registration==='invite'?'ثبت‌نام در این سرویس فقط با لینک دعوت مدیر ممکن است.':data.registration==='closed'?'ثبت‌نام فعلاً بسته است؛ با حساب موجود وارد شوید.':'';if(invitation.get('register')){byId('registration-help').textContent='دعوت‌نامهٔ ثبت‌نام دریافت شد. اطلاعات حساب تازه را وارد کنید.';tabRegister.click?.();}}).catch(()=>{});
+  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
 
   // Start app
   setupUserSession();

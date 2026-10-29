@@ -1,6 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { Env, ClientWsAction, ServerWsEvent, Message } from "./types.js";
 import { historyOptions } from "./history.js";
+import { chatAccess, isBlocked, manager, validId, normalizePersian, SESSION_VERSION_SQL } from './access.js';
+import { InputError } from './http.js';
+import { sendPush } from './push.js';
 
 interface WsAttachment {
   chatId: string;
@@ -14,12 +17,14 @@ interface WsAttachment {
 
 export class ChatRoom extends DurableObject<Env> {
   private sqlInitialized = false;
+  private syncing = false;
+  private pushing = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.initSql();
     if (this.ctx.blockConcurrencyWhile) this.ctx.blockConcurrencyWhile(async () => {
-      if (this.ctx.storage.sql.exec('SELECT 1 FROM sync_queue LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now() + 1000);
+      if (this.ctx.storage.sql.exec('SELECT 1 FROM sync_queue UNION ALL SELECT 1 FROM push_queue LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now() + 1000);
     });
   }
 
@@ -43,6 +48,9 @@ export class ChatRoom extends DurableObject<Env> {
         CREATE TABLE IF NOT EXISTS room_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS sync_queue (message_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS send_limits (user_id TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS message_details (message_id TEXT PRIMARY KEY,reply_to TEXT,edited_at INTEGER NOT NULL DEFAULT 0,deleted_at INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS message_reactions (message_id TEXT NOT NULL,user_id TEXT NOT NULL,emoji TEXT NOT NULL,PRIMARY KEY(message_id,user_id));
+        CREATE TABLE IF NOT EXISTS push_queue (message_id TEXT PRIMARY KEY,chat_id TEXT NOT NULL,after_id TEXT NOT NULL DEFAULT '');
       `);
       if (!this.ctx.storage.sql.exec("SELECT 1 FROM room_meta WHERE key = 'dedupe-v1'").toArray().length) {
         this.ctx.storage.transactionSync(() => {
@@ -103,6 +111,15 @@ export class ChatRoom extends DurableObject<Env> {
       const row = this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id = ?', url.searchParams.get('id') || '').toArray()[0];
       return Response.json(row || null);
     }
+    if(url.pathname==='/message-snapshot'&&request.method==='POST') {
+      const {ids,chatId}=await request.json<{ids:string[];chatId:string}>();
+      return Response.json(ids.map(id=>this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',id).toArray()[0]).filter(Boolean).map(row=>this.payload(row,chatId)));
+    }
+    if (url.pathname === '/refresh-access') { await this.authorizedSockets(); return new Response(null,{status:204}); }
+    if (url.pathname === '/message-action' && request.method==='POST') {
+      try { return Response.json({message:await this.applyMessageAction(await request.json<any>())}); }
+      catch (error) { if(error instanceof InputError) return Response.json({error:error.message},{status:error.status}); throw error; }
+    }
     if (url.pathname === '/receipts' && request.method === 'POST') {
       await this.broadcast(await request.json<ServerWsEvent>());
       return new Response(null, { status: 204 });
@@ -125,17 +142,19 @@ export class ChatRoom extends DurableObject<Env> {
       try { options = historyOptions(url.searchParams); }
       catch { return new Response('Invalid history cursor', { status: 400 }); }
       const { limit, beforeTime, beforeId } = options;
+      const userId=url.searchParams.get('userId'),chatId=url.searchParams.get('chatId');
+      const hidden=userId&&chatId ? (await this.env.DB.prepare('SELECT message_id FROM message_hidden WHERE user_id=? AND chat_id=?').bind(userId,chatId).all<{message_id:string}>()).results.map(row=>row.message_id) : [];
       const rows = this.ctx.storage.sql
         .exec(
           `SELECT id, sender_id as senderId, sender_name as senderName, text, created_at as createdAt, client_msg_id as clientMsgId 
-           FROM messages WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
+           FROM messages WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?)) AND id NOT IN(SELECT value FROM json_each(?))
            ORDER BY created_at DESC, id DESC LIMIT ?`,
           beforeTime, beforeTime, beforeTime, beforeId,
-          limit
+          JSON.stringify(hidden),limit
         )
         .toArray();
 
-      return new Response(JSON.stringify(rows.reverse()), {
+      return new Response(JSON.stringify(rows.reverse().map(row=>this.payload({id:row.id,sender_id:row.senderId,sender_name:row.senderName,text:row.text,created_at:row.createdAt,client_msg_id:row.clientMsgId},chatId||''))), {
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -163,10 +182,14 @@ export class ChatRoom extends DurableObject<Env> {
     }
 
     try {
-      const authorized = await this.env.DB.prepare(`SELECT s.id FROM user_sessions s WHERE s.id = ? AND s.user_id = ?
-        AND s.revoked_at IS NULL AND s.expires_at > ? AND EXISTS (SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = s.user_id)`)
-        .bind(sender.sessionId, sender.userId, Date.now(), sender.chatId).first();
+      const authorized = await this.env.DB.prepare(`SELECT s.id,u.display_name AS displayName FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.id = ? AND s.user_id = ?
+        AND s.revoked_at IS NULL AND s.expires_at > ? AND ${SESSION_VERSION_SQL}`)
+        .bind(sender.sessionId, sender.userId, Date.now()).first<{id:string;displayName:string}>();
       if (!authorized) { ws.send(JSON.stringify({ event: 'session_revoked' })); ws.close(4001, 'Session expired or revoked'); return; }
+      sender.displayName=authorized.displayName;ws.serializeAttachment(sender);
+      if (!await chatAccess(this.env,sender.chatId,sender.userId)||await isBlocked(this.env,sender.chatId,sender.userId)) {
+        ws.send(JSON.stringify({event:'chat_access_revoked',chatId:sender.chatId})); ws.close(4003,'Chat access changed'); return;
+      }
     } catch { ws.close(1011, 'Session check unavailable'); return; }
 
     if (data.action === "ping") {
@@ -212,7 +235,8 @@ export class ChatRoom extends DurableObject<Env> {
       const clientMsgId = data.clientMsgId || "";
       const previous = clientMsgId && this.ctx.storage.sql.exec(`SELECT m.* FROM message_keys k JOIN messages m ON m.id = k.message_id WHERE k.sender_id = ? AND k.client_msg_id = ?`, sender.userId, clientMsgId).toArray()[0];
       if (previous) {
-        if (previous.text !== text) { ws.send(JSON.stringify({ event: 'error', clientMsgId, retryable: false, message: 'این شناسه قبلاً برای پیام دیگری استفاده شده است.' })); return; }
+        const details=this.ctx.storage.sql.exec('SELECT edited_at,deleted_at FROM message_details WHERE message_id=?',previous.id).toArray()[0];
+        if (previous.text !== text && !details?.edited_at && !details?.deleted_at) { ws.send(JSON.stringify({ event: 'error', clientMsgId, retryable: false, message: 'این شناسه قبلاً برای پیام دیگری استفاده شده است.' })); return; }
         // An acknowledgment lost on the network must not create another message or broadcast.
         ws.send(JSON.stringify({ event: 'new_message', message: this.payload(previous, sender.chatId) }));
         await this.syncPending();
@@ -226,6 +250,11 @@ export class ChatRoom extends DurableObject<Env> {
         return;
       }
       const messageId = crypto.randomUUID();
+      let replyToId: string | null = null;
+      if (data.replyToId !== undefined) {
+        if (!validId(data.replyToId)||!await this.materialize(data.replyToId,sender.chatId)) { ws.send(JSON.stringify({event:'error',clientMsgId,retryable:false,message:'پیام مورد پاسخ پیدا نشد.'})); return; }
+        replyToId=data.replyToId;
+      }
       // Persist the canonical message, deduplication key and synchronization job atomically.
       try {
         this.ctx.storage.transactionSync(() => {
@@ -240,7 +269,9 @@ export class ChatRoom extends DurableObject<Env> {
           clientMsgId
           );
           if (clientMsgId) this.ctx.storage.sql.exec('INSERT INTO message_keys VALUES (?,?,?)', sender.userId, clientMsgId, messageId);
+          this.ctx.storage.sql.exec('INSERT INTO message_details(message_id,reply_to) VALUES (?,?)',messageId,replyToId);
           this.ctx.storage.sql.exec('INSERT INTO sync_queue VALUES (?,?)', messageId, sender.chatId);
+          this.ctx.storage.sql.exec('INSERT INTO push_queue(message_id,chat_id) VALUES (?,?)',messageId,sender.chatId);
         });
         await this.ctx.storage.setAlarm(Date.now() + 5000);
       } catch (err) {
@@ -251,18 +282,11 @@ export class ChatRoom extends DurableObject<Env> {
 
       await this.syncPending();
 
-      const msgPayload: Message = {
-        id: messageId,
-        chatId: sender.chatId,
-        senderId: sender.userId,
-        senderName: sender.displayName,
-        text,
-        createdAt: now,
-        clientMsgId,
-      };
+      const msgPayload=this.payload(this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',messageId).toArray()[0],sender.chatId);
 
       // 3. Broadcast to all connected sockets in this chat room
       await this.broadcast({ event: "new_message", message: msgPayload });
+      this.ctx.waitUntil(this.flushPush().catch(()=>console.warn('Push delivery deferred or unavailable.')));
     }
   }
 
@@ -287,25 +311,100 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   private payload(row: any, chatId: string): Message {
-    return { id: row.id, chatId, senderId: row.sender_id, senderName: row.sender_name, text: row.text, createdAt: row.created_at, clientMsgId: row.client_msg_id || '' };
+    const details=this.ctx.storage.sql.exec('SELECT * FROM message_details WHERE message_id=?',row.id).toArray()[0];
+    const reactions=this.ctx.storage.sql.exec('SELECT user_id,emoji FROM message_reactions WHERE message_id=?',row.id).toArray();
+    const grouped=new Map<string,string[]>(); for(const reaction of reactions) grouped.set(String(reaction.emoji),[...(grouped.get(String(reaction.emoji))||[]),String(reaction.user_id)]);
+    const parent=details?.reply_to ? this.ctx.storage.sql.exec('SELECT m.*,d.deleted_at FROM messages m LEFT JOIN message_details d ON d.message_id=m.id WHERE m.id=?',details.reply_to).toArray()[0] : null;
+    return { id: row.id, chatId, senderId: row.sender_id, senderName: row.sender_name, text: details?.deleted_at ? '' : row.text, createdAt: row.created_at, clientMsgId: row.client_msg_id || '',
+      replyToId: details?.reply_to ? String(details.reply_to) : null, replyTo: parent ? {id:String(parent.id),text:parent.deleted_at?'':String(parent.text),senderName:String(parent.sender_name),deleted:!!parent.deleted_at}:null,
+      editedAt:Number(details?.edited_at||0),deletedAt:Number(details?.deleted_at||0),revision:Number(details?.revision||0),reactions:details?.deleted_at?[]:[...grouped].map(([emoji,users])=>({emoji,users})) };
   }
 
-  async alarm() { await this.syncPending(); }
+  private async materialize(id: string,chatId: string): Promise<any> {
+    const local=this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',id).toArray()[0]; if(local) return local;
+    const row=await this.env.DB.prepare(`SELECT m.*,u.display_name AS sender_name,md.client_msg_id,d.reply_to,d.edited_at,d.deleted_at,d.revision FROM messages m JOIN users u ON u.id=m.sender_id LEFT JOIN message_metadata md ON md.message_id=m.id LEFT JOIN message_details d ON d.message_id=m.id WHERE m.id=? AND m.chat_id=?`).bind(id,chatId).first<any>();
+    if(!row) return null;
+    const reactions=(await this.env.DB.prepare('SELECT user_id,emoji FROM message_reactions WHERE message_id=?').bind(id).all()).results;
+    this.ctx.storage.transactionSync(()=>{
+      if(this.ctx.storage.sql.exec('SELECT 1 FROM messages WHERE id=?',id).toArray().length) return;
+      this.ctx.storage.sql.exec('INSERT INTO messages VALUES (?,?,?,?,?,?)',id,row.sender_id,row.sender_name,row.text,row.created_at,row.client_msg_id||'');
+      this.ctx.storage.sql.exec('INSERT INTO message_details VALUES (?,?,?,?,?)',id,row.reply_to||null,row.edited_at||0,row.deleted_at||0,row.revision||0);
+      for(const reaction of reactions) this.ctx.storage.sql.exec('INSERT INTO message_reactions VALUES (?,?,?)',id,reaction.user_id,reaction.emoji);
+    });
+    return this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',id).toArray()[0];
+  }
+
+  private async applyMessageAction(data: any): Promise<Message> {
+    if(!validId(data.messageId)||!validId(data.chatId)||!validId(data.actor)||!validId(data.sessionId)) throw new InputError('درخواست پیام معتبر نیست.');
+    const access=await chatAccess(this.env,data.chatId,data.actor);
+    const session=await this.env.DB.prepare(`SELECT s.id FROM user_sessions s WHERE s.id=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL}`).bind(data.sessionId,data.actor,Date.now()).first();
+    if(!access||!session) throw new InputError('دسترسی شما به گفتگو پایان یافته است.',403);
+    if(data.action!=='delete'&&await isBlocked(this.env,data.chatId,data.actor)) throw new InputError('این گفتگوی خصوصی مسدود است.',403);
+    const row=await this.materialize(data.messageId,data.chatId); if(!row) throw new InputError('پیام پیدا نشد.',404);
+    const details=this.ctx.storage.sql.exec('SELECT * FROM message_details WHERE message_id=?',row.id).toArray()[0];
+    if(data.action==='edit' && (row.sender_id!==data.actor||details?.deleted_at)) throw new InputError('فقط پیام خودتان را پیش از حذف می‌توانید ویرایش کنید.',403);
+    if(data.action==='delete' && row.sender_id!==data.actor && !(access.type==='group'&&manager(access.role))) throw new InputError('اجازهٔ حذف این پیام برای همه را ندارید.',403);
+    if(data.action==='edit' && (typeof data.text!=='string'||!data.text.trim()||data.text.trim().length>10000)) throw new InputError('متن پیام بین ۱ تا ۱۰٬۰۰۰ کاراکتر است.');
+    if(data.action==='reaction' && (details?.deleted_at||!['','👍','❤️','😂','😮','😢','🙏'].includes(data.emoji))) throw new InputError('واکنش معتبر نیست یا پیام حذف شده است.');
+    this.ctx.storage.transactionSync(()=>{
+      this.ctx.storage.sql.exec('INSERT OR IGNORE INTO message_details(message_id) VALUES (?)',row.id);
+      if(data.action==='edit') { this.ctx.storage.sql.exec('UPDATE messages SET text=? WHERE id=?',data.text.trim(),row.id); this.ctx.storage.sql.exec('UPDATE message_details SET edited_at=? WHERE message_id=?',Date.now(),row.id); }
+      else if(data.action==='delete') { this.ctx.storage.sql.exec("UPDATE messages SET text='' WHERE id=?",row.id); this.ctx.storage.sql.exec('UPDATE message_details SET deleted_at=? WHERE message_id=?',Date.now(),row.id); this.ctx.storage.sql.exec('DELETE FROM message_reactions WHERE message_id=?',row.id); }
+      else if(data.action==='reaction') { if(data.emoji) this.ctx.storage.sql.exec('INSERT INTO message_reactions VALUES (?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET emoji=excluded.emoji',row.id,data.actor,data.emoji); else this.ctx.storage.sql.exec('DELETE FROM message_reactions WHERE message_id=? AND user_id=?',row.id,data.actor); }
+      else throw new InputError('عملیات پیام معتبر نیست.');
+      this.ctx.storage.sql.exec('UPDATE message_details SET revision=revision+1 WHERE message_id=?',row.id);
+      this.ctx.storage.sql.exec('INSERT OR REPLACE INTO sync_queue VALUES (?,?)',row.id,data.chatId);
+    });
+    await this.ctx.storage.setAlarm(Date.now()+1000); await this.syncPending();
+    const message=this.payload(this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',row.id).toArray()[0],data.chatId);
+    await this.broadcast({event:'message_changed',message}); return message;
+  }
+
+  async alarm() { await this.syncPending(); await this.flushPush(); }
+
+  private async flushPush() {
+    if(this.pushing) return;this.pushing=true;
+    let failed=true;
+    try {
+      const job=this.ctx.storage.sql.exec('SELECT q.*,m.* FROM push_queue q JOIN messages m ON m.id=q.message_id ORDER BY m.created_at,m.id LIMIT 1').toArray()[0];
+      if(job) {
+        const message=this.payload(job,String(job.chat_id));
+        const cursor=message.deletedAt?null:await sendPush(this.env,message,fetch,String(job.after_id));
+        if(cursor) this.ctx.storage.sql.exec('UPDATE push_queue SET after_id=? WHERE message_id=?',cursor,job.id);
+        else this.ctx.storage.sql.exec('DELETE FROM push_queue WHERE message_id=?',job.id);
+      }
+      failed=false;
+    } finally {this.pushing=false;await this.scheduleWork(60_000,failed?60_000:1000);}
+  }
+
+  private async scheduleWork(retryDelay=60_000,pushDelay=1000) {
+    if(this.ctx.storage.sql.exec('SELECT 1 FROM push_queue LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now()+pushDelay);
+    else if(this.ctx.storage.sql.exec('SELECT 1 FROM sync_queue LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now()+retryDelay);
+    else await this.ctx.storage.deleteAlarm();
+  }
 
   private async syncPending() {
-    const rows = this.ctx.storage.sql.exec(`SELECT m.*, q.chat_id FROM sync_queue q JOIN messages m ON m.id = q.message_id ORDER BY m.created_at,m.id LIMIT 25`).toArray();
+    if(this.syncing) return; this.syncing=true;
+    let failed=false;
     try {
+      const rows = this.ctx.storage.sql.exec(`SELECT m.*, q.chat_id,d.reply_to,COALESCE(d.edited_at,0) AS edited_at,COALESCE(d.deleted_at,0) AS deleted_at,COALESCE(d.revision,0) AS revision FROM sync_queue q JOIN messages m ON m.id = q.message_id LEFT JOIN message_details d ON d.message_id=m.id ORDER BY m.created_at,m.id LIMIT 10`).toArray();
       for (const row of rows) {
+        const reactions=this.ctx.storage.sql.exec('SELECT user_id,emoji FROM message_reactions WHERE message_id=?',row.id).toArray();
         await this.env.DB.batch([
-          this.env.DB.prepare('INSERT OR IGNORE INTO messages (id,chat_id,sender_id,text,created_at) VALUES (?,?,?,?,?)').bind(row.id, row.chat_id, row.sender_id, row.text, row.created_at),
+          this.env.DB.prepare('INSERT INTO messages (id,chat_id,sender_id,text,created_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET text=excluded.text').bind(row.id, row.chat_id, row.sender_id, row.text, row.created_at),
           this.env.DB.prepare('INSERT OR IGNORE INTO message_metadata VALUES (?,?)').bind(row.id, row.client_msg_id || ''),
+          this.env.DB.prepare('INSERT INTO message_details VALUES (?,?,?,?,?) ON CONFLICT(message_id) DO UPDATE SET reply_to=excluded.reply_to,edited_at=excluded.edited_at,deleted_at=excluded.deleted_at,revision=excluded.revision').bind(row.id,row.reply_to||null,row.edited_at,row.deleted_at,row.revision),
+          this.env.DB.prepare('DELETE FROM message_reactions WHERE message_id=?').bind(row.id),
+          this.env.DB.prepare("INSERT INTO message_reactions SELECT ?,json_extract(value,'$.user_id'),json_extract(value,'$.emoji') FROM json_each(?)").bind(row.id,JSON.stringify(reactions)),
+          this.env.DB.prepare('INSERT INTO message_search VALUES (?,?,?) ON CONFLICT(message_id) DO UPDATE SET normalized=excluded.normalized').bind(row.id,row.chat_id,normalizePersian(row.deleted_at?'':String(row.text))),
           this.env.DB.prepare('UPDATE chats SET updated_at = MAX(updated_at,?) WHERE id = ?').bind(row.created_at, row.chat_id),
         ]);
-        this.ctx.storage.sql.exec('DELETE FROM sync_queue WHERE message_id = ?', row.id);
+        const current=this.ctx.storage.sql.exec('SELECT revision FROM message_details WHERE message_id=?',row.id).toArray()[0];
+        if(Number(current?.revision||0)===Number(row.revision)) this.ctx.storage.sql.exec('DELETE FROM sync_queue WHERE message_id = ?', row.id);
       }
-    } catch { /* The canonical SQLite copy is durable; retry the global index via an alarm. */ }
-    if (this.ctx.storage.sql.exec('SELECT 1 FROM sync_queue LIMIT 1').toArray().length) await this.ctx.storage.setAlarm(Date.now() + 60_000);
-    else await this.ctx.storage.deleteAlarm();
+    } catch { failed=true; /* The canonical SQLite copy is durable; retry the global index via an alarm. */ }
+    finally { this.syncing=false; }
+    await this.scheduleWork(failed?60_000:1000);
   }
 
   private async authorizedSockets(): Promise<WebSocket[]> {
@@ -314,15 +413,24 @@ export class ChatRoom extends DurableObject<Env> {
     const allowed = new Set<string>();
     for (let start = 0; start < sessions.length; start += 80) {
       const batch = sessions.slice(start, start + 80);
-      const { results } = await this.env.DB.prepare(`SELECT id FROM user_sessions WHERE id IN (${batch.map(() => '?').join(',')}) AND revoked_at IS NULL AND expires_at > ?`).bind(...batch, Date.now()).all<{ id: string }>();
+      const { results } = await this.env.DB.prepare(`SELECT s.id FROM user_sessions s WHERE s.id IN (${batch.map(() => '?').join(',')}) AND s.revoked_at IS NULL AND s.expires_at > ? AND ${SESSION_VERSION_SQL}`).bind(...batch, Date.now()).all<{ id: string }>();
       results.forEach(row => allowed.add(row.id));
     }
-    return sockets.filter(socket => {
+    const membership=new Set<string>();
+    const roomIds=[...new Set(sockets.map(socket=>(socket.deserializeAttachment() as WsAttachment|null)?.chatId).filter((id):id is string=>!!id))];
+    for(const chatId of roomIds) {
+      const {results}=await this.env.DB.prepare(`SELECT cm.user_id FROM chat_members cm JOIN chats c ON c.id=cm.chat_id WHERE cm.chat_id=? AND (c.type!='dm' OR NOT EXISTS(SELECT 1 FROM blocked_users b JOIN chat_members other ON other.chat_id=cm.chat_id AND other.user_id!=cm.user_id WHERE (b.blocker_id=cm.user_id AND b.blocked_id=other.user_id) OR (b.blocker_id=other.user_id AND b.blocked_id=cm.user_id)))`).bind(chatId).all<{user_id:string}>();
+      for(const row of results) membership.add(chatId+':'+row.user_id);
+    }
+    const permitted:WebSocket[]=[];
+    for(const socket of sockets) {
       const identity = socket.deserializeAttachment() as WsAttachment | null;
-      if (identity?.sessionId && allowed.has(identity.sessionId)) return true;
-      try { socket.close(4001, 'Session expired or revoked'); } catch { /* Already closing. */ }
-      return false;
-    });
+      if(identity?.sessionId&&allowed.has(identity.sessionId)) {
+        if(membership.has(identity.chatId+':'+identity.userId)) {permitted.push(socket);continue;}
+        try {socket.send(JSON.stringify({event:'chat_access_revoked',chatId:identity.chatId}));socket.close(4003,'Chat access changed');} catch {}
+      } else try {socket.close(4001,'Session expired or revoked');} catch {}
+    }
+    return permitted;
   }
 
   private async broadcast(event: ServerWsEvent, excludeWs?: WebSocket) {

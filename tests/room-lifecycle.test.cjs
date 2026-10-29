@@ -7,7 +7,7 @@ const source = require('node:fs').readFileSync('src/chatRoom.ts', 'utf8').replac
 const { transformSync } = require('esbuild');
 const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 const moduleScope = { exports: {} };
-vm.runInNewContext(code, { module: moduleScope, exports: moduleScope.exports, require: path => { if (path === './history.js') return {}; throw new Error(path); }, console });
+vm.runInNewContext(code, { module: moduleScope, exports: moduleScope.exports, require: path => { if (['./history.js','./access.js','./http.js','./push.js'].includes(path)) return {}; throw new Error(path); }, console });
 
 test('legacy sockets without a bound room fail closed before any database write or broadcast', async () => {
   let writes = 0, broadcasts = 0, closed = null;

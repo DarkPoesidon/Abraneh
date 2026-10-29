@@ -7,6 +7,7 @@ const { Miniflare, convertV4MiniflareOptions } = require('miniflare');
 
 let mf, unconfigured, db;
 const secret = randomBytes(32).toString('hex');
+const adminCode = randomBytes(32).toString('hex');
 const sockets = [];
 const accounts = {};
 let serial = 0;
@@ -14,7 +15,7 @@ let serial = 0;
 before(async () => {
   const result = await build({ entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral', external: ['cloudflare:workers'] });
   const options = { name: 'test-worker', modules: true, script: result.outputFiles[0].text, compatibilityDate: '2026-01-01', compatibilityFlags: ['nodejs_compat'], d1Databases: { DB: 'test-db' }, durableObjects: { CHAT_ROOM: { className: 'ChatRoom', useSQLite: true } } };
-  mf = new Miniflare(convertV4MiniflareOptions({ ...options, bindings: { JWT_SECRET: secret } }));
+  mf = new Miniflare(convertV4MiniflareOptions({ ...options, bindings: { JWT_SECRET: secret, ADMIN_SETUP_TOKEN: adminCode } }));
   unconfigured = new Miniflare(convertV4MiniflareOptions(options));
   db = await mf.getD1Database('DB');
   for (const runtime of [mf, unconfigured]) {
@@ -28,10 +29,10 @@ after(async () => {
   await Promise.all([mf?.dispose(), unconfigured?.dispose()]);
 });
 
-async function api(path, { body, token, runtime = mf, headers = {} } = {}) {
+async function api(path, { body, token, runtime = mf, headers = {}, method } = {}) {
   if (path === '/api/auth/register' && !headers['CF-Connecting-IP']) headers = { ...headers, 'CF-Connecting-IP': '198.51.100.' + (body?.username?.charCodeAt(0) || 1) };
   const response = await runtime.dispatchFetch('http://localhost' + path, {
-    method: body === undefined ? 'GET' : 'POST',
+    method: method || (body === undefined ? 'GET' : 'POST'),
     headers: { 'Content-Type': 'application/json', ...headers, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -50,7 +51,7 @@ async function account(name, displayName = name) {
 test('readiness endpoint checks schema without exposing configuration', async () => {
   const ready = await api('/api/health');
   assert.equal(ready.status, 200);
-  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.1.0', database: true });
+  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.2.0', database: true });
   const missingSecret = await api('/api/health', { runtime: unconfigured });
   assert.equal(missingSecret.status, 503);
   assert.ok(!JSON.stringify(missingSecret.data).includes(secret));
@@ -221,7 +222,8 @@ test('group creation, member invitations, and authorization work end to end', as
   const id = created.data.id;
   assert.equal((await api(`/api/chats/${id}/members`, { token: b.token })).data.length, 2);
   assert.equal((await api(`/api/chats/${id}/members`, { token: outsider.token, body: { userIds: [outsider.user.id] } })).status, 403);
-  assert.equal((await api(`/api/chats/${id}/members`, { token: b.token, body: { userIds: [c.user.id, b.user.id] } })).status, 200);
+  assert.equal((await api(`/api/chats/${id}/members`, { token: b.token, body: { userIds: [c.user.id, b.user.id] } })).status, 403);
+  assert.equal((await api(`/api/chats/${id}/members`, { token: a.token, body: { userIds: [c.user.id] } })).status, 200);
   assert.equal((await api(`/api/chats/${id}/members`, { token: c.token })).data.length, 3);
   assert.ok((await api('/api/chats', { token: c.token })).data.some(chat => chat.id === id));
   const sender = await connect(a, id), receiver = await connect(c, id);
@@ -369,4 +371,185 @@ test('room send budget rejects flooding while duplicate acknowledgements remain 
 test('malformed and oversized JSON is rejected before hashing a password', async () => {
   assert.equal((await api('/api/auth/login', { body: null })).status, 400);
   assert.equal((await api('/api/auth/login', { body: { username: 'nobody', password: 'x'.repeat(65000) } })).status, 413);
+});
+async function sent(socket, chatId, text, extra = {}) {
+  const received = nextEvent(socket, 'new_message');
+  socket.send(JSON.stringify({ action: 'send_message', chatId, text, clientMsgId: 'daily_' + (++serial), ...extra }));
+  return (await received).message;
+}
+const change = (user, chat, message, action, body = {}) => api(`/api/chats/${chat}/messages/${message}/${action}`, { token: user.token, body });
+
+test('message replies, edits, reactions and tombstones stay canonical across retries and permissions', async () => {
+  const a = await account('daily_a'), b = await account('daily_b'), outsider = await account('daily_out');
+  const chat = await dm(a,b), socket = await connect(a,chat), peer = await connect(b,chat);
+  const original = await sent(socket,chat,'متن اصلی', {clientMsgId:'daily_original'});
+  const reply = await sent(peer,chat,'پاسخ', {replyToId:original.id});
+  assert.equal(reply.replyTo.text,'متن اصلی');
+  assert.equal((await change(b,chat,original.id,'edit',{text:'دستکاری',actor:a.user.id})).status,403);
+  assert.equal((await change(outsider,chat,original.id,'delete')).status,403);
+  const update = nextEvent(peer,'message_changed');
+  const edited = await change(a,chat,original.id,'edit',{text:'ویرایش کیک'});
+  assert.equal(edited.status,200,JSON.stringify(edited));
+  assert.equal((await update).message.text,'ویرایش کیک');
+  assert.ok(edited.data.message.editedAt);
+  assert.equal((await change(b,chat,original.id,'reaction',{emoji:'❤️'})).status,200);
+  const reacted = await change(b,chat,original.id,'reaction',{emoji:'👍'});
+  assert.deepEqual(reacted.data.message.reactions,[{emoji:'👍',users:[b.user.id]}]);
+  assert.equal((await change(b,chat,original.id,'reaction',{emoji:'invalid'})).status,400);
+  assert.equal((await change(b,chat,original.id,'delete')).status,403);
+  const removed = await change(a,chat,original.id,'delete');
+  assert.equal(removed.status,200); assert.equal(removed.data.message.text,'');
+  assert.deepEqual(removed.data.message.reactions,[]);
+  assert.equal((await change(a,chat,original.id,'edit',{text:'زنده شود'})).status,403);
+  const retry = await sent(socket,chat,'متن اصلی',{clientMsgId:'daily_original'});
+  assert.equal(retry.id,original.id);assert.ok(retry.deletedAt);
+  const history = (await api(`/api/chats/${chat}/messages`,{token:a.token})).data;
+  assert.equal(history.find(m=>m.id===original.id).text,'');
+  assert.equal(history.find(m=>m.id===reply.id).replyTo.deleted,true);
+  assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent('کیک')}`,{token:a.token})).data.length,0);
+  const preview=(await api('/api/chats',{token:a.token})).data.find(c=>c.id===chat);
+  assert.equal(preview.lastMessage.id,reply.id);
+});
+
+test('Persian search normalizes variants and paginates timestamp ties without exposing other chats or hidden messages', async () => {
+  const a = await account('search_a'), b = await account('search_b'), chat = await dm(a,b), socket = await connect(a,chat);
+  const first=await sent(socket,chat,'كيكِ می‌روم');
+  let found=await api(`/api/chats/${chat}/search?q=${encodeURIComponent('کیک')}`,{token:a.token});
+  assert.equal(found.status,200,JSON.stringify(found));assert.equal(found.data[0].id,first.id);
+  assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent('میروم')}`,{token:a.token})).data[0].id,first.id);
+  await db.batch(Array.from({length:65},(_,i)=>db.prepare('INSERT INTO messages VALUES (?,?,?,?,?)').bind('tied-search-'+String(i).padStart(2,'0'),chat,a.user.id,'درخت',100)));
+  await db.prepare("INSERT INTO message_search SELECT id,chat_id,text FROM messages WHERE chat_id=? AND id LIKE 'tied-search-%'").bind(chat).run();
+  const page=(await api(`/api/chats/${chat}/search?q=${encodeURIComponent('درخت')}`,{token:a.token})).data;
+  assert.equal(page.length,50);const last=page.at(-1);
+  const rest=(await api(`/api/chats/${chat}/search?q=${encodeURIComponent('درخت')}&before=${last.createdAt}:${last.id}`,{token:a.token})).data;
+  assert.equal(rest.length,15);assert.equal(new Set([...page,...rest].map(m=>m.id)).size,65);
+  assert.equal((await api(`/api/chats/${chat}/search?q=%25`,{token:a.token})).data.length,0);
+  assert.equal((await change(a,chat,first.id,'hide')).status,200);
+  assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent('کیک')}`,{token:a.token})).data.length,0);
+  assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent('کیک')}`,{token:b.token})).data.length,1);
+  const history=(await api(`/api/chats/${chat}/messages?limit=50`,{token:a.token})).data;
+  assert.equal(history.length,50);assert.ok(!history.some(m=>m.id===first.id));
+});
+
+test('group owners, admins, removals, single-use invites and transfer enforce current membership', async () => {
+  const a=await account('roles_a'),b=await account('roles_b'),c=await account('roles_c'),d=await account('roles_d');
+  const created=await api('/api/chats',{token:a.token,body:{type:'group',title:'نقش‌ها',memberIds:[b.user.id]}}),chat=created.data.id;
+  const group=(user,body)=>api(`/api/chats/${chat}/group`,{token:user.token,method:'PATCH',body});
+  assert.equal((await group(b,{action:'rename',title:'غیرمجاز'})).status,403);
+  assert.equal((await group(a,{action:'role',userId:b.user.id,role:'admin'})).status,200);
+  assert.equal((await group(b,{action:'rename',title:'نام تازه'})).status,200);
+  assert.equal((await group(b,{action:'remove',userId:a.user.id})).status,403);
+  const invite=(await api(`/api/chats/${chat}/invites`,{token:b.token,body:{uses:1,hours:1}})).data;
+  const joined=await Promise.all([c,d].map(user=>api(`/api/invites/${invite.token}/join`,{token:user.token,body:{}})));
+  assert.equal(joined.filter(row=>row.status===200).length,1,JSON.stringify(joined));
+  const winner=joined[0].status===200?c:d,live=await connect(winner,chat),removed=nextEvent(live,'chat_access_revoked');
+  assert.equal((await group(b,{action:'remove',userId:winner.user.id})).status,200);await removed;
+  assert.equal((await api(`/api/chats/${chat}/messages`,{token:winner.token})).status,403);
+  const listed=(await api(`/api/chats/${chat}/invites`,{token:a.token})).data;
+  await api(`/api/chats/${chat}/invites`,{token:a.token,method:'DELETE',body:{id:listed[0].id}});
+  assert.equal((await api(`/api/invites/${invite.token}/join`,{token:winner.token,body:{}})).status,403);
+  assert.equal((await api(`/api/chats/${chat}/leave`,{token:a.token,body:{}})).status,409);
+  assert.equal((await group(a,{action:'transfer',userId:b.user.id})).status,200);
+  assert.equal((await group(a,{action:'role',userId:b.user.id,role:'member'})).status,403);
+  assert.equal((await api(`/api/chats/${chat}/leave`,{token:a.token,body:{}})).status,200);
+  const details=(await api(`/api/chats/${chat}/details`,{token:b.token})).data;
+  assert.equal(details.role,'owner');assert.equal(details.members.length,1);
+});
+
+test('blocking closes existing private sockets, isolates search and leaves shared groups usable', async () => {
+  const a=await account('block_a'),b=await account('block_b'),chat=await dm(a,b),socket=await connect(b,chat);
+  const stopped=nextEvent(socket,'chat_access_revoked');
+  assert.equal((await api('/api/blocks',{token:a.token,body:{userId:b.user.id}})).status,200);await stopped;
+  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${chat}&token=${b.token}`,{headers:{Upgrade:'websocket'}})).status,403);
+  assert.equal((await api('/api/chats',{token:b.token,body:{targetUserId:a.user.id}})).status,403);
+  assert.equal((await api('/api/users/search?q=block_a',{token:b.token})).data.length,0);
+  const group=(await api('/api/chats',{token:a.token,body:{type:'group',memberIds:[b.user.id]}})).data.id;
+  const shared=await connect(b,group);assert.equal((await sent(shared,group,'گروه مشترک')).text,'گروه مشترک');
+  await api('/api/blocks',{token:a.token,method:'DELETE',body:{userId:b.user.id}});
+  assert.equal((await api('/api/chats',{token:b.token,body:{targetUserId:a.user.id}})).status,200);
+});
+
+test('profiles and password changes preserve this session while invalidating concurrent old-password sessions', async () => {
+  const a=await account('profile_a'),b=await account('profile_b'),chat=await dm(a,b);
+  const login=(await api('/api/auth/login',{body:{username:'profile_a',password:'testpass123'}})).data;
+  const live=await connect(login,chat),revoked=nextEvent(live,'session_revoked');
+  assert.equal((await api('/api/profile',{token:a.token,method:'PATCH',body:{displayName:'نام تازه',about:'درباره',avatar:'',theme:'light',fontSize:'large',notifications:false,notificationPreview:false}})).status,200);
+  assert.equal((await api('/api/profile',{token:a.token})).data.displayName,'نام تازه');
+  assert.equal((await api('/api/profile',{token:a.token,method:'PATCH',body:{displayName:'عکس',about:'',avatar:'data:image/svg+xml;base64,PHN2Zz4=',theme:'dark',fontSize:'normal'}})).status,400);
+  assert.equal((await api('/api/profile/password',{token:a.token,body:{currentPassword:'wrong',newPassword:'new-password123'}})).status,403);
+  const results=await Promise.all(['new-password123','different-password123'].map(newPassword=>api('/api/profile/password',{token:a.token,body:{currentPassword:'testpass123',newPassword}})));
+  assert.equal(results.filter(row=>row.status===200).length,1,JSON.stringify(results));await revoked;
+  assert.equal((await api('/api/auth/me',{token:a.token})).status,200);
+  assert.equal((await api('/api/auth/me',{token:login.token})).status,401);
+  assert.equal((await api('/api/auth/login',{body:{username:'profile_a',password:'testpass123'}})).status,401);
+  const password=results[0].status===200?'new-password123':'different-password123';
+  assert.equal((await api('/api/auth/login',{body:{username:'profile_a',password}})).status,200);
+});
+
+test('saved messages, personal hides, chat preferences and group pins respect permissions', async () => {
+  const a=await account('save_a'),b=await account('save_b');
+  const chat=(await api('/api/chats',{token:a.token,body:{type:'group',memberIds:[b.user.id]}})).data.id;
+  const msg=await sent(await connect(a,chat),chat,'ذخیره‌کردنی');
+  assert.equal((await change(b,chat,msg.id,'pin')).status,403);
+  assert.equal((await change(a,chat,msg.id,'pin')).status,200);
+  assert.equal((await api(`/api/chats/${chat}/details`,{token:b.token})).data.pinnedMessageId,msg.id);
+  await change(b,chat,msg.id,'save');assert.equal((await api('/api/saved',{token:b.token})).data[0].text,'ذخیره‌کردنی');
+  await change(a,chat,msg.id,'edit',{text:'متن تازه'});assert.equal((await api('/api/saved',{token:b.token})).data[0].text,'متن تازه');
+  await api(`/api/chats/${chat}/preferences`,{token:b.token,method:'PATCH',body:{archived:true,muted:true,pinned:true}});
+  const list=(await api('/api/chats',{token:b.token})).data.find(row=>row.id===chat);assert.ok(list.archived&&list.muted&&list.pinned);
+  assert.equal((await api('/api/chats',{token:a.token})).data.find(row=>row.id===chat).muted,false);
+  await change(b,chat,msg.id,'hide');assert.equal((await api('/api/saved',{token:b.token})).data.length,0);
+  assert.equal((await api('/api/chats',{token:b.token})).data.find(row=>row.id===chat).lastMessage,null);
+  await api(`/api/chats/${chat}/leave`,{token:b.token,body:{}});assert.equal((await api('/api/saved',{token:b.token})).data.length,0);
+});
+
+test('service owner claim, invitation-only registration quotas and reports are isolated from ordinary accounts', async () => {
+  const admin=await account('service_owner'),other=await account('service_other');
+  assert.equal((await api('/api/service/settings',{token:other.token})).status,403);
+  assert.equal((await api('/api/service/claim',{token:admin.token,body:{code:'wrong'}})).status,403);
+  assert.equal((await api('/api/service/claim',{token:admin.token,body:{code:adminCode}})).status,200);
+  assert.equal((await api('/api/service/claim',{token:other.token,body:{code:adminCode}})).status,403);
+  const invite=(await api('/api/service/invites',{token:admin.token,body:{uses:1,hours:1}})).data;
+  await api('/api/service/settings',{token:admin.token,method:'PATCH',body:{registration:'invite'}});
+  try {
+    assert.equal((await api('/api/bootstrap')).data.registration,'invite');
+    assert.equal((await api('/api/auth/register',{body:{username:'no_invite',password:'testpass123'}})).status,403);
+    const attempts=await Promise.all(['invite_one','invite_two'].map(username=>api('/api/auth/register',{body:{username,password:'testpass123',inviteToken:invite.token}})));
+    assert.equal(attempts.filter(row=>row.status===201).length,1,JSON.stringify(attempts));
+    assert.equal((await api('/api/auth/login',{body:{username:'service_other',password:'testpass123'}})).status,200);
+    const reported=await api('/api/reports',{token:other.token,body:{userId:admin.user.id,reason:'گزارش آزمایشی'}});assert.equal(reported.status,201);
+    assert.equal((await api('/api/service/reports',{token:other.token})).status,403);
+    const reports=(await api('/api/service/reports',{token:admin.token})).data;assert.equal(reports[0].reason,'گزارش آزمایشی');
+    assert.equal((await api('/api/service/reports',{token:admin.token,method:'PATCH',body:{id:reports[0].id,status:'resolved'}})).status,200);
+  } finally {await api('/api/service/settings',{token:admin.token,method:'PATCH',body:{registration:'open'}});}
+});
+test('durable edits and deletion override a failed D1 index in history, search, saves and reconnect snapshots',async()=>{
+  const a=await account('mutation_a'),b=await account('mutation_b'),chat=await dm(a,b),socket=await connect(a,chat);
+  const msg=await sent(socket,chat,'متن قبل از اختلال');await change(a,chat,msg.id,'save');
+  await db.prepare("CREATE TRIGGER fail_mutation_index BEFORE UPDATE ON messages BEGIN SELECT RAISE(ABORT,'simulated write failure'); END").run();
+  try {
+    const edited=await change(a,chat,msg.id,'edit',{text:'اصلاح قطعی پس از اختلال'});assert.equal(edited.status,200);
+    assert.equal((await db.prepare('SELECT text FROM messages WHERE id=?').bind(msg.id).first()).text,'متن قبل از اختلال');
+    assert.equal((await api('/api/saved',{token:a.token})).data[0].text,'اصلاح قطعی پس از اختلال');
+    assert.equal((await api(`/api/chats/${chat}/changes`,{token:a.token,body:{ids:[msg.id]}})).data[0].text,'اصلاح قطعی پس از اختلال');
+    assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent('قبل از اختلال')}`,{token:a.token})).data.length,0);
+    assert.equal((await change(a,chat,msg.id,'delete')).status,200);
+    assert.equal((await api('/api/saved',{token:a.token})).data[0].text,'');
+    assert.equal((await api(`/api/chats/${chat}/messages`,{token:a.token})).data[0].deletedAt>0,true);
+  } finally {await db.prepare('DROP TRIGGER fail_mutation_index').run();}
+  await sent(socket,chat,'متن قبل از اختلال',{clientMsgId:msg.clientMsgId});
+  for(let i=0;i<25;i++){if((await db.prepare('SELECT text FROM messages WHERE id=?').bind(msg.id).first()).text==='')break;await new Promise(resolve=>setTimeout(resolve,20));}
+  assert.equal((await db.prepare('SELECT text FROM messages WHERE id=?').bind(msg.id).first()).text,'');
+});
+
+test('saved-message pages preserve ties and long Persian search is literal rather than a LIKE pattern',async()=>{
+  const a=await account('page_a'),b=await account('page_b'),chat=await dm(a,b),socket=await connect(a,chat);
+  const long='یک عبارت فارسی طولانی برای آزمودن جستجو که بیش از پنجاه بایت دارد';
+  const msg=await sent(socket,chat,long);
+  assert.equal((await api(`/api/chats/${chat}/search?q=${encodeURIComponent(long)}`,{token:a.token})).data[0].id,msg.id);
+  await db.batch(Array.from({length:17},(_,i)=>db.prepare('INSERT INTO messages VALUES (?,?,?,?,?)').bind('saved-page-'+String(i).padStart(2,'0'),chat,a.user.id,'ذخیره',50)));
+  await db.prepare("INSERT INTO saved_messages SELECT ?,id,chat_id,500 FROM messages WHERE id LIKE 'saved-page-%'").bind(a.user.id).run();
+  const ids=[];let cursor='';
+  for(let i=0;i<3;i++) {const page=(await api('/api/saved'+(cursor?'?before='+cursor:''),{token:a.token})).data;ids.push(...page.map(row=>row.id));const last=page.at(-1);cursor=last.savedAt+':'+last.id;}
+  assert.equal(ids.length,17);assert.equal(new Set(ids).size,17);
 });

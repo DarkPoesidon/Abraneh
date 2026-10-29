@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cloudflare-messenger-1.1.0';
+const CACHE_NAME = 'cloudflare-messenger-1.2.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -56,4 +56,22 @@ self.addEventListener('fetch', (event) => {
       }
     })()
   );
+});
+
+self.addEventListener('push', event => {
+  let payload={}; try { payload=event.data?.json()||{}; } catch { /* Show a generic notification for malformed payloads. */ }
+  const chatId=typeof payload.chatId==='string'&&/^[a-zA-Z0-9_-]+$/.test(payload.chatId)?payload.chatId:'';
+  event.waitUntil(self.registration.showNotification(typeof payload.title==='string'?payload.title:'پیام تازه', {
+    body:typeof payload.body==='string'?payload.body:'یک پیام تازه دریافت کردید.',
+    tag:'chat-'+chatId,icon:'/icon.svg',badge:'/icon.svg',dir:'rtl',lang:'fa',data:{chatId}
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();const chatId=event.notification.data?.chatId;
+  if(typeof chatId!=='string'||!/^[a-zA-Z0-9_-]+$/.test(chatId))return;
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of windows) if(new URL(client.url).origin===self.location.origin) { await client.focus();client.postMessage({type:'open-chat',chatId});return; }
+    await self.clients.openWindow('/?chat='+encodeURIComponent(chatId));
+  })());
 });

@@ -100,3 +100,5 @@ footer { border-top: 1px solid var(--rule); padding-block: var(--space-lg); disp
   dl div { display: block; } dd { margin-top: var(--space-xs); }
 }
 @media (prefers-reduced-motion: reduce) { button:active, .button:active { transform: none; } }
+
+#admin-code { width:100%; font-family:monospace; margin-top:12px; }

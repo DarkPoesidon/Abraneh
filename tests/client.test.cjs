@@ -34,7 +34,7 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
   const navigator = { onLine: online };
   const document = { visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
   const sandbox = {
-    console, WebSocket, navigator, document,
+    console, URLSearchParams, WebSocket, navigator, document,
     window: { innerWidth: 1200, addEventListener: (type, fn) => { windowEvents[type] = fn; } },
     location: { protocol: 'http:', host: 'localhost', reload() {} },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => { if (failStorage) throw new Error('QuotaExceededError'); storage.set(key, value); }, removeItem: key => storage.delete(key) },
@@ -125,7 +125,7 @@ test('group picker creates a group and adds members to the selected group', asyn
   const app = harness((path, options) => {
     if (options.method === 'POST') {
       posts.push({ path, body: JSON.parse(options.body) });
-      if (path === '/api/chats') { chats = [...chats, { id: 'group', title: 'گروه ما', type: 'group', updatedAt: 5 }]; return reply({ id: 'group' }, 201); }
+      if (path === '/api/chats') { chats = [...chats, { id: 'group', title: 'گروه ما', type: 'group', role: 'owner', updatedAt: 5 }]; return reply({ id: 'group' }, 201); }
       return reply(users);
     }
     if (path === '/api/chats') return reply(chats);
@@ -222,4 +222,33 @@ test('explicit logout clears this account outbox even if the server has already 
   assert.equal(app.storage.has('cf_msg_outbox_self'), false);
   assert.equal(app.storage.get('cf_msg_outbox_someone_else'), 'other-account-data');
   assert.equal(app.storage.has('cf_msg_token'), false);
+});
+test('a delayed history response cannot resurrect edited/deleted text or stale reply quotes', async () => {
+  let historyResolve;
+  const original={...message('original','متن قدیمی'),chatId:'a',revision:0};
+  const replyMessage={...message('reply','پاسخ',2),chatId:'a',revision:0,replyToId:'original',replyTo:{id:'original',text:'متن قدیمی',senderName:'Other'}};
+  const app=harness(path=>path==='/api/chats'?reply(initialChats()):path.includes('/messages')?new Promise(resolve=>historyResolve=resolve):reply([]));
+  await settle();app.open(0);await settle();
+  const socket=app.sockets.at(-1);
+  socket.onmessage({data:JSON.stringify({event:'new_message',message:original})});
+  socket.onmessage({data:JSON.stringify({event:'new_message',message:replyMessage})});
+  socket.onmessage({data:JSON.stringify({event:'message_changed',message:{...original,text:'ویرایش تازه',revision:1,editedAt:3}})});
+  assert.ok(app.texts().includes('ویرایش تازه'));assert.ok(!app.texts().includes('متن قدیمی'));
+  socket.onmessage({data:JSON.stringify({event:'message_changed',message:{...original,text:'',revision:2,deletedAt:4}})});
+  historyResolve(reply([original,replyMessage]));await settle();
+  assert.ok(!app.texts().includes('متن قدیمی'));assert.ok(!app.texts().includes('ویرایش تازه'));assert.ok(app.texts().includes('حذف شده'));
+});
+
+test('chat access revocation preserves account login and fails pending messages without reconnecting the room',async()=>{
+  const app=harness(path=>reply(path==='/api/chats'?initialChats():[]));await settle();await app.open(0);await settle();
+  app.el('message-input').value='پیام صف';await app.click('btn-send-message');
+  const socket=app.sockets.at(-1);socket.onmessage({data:JSON.stringify({event:'chat_access_revoked',chatId:'a'})});await settle();
+  assert.equal(app.storage.get('cf_msg_token'),'session-token');assert.ok(app.el('chat-error').textContent.includes('تغییر'));
+  const pending=JSON.parse(app.storage.get('cf_msg_outbox_self'));assert.equal(pending[0].failed,true);
+  assert.equal([...app.timers.values()].filter(timer=>timer.delay===1000).length,0);
+});
+test('membership removed while offline fails that room outbox after polling, without ending the account session',async()=>{
+  let list=initialChats();const app=harness(path=>reply(path==='/api/chats'?list:[]));await settle();await app.open(0);await settle();
+  app.el('message-input').value='بعد از قطع دسترسی';await app.click('btn-send-message');list=list.filter(chat=>chat.id!=='a');await app.poll();
+  assert.equal(JSON.parse(app.storage.get('cf_msg_outbox_self'))[0].failed,true);assert.equal(app.storage.get('cf_msg_token'),'session-token');
 });

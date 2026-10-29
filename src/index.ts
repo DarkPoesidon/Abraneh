@@ -1,30 +1,14 @@
-import { Env, User, UserRow, Chat } from "./types.js";
+import { Env, User, UserRow } from "./types.js";
 import { hashPassword, verifyPassword, generateSalt, hasJwtSecret } from "./auth.js";
 import { historyOptions } from "./history.js";
 import { requestIdentity, issueSession, revokeSessions } from './sessions.js';
 import { allowRequest } from './limits.js';
 import { APP_VERSION } from './version.js';
 import { listReceipts, saveReceipt } from './receipts.js';
+import { corsResponse, jsonResponse, errorResponse, InputError, inputJson } from './http.js';
+import { chatAccess, isBlocked } from './access.js';
+import { handleFeatures, registrationMode, registrationGate, enrichMessages, enrichChats } from './features.js';
 export { ChatRoom } from "./chatRoom.js";
-
-// CORS Response Helper
-function corsResponse(body: BodyInit | null, status = 200, headers: HeadersInit = {}): Response {
-  const mergedHeaders = new Headers(headers);
-  mergedHeaders.set("Access-Control-Allow-Origin", "*");
-  mergedHeaders.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  mergedHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  return new Response(body, { status, headers: mergedHeaders });
-}
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return corsResponse(JSON.stringify(data), status, {
-    "Content-Type": "application/json; charset=utf-8",
-  });
-}
-
-function errorResponse(message: string, status = 400): Response {
-  return jsonResponse({ error: message }, status);
-}
 
 async function validatedMembers(value: unknown, env: Env, self: string): Promise<string[] | null> {
   if (!Array.isArray(value) || value.length > 99 || value.some(id => typeof id !== 'string' || !id)) return null;
@@ -36,26 +20,6 @@ async function validatedMembers(value: unknown, env: Env, self: string): Promise
 
 // Authenticate request via Bearer token or ?token=
 const authenticate = requestIdentity;
-
-class InputError extends Error { constructor(message: string, public status = 400) { super(message); } }
-async function inputJson(request: Request): Promise<any> {
-  const reader = request.body?.getReader();
-  if (!reader) throw new InputError('محتوای درخواست خالی است.');
-  const decoder = new TextDecoder();
-  let size = 0, text = '';
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    size += chunk.value.byteLength;
-    if (size > 64_000) { await reader.cancel(); throw new InputError('حجم درخواست بیش از حد مجاز است.', 413); }
-    text += decoder.decode(chunk.value, { stream: true });
-  }
-  text += decoder.decode();
-  let value;
-  try { value = JSON.parse(text); } catch { throw new InputError('فرمت درخواست معتبر نیست.'); }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('فرمت درخواست معتبر نیست.');
-  return value;
-}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -72,8 +36,8 @@ export default {
 
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts')").first<{ n: number }>();
-        const ready = row?.n === 9;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions')").first<{ n: number }>();
+        const ready = row?.n === 28;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -106,6 +70,7 @@ export default {
       if (!member) {
         return errorResponse("شما عضو این گفتگو نیستید.", 403);
       }
+      if (await isBlocked(env,chatId,auth.userId)) return errorResponse('این گفتگوی خصوصی مسدود است.',403);
 
       // Route to Durable Object instance for this chat room
       const doId = env.CHAT_ROOM.idFromName(chatId);
@@ -126,10 +91,12 @@ export default {
     // ==========================================
     if (url.pathname.startsWith("/api/")) {
       try {
+        if (url.pathname === '/api/bootstrap' && request.method === 'GET') return jsonResponse({ registration: await registrationMode(env) });
         // --- AUTH: REGISTER ---
         if (url.pathname === "/api/auth/register" && request.method === "POST") {
           if (!await allowRequest(env, 'register', request.headers.get('CF-Connecting-IP') || 'unknown', 30, 3600_000)) return errorResponse('تعداد ثبت‌نام از این اتصال زیاد است. یک ساعت دیگر دوباره تلاش کنید.', 429);
           const body = await inputJson(request);
+          const gate = await registrationGate(env, body.inviteToken);
           const username = String(body.username || "").trim().toLowerCase();
           const password = String(body.password || "");
           const displayName = String(body.displayName || username).trim() || username;
@@ -159,10 +126,13 @@ export default {
           const userId = crypto.randomUUID();
           const now = Date.now();
 
-          await env.DB.prepare(
-            `INSERT INTO users (id, username, password_hash, salt, display_name, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?)`
-          ).bind(userId, username, passwordHash, salt, displayName, now).run();
+          const inserts = await env.DB.batch([
+            env.DB.prepare(`INSERT INTO users (id,username,password_hash,salt,display_name,created_at)
+              SELECT ?,?,?,?,?,? WHERE (? = '' AND COALESCE((SELECT value FROM site_settings WHERE key='registration'),'open')='open') OR (COALESCE((SELECT value FROM site_settings WHERE key='registration'),'open')='invite' AND EXISTS (SELECT 1 FROM registration_invites WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND uses < use_limit))`)
+              .bind(userId,username,passwordHash,salt,displayName,now,gate,gate,now),
+            env.DB.prepare('UPDATE registration_invites SET uses = uses + 1 WHERE token_hash = ? AND EXISTS (SELECT 1 FROM users WHERE id = ?)').bind(gate,userId),
+          ]);
+          if (!inserts[0].meta.changes) return errorResponse('دعوت ثبت‌نام منقضی یا مصرف شده است.',403);
 
           const user: User = { id: userId, username, displayName, createdAt: now };
           const token = await issueSession(request, env, user);
@@ -183,8 +153,8 @@ export default {
           }
 
           const row = await env.DB.prepare(
-            `SELECT * FROM users WHERE username = ?`
-          ).bind(username).first<UserRow>();
+            `SELECT u.*, COALESCE(ac.password_version,1) AS authVersion FROM users u LEFT JOIN account_security ac ON ac.user_id = u.id WHERE u.username = ?`
+          ).bind(username).first<UserRow & { authVersion: number }>();
 
           if (!row) {
             return errorResponse("نام کاربری یا رمز عبور اشتباه است.", 401);
@@ -201,7 +171,7 @@ export default {
             displayName: row.display_name,
             createdAt: row.created_at,
           };
-          const token = await issueSession(request, env, user);
+          const token = await issueSession(request, env, user, row.authVersion);
 
           return jsonResponse({ token, user });
         }
@@ -211,6 +181,8 @@ export default {
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
+        const featureResponse = await handleFeatures(request,env,auth,ctx);
+        if (featureResponse) return featureResponse;
 
         if (url.pathname === '/api/auth/sessions' && request.method === 'GET') {
           const { results } = await env.DB.prepare('SELECT id,label,created_at AS createdAt,expires_at AS expiresAt FROM user_sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY created_at DESC')
@@ -258,11 +230,12 @@ export default {
           if (!q) return jsonResponse([]);
 
           const { results } = await env.DB.prepare(
-            `SELECT id, username, display_name as displayName, created_at as createdAt 
-             FROM users 
-             WHERE id != ? AND (username LIKE ? OR display_name LIKE ?) 
+            `SELECT id, username, display_name as displayName, created_at as createdAt
+             FROM users
+             WHERE id != ? AND (instr(lower(username),?)>0 OR instr(lower(display_name),?)>0)
+               AND NOT EXISTS (SELECT 1 FROM blocked_users b WHERE (b.blocker_id = ? AND b.blocked_id = users.id) OR (b.blocker_id = users.id AND b.blocked_id = ?))
              LIMIT 20`
-          ).bind(auth.userId, `%${q}%`, `%${q}%`).all<User>();
+          ).bind(auth.userId, q, q,auth.userId,auth.userId).all<User>();
 
           return jsonResponse(results || []);
         }
@@ -270,40 +243,40 @@ export default {
         // --- CHATS: LIST USER CHATS ---
         if (url.pathname === "/api/chats" && request.method === "GET") {
           const { results } = await env.DB.prepare(`
-            SELECT 
-              c.id, 
-              c.type, 
-              c.title, 
-              c.created_at as createdAt, 
+            SELECT
+              c.id,
+              c.type,
+              c.title,
+              c.created_at as createdAt,
               c.updated_at as updatedAt,
               u.id as partnerId,
               u.username as partnerUsername,
               u.display_name as partnerDisplayName,
               (
                 SELECT m.id FROM messages m
-                WHERE m.chat_id = c.id
+                WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id)
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1
               ) as lastMessageId,
               (
-                SELECT m.text FROM messages m 
-                WHERE m.chat_id = c.id 
+                SELECT CASE WHEN EXISTS(SELECT 1 FROM message_details d WHERE d.message_id=m.id AND d.deleted_at>0) THEN 'پیام حذف شده' ELSE m.text END FROM messages m
+                WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id)
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1
               ) as lastMessageText,
               (
-                SELECT m.created_at FROM messages m 
-                WHERE m.chat_id = c.id 
+                SELECT m.created_at FROM messages m
+                WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id)
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1
               ) as lastMessageTime,
               (
-                SELECT snd.display_name FROM messages m 
+                SELECT snd.display_name FROM messages m
                 JOIN users snd ON m.sender_id = snd.id
-                WHERE m.chat_id = c.id 
+                WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id)
                 ORDER BY m.created_at DESC, m.id DESC LIMIT 1
               ) as lastMessageSender,
-              (SELECT count(*) FROM messages m WHERE m.chat_id = c.id AND m.sender_id != cm.user_id
-                AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))) AS unreadCount,
-              (SELECT m.id FROM messages m WHERE m.chat_id = c.id AND m.sender_id != cm.user_id
-                AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))
+              (SELECT count(*) FROM messages m WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id) AND m.sender_id != cm.user_id
+                AND NOT EXISTS(SELECT 1 FROM message_details d WHERE d.message_id=m.id AND d.deleted_at>0) AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))) AS unreadCount,
+              (SELECT m.id FROM messages m WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id) AND m.sender_id != cm.user_id
+                AND NOT EXISTS(SELECT 1 FROM message_details d WHERE d.message_id=m.id AND d.deleted_at>0) AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))
                 ORDER BY m.created_at,m.id LIMIT 1) AS firstUnreadId,
               COALESCE(r.read_at,0) AS readAt, COALESCE(r.read_id,'') AS readId
             FROM chats c
@@ -338,7 +311,7 @@ export default {
             };
           });
 
-          return jsonResponse(chats);
+          return jsonResponse(await enrichChats(env,auth.userId,chats));
         }
 
         // --- CHATS: CREATE OR GET DM/GROUP ---
@@ -354,6 +327,7 @@ export default {
             }
             const target = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(targetUserId).first();
             if (!target) return errorResponse('مخاطب یافت نشد.', 404);
+            if (await env.DB.prepare('SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)').bind(auth.userId,targetUserId,targetUserId,auth.userId).first()) return errorResponse('این مخاطب مسدود است.',403);
 
             // Check if DM already exists
             const existing = await env.DB.prepare(`
@@ -391,7 +365,8 @@ export default {
             await env.DB.batch([
               env.DB.prepare(`INSERT INTO chats (id, type, title, created_at, updated_at) VALUES (?, 'group', ?, ?, ?)`).bind(chatId, title, now, now),
               env.DB.prepare(`INSERT INTO chat_members (chat_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(chatId, auth.userId, now),
-              ...members.map(id => env.DB.prepare('INSERT INTO chat_members (chat_id, user_id, joined_at) VALUES (?, ?, ?)').bind(chatId, id, now)),
+              env.DB.prepare('INSERT INTO chat_members(chat_id,user_id,joined_at) SELECT ?,value,? FROM json_each(?)').bind(chatId,now,JSON.stringify(members)),
+              env.DB.prepare("INSERT INTO group_roles VALUES (?,?,'owner')").bind(chatId,auth.userId),
             ]);
 
             return jsonResponse({ id: chatId, isNew: true }, 201);
@@ -405,13 +380,17 @@ export default {
           if (!member) return errorResponse('شما عضو این گفتگو نیستید.', 403);
           if (request.method === 'POST') {
             if (member.type !== 'group') return errorResponse('افزودن عضو فقط برای گروه امکان‌پذیر است.');
+            const access = await chatAccess(env,chatId,auth.userId);
+            if (!access || !['owner','admin'].includes(access.role)) return errorResponse('فقط مالک یا مدیر می‌تواند عضو اضافه کند.',403);
             const body = await inputJson(request);
             const users = await validatedMembers(body.userIds, env, auth.userId);
             if (!users) return errorResponse('اعضای انتخاب‌شده نامعتبر هستند.');
             // Existing members are harmless duplicates; only current members may invite.
             await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (chat_id, user_id, joined_at)
-              SELECT ?, id, ? FROM users WHERE id IN (${users.map(() => '?').join(',')})`)
-              .bind(chatId, Date.now(), ...users).run();
+              SELECT ?, id, ? FROM users WHERE id IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM group_roles WHERE chat_id=? AND user_id=? AND role IN ('owner','admin')) AND (SELECT count(*) FROM chat_members WHERE chat_id=?) + (SELECT count(*) FROM json_each(?) selected WHERE NOT EXISTS(SELECT 1 FROM chat_members existing WHERE existing.chat_id=? AND existing.user_id=selected.value)) <= 100`)
+              .bind(chatId, Date.now(), JSON.stringify(users),chatId,auth.userId,chatId,JSON.stringify(users),chatId).run();
+            const admitted=await env.DB.prepare(`SELECT count(*) AS n FROM chat_members WHERE chat_id=? AND user_id IN (${users.map(()=>'?').join(',')})`).bind(chatId,...users).first<{n:number}>();
+            if(admitted?.n!==users.length) return errorResponse('عضو اضافه نشد؛ سقف گروه ۱۰۰ نفر است یا مجوز مدیریت شما تغییر کرده است.',409);
           }
           const { results } = await env.DB.prepare(`SELECT u.id, u.username, u.display_name as displayName
             FROM users u JOIN chat_members cm ON cm.user_id = u.id WHERE cm.chat_id = ? ORDER BY cm.joined_at, u.id`).bind(chatId).all();
@@ -454,7 +433,8 @@ export default {
           const stub = env.CHAT_ROOM.get(doId);
           let roomMessages: any[] = [];
           try {
-            const doRes = await stub.fetch(`http://internal/history${url.search}`);
+            const historyUrl = new URL(`http://internal/history${url.search}`); historyUrl.searchParams.set('userId',auth.userId); historyUrl.searchParams.set('chatId',chatId);
+            const doRes = await stub.fetch(historyUrl.toString());
             if (doRes.ok) {
               const messages = await doRes.json<any[]>();
               if (Array.isArray(messages)) roomMessages = messages.map(message => ({ ...message, chatId }));
@@ -465,26 +445,26 @@ export default {
 
           // Fallback to D1
           const { results } = await env.DB.prepare(`
-            SELECT 
-              m.id, 
-              m.chat_id as chatId, 
-              m.sender_id as senderId, 
-              u.display_name as senderName, 
-              m.text, 
+            SELECT
+              m.id,
+              m.chat_id as chatId,
+              m.sender_id as senderId,
+              u.display_name as senderName,
+              m.text,
               m.created_at as createdAt,
               md.client_msg_id AS clientMsgId
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             LEFT JOIN message_metadata md ON md.message_id = m.id
-            WHERE m.chat_id = ? AND (? IS NULL OR m.created_at < ? OR (m.created_at = ? AND m.id < ?))
+            WHERE m.chat_id = ? AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=?) AND (? IS NULL OR m.created_at < ? OR (m.created_at = ? AND m.id < ?))
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT ?
-          `).bind(chatId, beforeTime, beforeTime, beforeTime, beforeId, limit).all();
+          `).bind(chatId, auth.userId, beforeTime, beforeTime, beforeTime, beforeId, limit).all();
 
           const combined = new Map<string, any>();
           for (const message of [...(results || []), ...roomMessages]) combined.set(message.id, message);
           const messages = [...combined.values()].sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-          return jsonResponse(messages.slice(0, limit).reverse());
+          return jsonResponse(await enrichMessages(env,chatId,auth.userId,messages.slice(0, limit).reverse()));
         }
 
         return errorResponse("مسیر درخواستی یافت نشد.", 404);

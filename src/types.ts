@@ -3,6 +3,9 @@ export interface Env {
   CHAT_ROOM: DurableObjectNamespace;
   ASSETS: Fetcher;
   JWT_SECRET?: string;
+  ADMIN_SETUP_TOKEN?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
 }
 
 export interface User {
@@ -43,6 +46,12 @@ export interface Message {
   text: string;
   createdAt: number;
   clientMsgId?: string;
+  replyToId?: string | null;
+  replyTo?: { id: string; text: string; senderName: string; deleted?: boolean } | null;
+  editedAt?: number;
+  deletedAt?: number;
+  revision?: number;
+  reactions?: { emoji: string; users: string[] }[];
 }
 
 export interface JwtPayload {
@@ -56,7 +65,7 @@ export interface JwtPayload {
 // WebSocket Message Types
 export type ClientWsAction =
   | { action: 'auth'; token: string }
-  | { action: 'send_message'; chatId: string; text: string; clientMsgId?: string }
+  | { action: 'send_message'; chatId: string; text: string; clientMsgId?: string; replyToId?: string }
   | { action: 'typing'; chatId: string; isTyping: boolean }
   | { action: 'ping' };
 
@@ -64,6 +73,8 @@ export type ServerWsEvent =
   | { event: 'auth_ok'; user: User }
   | { event: 'session_revoked' }
   | { event: 'new_message'; message: Message }
+  | { event: 'message_changed'; message: Message }
+  | { event: 'chat_access_revoked'; chatId: string }
   | { event: 'typing'; chatId: string; userId: string; username: string; isTyping: boolean }
   | { event: 'presence'; userId: string; status: 'online' | 'offline' }
   | { event: 'pong'; timestamp: number }

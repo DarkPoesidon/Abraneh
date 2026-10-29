@@ -37,6 +37,9 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
       db.prepare("INSERT INTO chats VALUES ('legacy-room','dm',NULL,1,1000)"),
       db.prepare("INSERT INTO chat_members (chat_id,user_id,joined_at) VALUES ('legacy-room','legacy-user',1)"),
       db.prepare("INSERT INTO messages VALUES ('old-a','legacy-room','legacy-user','old body',1000),('old-b','legacy-room','legacy-user','old body',1000)"),
+      db.prepare("INSERT INTO users VALUES ('a-member','member','hash','salt','عضو',1)"),
+      db.prepare("INSERT INTO chats VALUES ('legacy-group','group','قدیمی',1,1)"),
+      db.prepare("INSERT INTO chat_members(chat_id,user_id,joined_at) VALUES ('legacy-group','legacy-user',1),('legacy-group','a-member',1)"),
     ]);
     assert.equal((await mf.dispatchFetch('http://localhost/seed')).status, 200);
     const { applyMigrations } = await import('../installer/migrations.mjs');
@@ -45,11 +48,17 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
       for (const statement of sql.split(';').map(s => s.trim()).filter(Boolean)) results.push(await db.prepare(statement).bind(...params).all());
       return results;
     } };
-    const manifest = { migrations: ['0001_reliable_delivery.sql'] };
+    const manifest = { migrations: ['0001_reliable_delivery.sql','0002_daily_use.sql'] };
     const payload = resolve('.');
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 1);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 2);
+    assert.equal((await db.prepare("SELECT user_id FROM group_roles WHERE chat_id='legacy-group' AND role='owner'").first()).user_id,'legacy-user');
+    // Replaying an upgrade must not take ownership back after a real transfer.
+    await db.batch([db.prepare("UPDATE group_roles SET role='member' WHERE chat_id='legacy-group'"),db.prepare("INSERT INTO group_roles VALUES ('legacy-group','a-member','owner')")]);
+    await applyMigrations(api, 'account', 'same-database', payload, manifest);
+    for(const statement of readFileSync('migrations/0002_daily_use.sql','utf8').split(';').map(s=>s.trim()).filter(Boolean)) await db.prepare(statement).run();
+    assert.equal((await db.prepare("SELECT user_id FROM group_roles WHERE chat_id='legacy-group' AND role='owner'").first()).user_id,'a-member');
     const compiled = await build({ entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral', external: ['cloudflare:workers'] });
     await mf.setOptions(convertV4MiniflareOptions({ ...base, script: compiled.outputFiles[0].text }));
     db = await mf.getD1Database('DB');
@@ -57,7 +66,7 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
     const claims = Buffer.from(JSON.stringify({ userId: 'legacy-user', username: 'legacy', displayName: 'قدیمی', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
     const token = header + '.' + claims + '.' + createHmac('sha256', secret).update(header + '.' + claims).digest('base64url');
     const health = await (await mf.dispatchFetch('http://localhost/api/health')).json();
-    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.1.0', database: true });
+    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.2.0', database: true });
     const history = await (await mf.dispatchFetch('http://localhost/api/chats/legacy-room/messages', { headers: { Authorization: 'Bearer ' + token } })).json();
     assert.deepEqual(history.map(message => message.id), ['old-a', 'old-b']);
     const response = await mf.dispatchFetch('http://localhost/ws?chatId=legacy-room&token=' + token, { headers: { Upgrade: 'websocket' } });

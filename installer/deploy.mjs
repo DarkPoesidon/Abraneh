@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, createECDH } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { CloudflareError } from './cloudflare.mjs';
@@ -117,6 +117,11 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
   progress('assets');
   const jwt = await uploadAssets(api, accountId, name, join(payloadDir, 'public'));
   progress('publish');
+  // A fresh, local-only claim code remains usable even after a lost upload response.
+  // Claiming never replaces an already registered service administrator.
+  const adminCode = randomBytes(32).toString('hex');
+  const hasPushKeys = ['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].every(name => plan.settings?.bindings?.some(binding => binding.name === name && binding.type === 'secret_text'));
+  const pushKeys = createECDH('prime256v1'); pushKeys.generateKeys();
   const metadata = {
     main_module: 'worker.mjs', compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
     bindings: [
@@ -126,6 +131,8 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
       { name: 'WIHM_INSTALLER', type: 'plain_text', text: APP_MARKER },
       { name: 'WIHM_VERSION', type: 'plain_text', text: release.appVersion },
       plan.settings ? { name: 'JWT_SECRET', type: 'inherit' } : { name: 'JWT_SECRET', type: 'secret_text', text: randomBytes(48).toString('base64url') },
+      { name: 'ADMIN_SETUP_TOKEN', type: 'secret_text', text: adminCode },
+      ...['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].map((name,index) => hasPushKeys ? {name,type:'inherit'} : {name,type:'secret_text',text:(index ? pushKeys.getPrivateKey() : pushKeys.getPublicKey()).toString('base64url')}),
     ],
     assets: { jwt, config: { html_handling: 'auto-trailing-slash', not_found_handling: 'none' } },
     ...(!plan.settings ? { migrations: { new_tag: 'v1', new_sqlite_classes: ['ChatRoom'] } } : {}),
@@ -143,10 +150,10 @@ export async function deploy({ api, accountId, name, payloadDir, journal, progre
       const response = await fetcher(url + '/api/health', { redirect: 'error', signal: AbortSignal.timeout(10_000) });
       const health = await response.json();
       if (response.ok && health.app === 'wihm-cloudflare' && health.database === true && health.version === release.appVersion) {
-        return { url, verified: true, mode: plan.mode, version: release.appVersion };
+        return { url, verified: true, mode: plan.mode, version: release.appVersion, adminCode };
       }
     } catch { /* DNS and Worker propagation can lag a successful deployment. */ }
     if (attempt < 11) await pause(1500);
   }
-  return { url, verified: false, mode: plan.mode, version: release.appVersion };
+  return { url, verified: false, mode: plan.mode, version: release.appVersion, adminCode };
 }

@@ -20,7 +20,7 @@ async function fixture(t) {
   await writeFile(join(directory, 'public/style.css'), 'body{color:blue}');
   await writeFile(join(directory, 'worker.mjs'), 'export default {fetch(){return new Response("ok")}}');
   await writeFile(join(directory, 'schema.sql'), await readFile(new URL('../schema.sql', import.meta.url), 'utf8'));
-  await writeFile(join(directory, 'release.json'), JSON.stringify({ appVersion: '1.1.0', migrations: [] }));
+  await writeFile(join(directory, 'release.json'), JSON.stringify({ appVersion: '1.2.0', migrations: [] }));
   return directory;
 }
 function mockCloudflare() {
@@ -79,7 +79,7 @@ function mockCloudflare() {
   };
   return { state, api: new Cloudflare(token, fetcher) };
 }
-const health = async () => Response.json({ app: 'wihm-cloudflare', version: '1.1.0', database: true });
+const health = async () => Response.json({ app: 'wihm-cloudflare', version: '1.2.0', database: true });
 
 test('deployment uses multipart assets, a SQLite migration, and a private secret; journal stores identifiers only', async t => {
   const payloadDir = await fixture(t), { api, state } = mockCloudflare();
@@ -94,6 +94,11 @@ test('deployment uses multipart assets, a SQLite migration, and a private secret
   assert.equal(state.marker.app, APP_MARKER);
   const saved = await readFile(join(payloadDir, 'journal', `${accountId}-${name}.json`), 'utf8');
   assert.ok(!saved.includes(token)); assert.ok(!saved.includes(secret.text));
+  for (const name of ['ADMIN_SETUP_TOKEN','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY']) {
+    const binding=state.metadata[0].bindings.find(row=>row.name===name);
+    assert.equal(binding.type,'secret_text'); assert.ok(binding.text); assert.ok(!saved.includes(binding.text));
+  }
+  assert.equal(result.adminCode,state.metadata[0].bindings.find(row=>row.name==='ADMIN_SETUP_TOKEN').text);
   assert.equal(JSON.parse(saved).databaseId, state.db.uuid);
 });
 
@@ -106,6 +111,9 @@ test('retry after accepted upload with lost response reuses database and inherit
   assert.equal(result.mode, 'update');
   assert.equal(state.calls.filter(c => c.path.endsWith('/d1/database') && c.method === 'POST').length, 1);
   assert.deepEqual(state.metadata[1].bindings.find(b => b.name === 'JWT_SECRET'), { name: 'JWT_SECRET', type: 'inherit' });
+  for(const name of ['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY']) assert.deepEqual(state.metadata[1].bindings.find(b=>b.name===name),{name,type:'inherit'});
+  assert.equal(result.adminCode,state.metadata[1].bindings.find(b=>b.name==='ADMIN_SETUP_TOKEN').text);
+  assert.notEqual(result.adminCode,state.metadata[0].bindings.find(b=>b.name==='ADMIN_SETUP_TOKEN').text);
   assert.equal(state.metadata[1].migrations, undefined);
 });
 
@@ -184,9 +192,10 @@ test('loopback wizard rejects foreign origins, untrusted Host, absent session, b
 test('1.0 installer-managed app upgrades its marker and version while retaining DB, JWT and migration history', async t => {
   const payloadDir = await fixture(t), { api, state } = mockCloudflare();
   await mkdir(join(payloadDir, 'migrations'));
-  const migration = '0001_reliable_delivery.sql';
+  const migration = '0001_reliable_delivery.sql', daily = '0002_daily_use.sql';
+  await writeFile(join(payloadDir, 'migrations', daily), await readFile(new URL('../migrations/' + daily, import.meta.url), 'utf8'));
   await writeFile(join(payloadDir, 'migrations', migration), await readFile(new URL('../migrations/' + migration, import.meta.url), 'utf8'));
-  await writeFile(join(payloadDir, 'release.json'), JSON.stringify({ appVersion: '1.1.0', migrations: [migration] }));
+  await writeFile(join(payloadDir, 'release.json'), JSON.stringify({ appVersion: '1.2.0', migrations: [migration,daily] }));
   state.db = { uuid: 'existing-database', name: name + '-db' };
   state.settings = { bindings: [
     { name: 'WIHM_INSTALLER', type: 'plain_text', text: 'wihm-cloudflare-v1' },
@@ -197,19 +206,31 @@ test('1.0 installer-managed app upgrades its marker and version while retaining 
   const journal = createJournal(join(payloadDir, 'journal'));
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = await deploy({ api, accountId, name, payloadDir, journal, fetcher: health });
-    assert.equal(result.mode, 'update'); assert.equal(result.version, '1.1.0');
+    assert.equal(result.mode, 'update'); assert.equal(result.version, '1.2.0');
   }
   assert.ok(state.applied.has(migration));
   assert.equal(state.calls.filter(call => call.method === 'POST' && call.path.endsWith('/d1/database')).length, 0);
-  assert.equal(state.calls.filter(call => call.options.body && typeof call.options.body === 'string' && JSON.parse(call.options.body).sql?.startsWith('INSERT OR IGNORE INTO schema_migrations')).length, 1);
+  assert.equal(state.calls.filter(call => call.options.body && typeof call.options.body === 'string' && JSON.parse(call.options.body).sql?.startsWith('INSERT OR IGNORE INTO schema_migrations')).length, 2);
   for (const metadata of state.metadata) {
     assert.deepEqual(metadata.bindings.find(binding => binding.name === 'JWT_SECRET'), { name: 'JWT_SECRET', type: 'inherit' });
     assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_INSTALLER').text, APP_MARKER);
-    assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_VERSION').text, '1.1.0');
+    assert.equal(metadata.bindings.find(binding => binding.name === 'WIHM_VERSION').text, '1.2.0');
     assert.equal(metadata.migrations, undefined);
   }
   state.settings.bindings.find(binding => binding.name === 'WIHM_VERSION').text = '9.0.0';
   const before = state.calls.length;
   await assert.rejects(deploy({ api, accountId, name, payloadDir, journal, fetcher: health }), /جدیدتر/);
   assert.ok(state.calls.slice(before).every(call => call.method === 'GET'));
+});
+test('1.1 deployment applies only the daily-use migration and creates push keys without rotating JWT',async t=>{
+  const payloadDir=await fixture(t),{api,state}=mockCloudflare();await mkdir(join(payloadDir,'migrations'));
+  for(const migration of ['0001_reliable_delivery.sql','0002_daily_use.sql'])await writeFile(join(payloadDir,'migrations',migration),await readFile(new URL('../migrations/'+migration,import.meta.url),'utf8'));
+  await writeFile(join(payloadDir,'release.json'),JSON.stringify({appVersion:'1.2.0',migrations:['0001_reliable_delivery.sql','0002_daily_use.sql']}));
+  state.applied.add('0001_reliable_delivery.sql');state.db={uuid:'existing-database',name:name+'-db'};
+  state.settings={bindings:[{name:'WIHM_INSTALLER',type:'plain_text',text:APP_MARKER},{name:'WIHM_VERSION',type:'plain_text',text:'1.1.0'},{name:'DB',type:'d1',id:'existing-database'},{name:'JWT_SECRET',type:'secret_text'},{name:'CHAT_ROOM',type:'durable_object_namespace',class_name:'ChatRoom'}]};
+  const result=await deploy({api,accountId,name,payloadDir,journal:createJournal(join(payloadDir,'journal')),fetcher:health});assert.equal(result.version,'1.2.0');
+  assert.deepEqual(state.metadata[0].bindings.find(row=>row.name==='JWT_SECRET'),{name:'JWT_SECRET',type:'inherit'});
+  assert.equal(state.metadata[0].bindings.find(row=>row.name==='VAPID_PRIVATE_KEY').type,'secret_text');
+  const changes=state.calls.filter(call=>typeof call.options.body==='string'&&JSON.parse(call.options.body).sql?.startsWith('INSERT OR IGNORE INTO schema_migrations'));
+  assert.equal(changes.length,1);assert.deepEqual(JSON.parse(changes[0].options.body).params[0],'0002_daily_use.sql');
 });

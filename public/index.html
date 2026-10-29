@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
   
   <!-- PWA Meta Tags -->
@@ -35,6 +35,7 @@
           <button id="tab-register" class="auth-tab" type="button">ثبت‌نام</button>
         </div>
 
+        <p id="registration-help" class="session-help"></p>
         <div id="auth-error" class="error-banner"></div>
 
         <form id="auth-form">
@@ -66,10 +67,11 @@
           <div class="user-info">
             <span id="user-display-name" class="user-name">کاربر</span>
             <span id="user-username-badge" class="user-handle">@username</span>
-            <span class="app-version" dir="ltr">WIHM 1.1.0</span>
+            <span class="app-version" dir="ltr">WIHM 1.2.0</span>
           </div>
         </div>
         <div class="header-actions">
+          <button id="btn-settings" class="icon-btn" title="تنظیمات" aria-label="تنظیمات" type="button">⚙</button>
           <button id="btn-sessions" class="icon-btn" title="دستگاه‌های متصل" aria-label="دستگاه‌های متصل" type="button">دستگاه‌ها</button>
           <button id="btn-open-search" class="icon-btn" title="گفتگوی جدید" type="button">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -95,6 +97,7 @@
         </div>
       </div>
 
+      <nav class="chat-filters" aria-label="نمایش گفتگوها"><button id="btn-archive" class="quiet-button" type="button" aria-pressed="false">آرشیو</button><button id="btn-saved" class="quiet-button" type="button">پیام‌های ذخیره‌شده</button></nav>
       <div id="chats-list" class="chats-list">
         <!-- Rendered by JS -->
       </div>
@@ -128,9 +131,10 @@
               </div>
             </div>
           </div>
-          <button id="btn-add-members" class="icon-btn" type="button" style="display: none;">افزودن عضو</button>
+          <div class="header-actions"><button id="btn-message-search" class="icon-btn" type="button" aria-label="جستجو در گفتگو" title="جستجو در گفتگو">⌕</button><button id="btn-chat-details" class="icon-btn" type="button" aria-label="اطلاعات و تنظیمات گفتگو" title="اطلاعات و تنظیمات گفتگو">⋯</button><button id="btn-add-members" class="icon-btn" type="button" style="display: none;">افزودن عضو</button></div>
         </header>
 
+        <button id="btn-pinned-message" class="pinned-message" type="button" hidden></button>
         <button id="btn-load-older" class="history-button" type="button" hidden>پیام‌های قبلی</button>
         <button id="btn-first-unread" class="history-button" type="button" hidden>اولین پیام نخوانده</button>
         <div id="messages-container" class="messages-container">
@@ -140,6 +144,7 @@
         <div id="typing-bar" class="typing-indicator-bar"></div>
         <div id="chat-error" class="chat-error" role="status" aria-live="polite"></div>
 
+        <div id="composer-context" class="composer-context" hidden><span id="composer-label"></span><button id="btn-cancel-context" class="icon-btn" type="button" aria-label="لغو پاسخ یا ویرایش">✕</button></div>
         <footer class="chat-input-area">
           <textarea id="message-input" class="message-input" rows="1" placeholder="پیام خود را بنویسید... (Enter برای ارسال)"></textarea>
           <button id="btn-send-message" class="send-btn" title="ارسال" type="button">
@@ -187,6 +192,7 @@
       </div>
     </div>
 
+    <div id="feature-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="feature-title" style="display:none"><div class="modal-card feature-card"><div class="modal-header"><h3 id="feature-title"></h3><button id="btn-close-feature" class="icon-btn" type="button" aria-label="بستن">✕</button></div><div class="modal-body"><div id="feature-content"></div><p id="feature-status" class="feature-status" role="status" aria-live="polite"></p></div></div></div>
     <!-- PWA Install Banner -->
     <div id="install-banner" class="install-banner">
       <div>

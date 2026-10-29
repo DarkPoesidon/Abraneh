@@ -107,6 +107,7 @@ function renderStatus(status) {
     if (!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(status.result.url)) return showFailure('آدرس خروجی معتبر نیست.');
     for (const id of ['app-url', 'open-app']) $(id).href = status.result.url;
     $('app-url').textContent = status.result.url;
+    $('admin-code').value = status.result.adminCode || '';
     $('result').hidden = false;
     if (!status.result.verified) $('progress-list').lastElementChild.dataset.state = 'error';
   }
@@ -144,3 +145,5 @@ async function init() {
   } catch (error) { errorAt('connect-error', error); }
 }
 init();
+
+$('copy-admin-code').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('admin-code').value); $('copy-status').textContent = 'کد مدیریت کپی شد؛ فقط در حساب خودتان وارد کنید.'; } catch { $('admin-code').select(); } });

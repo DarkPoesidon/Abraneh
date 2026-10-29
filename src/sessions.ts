@@ -1,11 +1,15 @@
 import { Env, JwtPayload, User } from './types.js';
 import { signJwt, verifyJwt } from './auth.js';
+import { SESSION_VERSION_SQL } from './access.js';
 
-export async function issueSession(request: Request, env: Env, user: User): Promise<string> {
+export async function issueSession(request: Request, env: Env, user: User, passwordVersion = 1): Promise<string> {
   const sid = crypto.randomUUID();
   const now = Date.now();
-  await env.DB.prepare('INSERT INTO user_sessions (id,user_id,label,created_at,expires_at) VALUES (?,?,?,?,?)')
-    .bind(sid, user.id, (request.headers.get('User-Agent') || 'مرورگر').slice(0, 200), now, now + 7 * 86400_000).run();
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO user_sessions (id,user_id,label,created_at,expires_at) VALUES (?,?,?,?,?)')
+      .bind(sid, user.id, (request.headers.get('User-Agent') || 'مرورگر').slice(0, 200), now, now + 7 * 86400_000),
+    env.DB.prepare('INSERT INTO session_security VALUES (?,?)').bind(sid,passwordVersion),
+  ]);
   return signJwt({ userId: user.id, username: user.username, displayName: user.displayName, sid }, env.JWT_SECRET);
 }
 
@@ -24,9 +28,9 @@ export async function requestIdentity(request: Request, env: Env): Promise<(JwtP
       SELECT ?,id,?,?,? FROM users WHERE id = ? AND NOT EXISTS (SELECT 1 FROM session_policy WHERE user_id = ? AND legacy_disabled = 1)`)
       .bind(sid, 'نشست نسخهٔ قبلی', Date.now(), claims.exp * 1000, claims.userId, claims.userId).run();
   }
-  const row = await env.DB.prepare('SELECT id FROM user_sessions WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ?')
-    .bind(sid, claims.userId, Date.now()).first();
-  return row ? { ...claims, sid } : null;
+  const row = await env.DB.prepare(`SELECT s.id,u.display_name AS displayName,u.username FROM user_sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND ${SESSION_VERSION_SQL}`)
+    .bind(sid, claims.userId, Date.now()).first<{ displayName: string; username: string }>();
+  return row ? { ...claims, displayName: row.displayName, username: row.username, sid } : null;
 }
 
 export async function revokeSessions(env: Env, userId: string, ids: string[]): Promise<void> {
