@@ -720,6 +720,128 @@ dialog.modal-card:not([open]) { display:none; }
 .profile-picture .avatar { width:64px; height:64px; }
 .profile-picture label { width:auto; }
 .feature-form + .quiet-button { margin-top:16px; }
+
+/* Telegram-Style Grouped Cards & Symmetrical Action Buttons */
+.tg-card {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 14px !important;
+  padding: 16px !important;
+  margin-bottom: 14px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+
+.tg-card-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 12px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.tg-card-title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #54a9eb !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.tg-card-badge {
+  background: rgba(84, 169, 235, 0.15) !important;
+  color: #54a9eb !important;
+  border: 1px solid rgba(84, 169, 235, 0.25) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  padding: 2px 8px !important;
+  border-radius: 6px !important;
+  letter-spacing: 0.5px !important;
+}
+
+.tg-card-desc {
+  font-size: 13px !important;
+  line-height: 1.7 !important;
+  color: var(--text-secondary) !important;
+  margin: 0 0 14px 0 !important;
+}
+
+.tg-btn-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+  margin: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.tg-btn-primary, .tg-btn-secondary {
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+  text-decoration: none !important;
+  outline: none !important;
+  width: 100% !important;
+  line-height: 1 !important;
+  transition: all 0.15s ease !important;
+}
+
+.tg-btn-primary {
+  background: #2481cc !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 2px 5px rgba(36, 129, 204, 0.35) !important;
+}
+
+.tg-btn-primary:active {
+  background: #1c72b5 !important;
+  transform: translateY(1px) !important;
+}
+
+.tg-btn-secondary {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #f1f5f9 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.tg-btn-secondary:active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(1px) !important;
+}
+
+.tg-feedback {
+  margin-top: 10px !important;
+  margin-bottom: 0 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.button-row > .btn-primary,
+.update-actions > .btn-primary,
+.tg-btn-grid > *,
+.button-row > * {
+  margin: 0 !important;
+}
 .visually-hidden { position:absolute; width:1px !important; height:1px; overflow:hidden; clip-path:inset(50%); }
 .member-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-block:12px; border-bottom:1px solid var(--border-color); }
 .member-name { flex:1; min-width:100px; overflow-wrap:anywhere; }

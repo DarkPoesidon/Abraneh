@@ -233,6 +233,9 @@
   function endSession() {
     calls?.reset();
     window.WihmSecure?.reset();secureItems=[];clearInterval(securePoll);securePoll=null;secureRequest=null;
+    if (window.Android && window.Android.clearAuthToken) {
+      window.Android.clearAuthToken();
+    }
     token = '';
     currentUser = null;
     activeChat = null;
@@ -266,6 +269,9 @@
       return;
     }
     authOverlay.style.display = 'none';
+    if (window.Android && window.Android.saveAuthToken) {
+      window.Android.saveAuthToken(token, currentUser.id, location.origin);
+    }
     userDisplayName.textContent = currentUser.displayName || currentUser.username;
     userUsernameBadge.textContent = `@${currentUser.username}`;
     userAvatar.textContent = (currentUser.displayName || currentUser.username)[0].toUpperCase();
@@ -661,6 +667,24 @@
       const msg = data.message;
       acknowledgeOutbox(msg);
       messagesByChat[msg.chatId] = mergeMessages(messagesByChat[msg.chatId] || [], [msg]);
+
+      // Notification trigger for incoming messages
+      if (currentUser && msg.senderId !== currentUser.id) {
+        const isReadingChat = activeChat && activeChat.id === msg.chatId && document.visibilityState !== 'hidden';
+        if (!isReadingChat) {
+          const targetChat = chats.find(c => c.id === msg.chatId);
+          const chatTitle = (targetChat && targetChat.type === 'group' ? targetChat.title : msg.senderName) || 'پیام تازه در ابرانه';
+          const preview = msg.text || 'یک پیام جدید دریافت شد';
+          if (window.Android && window.Android.showNotification) {
+            window.Android.showNotification(chatTitle, preview, msg.chatId);
+          } else if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification(chatTitle, { body: preview, icon: '/icon.svg', tag: msg.chatId, dir: 'rtl' });
+            } catch (e) {}
+          }
+        }
+      }
+
       if (activeChat && msg.chatId === activeChat.id) {
         renderMessages(messagesByChat[msg.chatId], { keepPosition: true });
         reportReceipt(msg.chatId);
@@ -1169,6 +1193,9 @@
   const callMount=document.querySelector('.chat-header');if(callMount&&window.WihmCalls)calls=window.WihmCalls.create({getChat:()=>activeChat,getUser:()=>currentUser,send:data=>{if(!ws||ws.readyState!==WebSocket.OPEN)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));},mount:callMount,notify:message=>chatError.textContent=message});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
+  byId('settings-server')?.addEventListener('click',()=>{closeFeature();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
+  byId('btn-menu-server')?.addEventListener('click',()=>{closeMainMenu();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
+  byId('btn-auth-change-server')?.addEventListener('click',()=>{if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
   byId('btn-channels')?.addEventListener('click',()=>{closeMainMenu();extras?.channels().catch(featureError);});
   async function loadProfile() {
     const sessionToken=token, row=await api('/api/profile'); if(!row||sessionToken!==token) return;
@@ -1188,6 +1215,31 @@
     showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>'); const generation=featureGeneration;
     await loadProfile(); if(generation!==featureGeneration) return;
     avatarDraft=profile.avatar||'';
+    const isAndroid = !!window.Android;
+    const notificationSectionHtml = isAndroid ? `
+      <section class="feature-section notification-controls">
+        <h4>تنظیمات اعلان و فعالیت در پس‌زمینه</h4>
+        <p class="session-help">برای دریافت آنی پیام‌ها حتی زمانی که اپلیکیشن کاملاً بسته است یا گوشی به خواب می‌رود (Doze Mode)، موارد زیر را فعال کنید.</p>
+        <div style="margin-top: 10px; margin-bottom: 12px;">
+          <label class="check-label" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            <input id="android-keep-alive" type="checkbox" ${window.Android.isKeepAliveEnabled?.() ? 'checked' : ''}>
+            <span><strong>سرویس زنده در پس‌زمینه (Keep-Alive Service)</strong></span>
+          </label>
+          <p class="session-help" style="margin-top: 4px; margin-right: 24px;">سرویس بومی اندروید در پس‌زمینه فعال مانده و به محض ارسال پیام توسط دیگران، اعلان می‌دهد.</p>
+        </div>
+        <div class="button-row" style="margin-top: 10px;">
+          <button id="android-battery-opt" class="quiet-button" type="button">${window.Android.isBatteryOptimizationIgnored?.() ? '✓ باتری: بدون محدودیت' : '⚡ غیرفعال‌سازی محدودیت باتری'}</button>
+          <button id="android-autostart" class="quiet-button" type="button">🚀 تنظیمات شروع خودکار (Autostart)</button>
+          <button id="android-test-notif" class="quiet-button" type="button">🔔 آزمایش اعلان دستگاه</button>
+        </div>
+        <p id="android-power-status" class="session-help" style="margin-top: 8px;">
+          ${window.Android.isBatteryOptimizationIgnored?.() ? 'محدودیت باتری اندروید برای ابرانه برداشته شده است.' : 'توجه: برای دریافت پیام در حالت خاموش بودن صفحه، دکمه «غیرفعال‌سازی محدودیت باتری» را بزنید و مجاز کنید.'}
+        </p>
+      </section>
+    ` : `
+      <section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="test-notifications" class="quiet-button" type="button">آزمایش ارسال سرور</button><button id="test-local-notification" class="quiet-button" type="button">آزمایش نمایش دستگاه</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
+    `;
+
     showFeature(({profile:'ویرایش پروفایل',appearance:'ظاهر و نوشته‌ها',notifications:'اعلان‌ها',password:'رمز عبور و امنیت'})[section],`
       <form id="profile-form" class="feature-form">
         <div class="settings-profile-fields"><div class="profile-picture"><div class="avatar" id="profile-avatar">${avatarHtml(avatarDraft,currentUser.displayName)}</div><label class="quiet-button">انتخاب عکس<input id="profile-file" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden"></label><button id="remove-avatar" class="quiet-button" type="button">حذف عکس</button></div>
@@ -1198,7 +1250,7 @@
         <p class="session-help">با خاموش بودن این گزینه، اعلان فقط دریافت پیام تازه را نشان می‌دهد.</p></div>
         <button class="btn-primary" type="submit">ذخیرهٔ تنظیمات</button>
       </form>
-      <section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="test-notifications" class="quiet-button" type="button">آزمایش ارسال سرور</button><button id="test-local-notification" class="quiet-button" type="button">آزمایش نمایش دستگاه</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
+      ${notificationSectionHtml}
       <section class="feature-section password-controls"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>کد دومرحله‌ای؛ اگر فعال است<input id="password-otp" class="form-input" autocomplete="one-time-code"></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
       `);
     featureContent.dataset.settingsPage=section;byId('btn-settings-back').hidden=false;
@@ -1213,9 +1265,33 @@
     bind('remove-avatar',()=>{avatarDraft='';byId('profile-avatar').innerHTML=avatarHtml('',currentUser.displayName);});
     bind('profile-form',async()=>{await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
     bind('password-form',async()=>{if(byId('password-new').value!==byId('password-confirm').value) throw new Error('تکرار رمز تازه مطابقت ندارد.'); await post('/api/profile/password',{currentPassword:byId('password-current').value,newPassword:byId('password-new').value,otp:byId('password-otp')?.value||''}); byId('password-form').reset();byId('feature-status').textContent='رمز تغییر کرد؛ سایر دستگاه‌ها خارج شدند.';},'submit');
-    bind('test-notifications',async()=>{const result=await post('/api/push/test',{});byId('notification-state').textContent=result.message;});
-    bind('test-local-notification',async()=>{if(Notification.permission!=='granted')throw new Error('ابتدا اعلان را فعال کنید.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('آزمایش نمایش ابرانه',{body:'اگر این اعلان را می‌بینید، نمایش اعلان روی دستگاه فعال است.',tag:'wihm-local-test',icon:'/icon.svg',dir:'rtl'});byId('notification-state').textContent='این آزمایش فقط نمایش دستگاه را بررسی می‌کند؛ برای مسیر شبکه، آزمایش ارسال سرور را بزنید.';});
-    bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
+    if (isAndroid) {
+      bind('android-keep-alive', e => {
+        window.Android.setKeepAliveEnabled?.(e.target.checked);
+      }, 'change');
+      bind('android-battery-opt', () => {
+        window.Android.requestIgnoreBatteryOptimization?.();
+        setTimeout(() => {
+          const ignored = window.Android.isBatteryOptimizationIgnored?.();
+          const btn = byId('android-battery-opt');
+          if (btn) btn.textContent = ignored ? '✓ باتری: بدون محدودیت' : '⚡ غیرفعال‌سازی محدودیت باتری';
+          const status = byId('android-power-status');
+          if (status) status.textContent = ignored ? 'محدودیت باتری اندروید برای ابرانه برداشته شده است.' : 'توجه: برای دریافت پیام در حالت خاموش بودن صفحه، دکمه «غیرفعال‌سازی محدودیت باتری» را بزنید و مجاز کنید.';
+        }, 1000);
+      });
+      bind('android-autostart', () => {
+        window.Android.openAutostartSettings?.();
+      });
+      bind('android-test-notif', () => {
+        if (window.Android.showNotification) {
+          window.Android.showNotification('آزمایش اعلان ابرانه', 'سرویس اعلان بومی فعال است و با موفقیت کار می‌کند.', '');
+        }
+      });
+    } else {
+      bind('test-notifications',async()=>{const result=await post('/api/push/test',{});byId('notification-state').textContent=result.message;});
+      bind('test-local-notification',async()=>{if(Notification.permission!=='granted')throw new Error('ابتدا اعلان را فعال کنید.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('آزمایش نمایش ابرانه',{body:'اگر این اعلان را می‌بینید، نمایش اعلان روی دستگاه فعال است.',tag:'wihm-local-test',icon:'/icon.svg',dir:'rtl'});byId('notification-state').textContent='این آزمایش فقط نمایش دستگاه را بررسی می‌کند؛ برای مسیر شبکه، آزمایش ارسال سرور را بزنید.';});
+      bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
+    }
 
   }
   async function saveProfile(extra={}) {
