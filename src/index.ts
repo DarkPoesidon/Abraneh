@@ -1,3 +1,6 @@
+import { publicChannels, handleChannels, scheduledChannels } from './channels.js';
+import { beginOperation, withOperation } from './maintenance.js';
+import { handleBackup, publicRestore } from './backup.js';
 import { Env, User, UserRow } from "./types.js";
 import { hashPassword, verifyPassword, generateSalt, hasJwtSecret } from "./auth.js";
 import { historyOptions } from "./history.js";
@@ -11,6 +14,8 @@ import { handleFeatures, registrationMode, registrationGate, enrichMessages, enr
 import { handleUpdates, scheduledUpdates } from './updates.js';
 import { handleTelegram, telegramWebhook, scheduledTelegram } from './telegram.js';
 import { handleManagement } from './management.js';
+import { publicSecurity, handleSecurity, enforceSecondFactor } from './security.js';
+import { publicSecure, handleSecure, scheduledSecure } from './secure.js';
 import { publicDiscovery, handleDiscovery } from './discovery.js';
 export { ChatRoom } from "./chatRoom.js";
 
@@ -27,9 +32,17 @@ const authenticate = requestIdentity;
 
 export default {
   async scheduled(_controller:ScheduledController,env:Env,ctx:ExecutionContext) {
-    ctx.waitUntil(Promise.allSettled([scheduledUpdates(env),scheduledTelegram(env)]));
+    ctx.waitUntil(withOperation(env,()=>Promise.allSettled([scheduledUpdates(env),scheduledTelegram(env),scheduledSecure(env),scheduledChannels(env)])).catch(()=>{}));
   },
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request:Request,env:Env,ctx:ExecutionContext):Promise<Response>{
+    const path=new URL(request.url).pathname;
+    const tracked=request.method!=='OPTIONS'&&(path.startsWith('/api/')||path==='/ws'||path==='/.well-known/wihm')&&!['/api/health','/api/app/version'].includes(path)&&!path.startsWith('/api/service/backup/')&&!path.startsWith('/api/_restore/');
+    try{return tracked&&hasJwtSecret(env.JWT_SECRET)?await withOperation(env,()=>applicationFetch(request,env,ctx)):await applicationFetch(request,env,ctx);}
+    catch(error){return errorResponse(error instanceof InputError?error.message:'عملیات سرویس کامل نشد؛ دوباره تلاش کنید.',error instanceof InputError?error.status:503);}
+  },
+};
+
+async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Promise<Response>{
     const url = new URL(request.url);
 
     // Handle CORS preflight
@@ -45,8 +58,8 @@ export default {
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'chats', 'chat_members', 'messages', 'user_sessions', 'session_policy', 'rate_limits', 'message_metadata', 'chat_receipts', 'user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_search','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit')").first<{ n: number }>();
-        const ready = row?.n === 35;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
+        const ready = row?.n === 56;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -100,6 +113,10 @@ export default {
     // ==========================================
     if (url.pathname.startsWith("/api/")) {
       try {
+        const restorePublic=await publicRestore(request,env);if(restorePublic)return restorePublic;
+        const channelsPublic=await publicChannels(request,env);if(channelsPublic)return channelsPublic;
+        const securityPublic=await publicSecurity(request,env);if(securityPublic)return securityPublic;
+        const securePublic=await publicSecure(request,env,ctx);if(securePublic)return securePublic;
         const webhook=await telegramWebhook(request,env);if(webhook)return webhook;
         if (url.pathname === '/api/bootstrap' && request.method === 'GET') return jsonResponse({ registration: await registrationMode(env) });
         // --- AUTH: REGISTER ---
@@ -175,6 +192,7 @@ export default {
             return errorResponse("نام کاربری یا رمز عبور اشتباه است.", 401);
           }
 
+          await enforceSecondFactor(env,row.id,body);
           const user: User = {
             id: row.id,
             username: row.username,
@@ -191,6 +209,10 @@ export default {
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
+        const backup=await handleBackup(request,env,auth);if(backup)return backup;
+        const channels=await handleChannels(request,env,auth);if(channels)return channels;
+        const security=await handleSecurity(request,env,auth);if(security)return security;
+        const secure=await handleSecure(request,env,auth,ctx);if(secure)return secure;
         const management=await handleManagement(request,env,auth);if(management)return management;
         const discovery=await handleDiscovery(request,env,auth);if(discovery)return discovery;
         const updates=await handleUpdates(request,env,auth);if(updates)return updates;
@@ -497,5 +519,5 @@ export default {
     }
 
     return new Response("Cloudflare Messenger Backend Ready", { status: 200 });
-  },
-};
+
+}

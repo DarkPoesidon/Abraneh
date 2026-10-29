@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cloudflare-messenger-1.4.2';
+const CACHE_NAME = 'cloudflare-messenger-1.5.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -6,6 +6,11 @@ const ASSETS_TO_CACHE = [
   '/app.js',
   '/updates.js',
   '/extras.js',
+  '/security.js',
+  '/backup.js',
+  '/calls.js',
+  '/channels.js',
+  '/secure.bundle.js',
   '/manifest.json',
   '/icon.svg',
   '/fonts/Vazir-Variable.woff2'
@@ -78,11 +83,12 @@ self.addEventListener('push', event => {
   const chatId=typeof payload.chatId==='string'&&/^[a-zA-Z0-9_-]+$/.test(payload.chatId)?payload.chatId:'';
   event.waitUntil(self.registration.showNotification(typeof payload.title==='string'?payload.title:'پیام تازه', {
     body:typeof payload.body==='string'?payload.body:'یک پیام تازه دریافت کردید.',
-    tag:payload.kind==='update'?'wihm-update':'chat-'+chatId,icon:'/icon.svg',badge:'/icon.svg',dir:'rtl',lang:'fa',data:{chatId,kind:payload.kind==='update'?'update':'chat'}
+    tag:payload.kind==='update'?'wihm-update':'chat-'+chatId,icon:'/icon.svg',badge:'/icon.svg',dir:'rtl',lang:'fa',data:{chatId,kind:['update','secure'].includes(payload.kind)?payload.kind:'chat'}
   }));
 });
 self.addEventListener('notificationclick', event => {
   event.notification.close();const chatId=event.notification.data?.chatId;
+  if(event.notification.data?.kind==='secure'){event.waitUntil((async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of windows)if(new URL(client.url).origin===self.location.origin){await client.focus();client.postMessage({type:'open-secure',threadId:chatId});return;}await self.clients.openWindow('/?secure='+encodeURIComponent(chatId||''));})());return;}
   if(event.notification.data?.kind==='update'){event.waitUntil((async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of windows)if(new URL(client.url).origin===self.location.origin){await client.focus();client.postMessage({type:'open-updates'});return;}await self.clients.openWindow('/?updates=1');})());return;}
   if(typeof chatId!=='string'||!/^[a-zA-Z0-9_-]+$/.test(chatId))return;
   event.waitUntil((async()=>{

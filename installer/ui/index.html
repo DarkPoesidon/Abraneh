@@ -75,15 +75,19 @@
             <label for="name">نام آدرس پیام‌رسان</label>
             <input id="name" dir="ltr" value="wihm-chat" required minlength="3" maxlength="40" pattern="[a-z][a-z0-9\-]{1,38}[a-z0-9]" autocomplete="off" spellcheck="false" aria-describedby="name-help configure-error">
             <p id="name-help" class="helper">۳ تا ۴۰ حرف کوچک انگلیسی، عدد یا خط تیره؛ مثل <bdi>my-family-chat</bdi>.</p>
+            <label for="hostname">دامنهٔ شخصی (اختیاری)</label>
+            <input id="hostname" dir="ltr" maxlength="253" autocomplete="off" spellcheck="false" placeholder="chat.example.com" aria-describedby="domain-help configure-error">
+            <p id="domain-help" class="helper">خالی بگذار تا فقط آدرس workers.dev ساخته شود. برای اتصال، یک دامنه یا زیردامنهٔ خالی از Zone فعالِ همین حساب بنویس. در توکن، مجوزهای Zone → Zone → Read و Zone → DNS → Read را برای همان دامنه اضافه کن. رکورد یا اتصال قبلی جایگزین نمی‌شود؛ آدرس workers.dev هم فعال می‌ماند. خرید دامنه یا پلن انجام نمی‌شود.</p>
             <p id="configure-error" class="error-text" role="alert" hidden></p>
             <div class="actions"><button class="button" type="submit" id="plan-button">بررسی نام و حساب</button><button class="text-button" type="button" id="change-account">تغییر دسترسی</button></div>
           </form>
           <div id="review" class="review" hidden>
             <h2 id="review-title">آمادهٔ نصب</h2>
             <p id="review-description"></p>
+            <p id="review-domain" class="helper" hidden></p>
             <dl><div><dt>نام برنامه</dt><dd id="review-name" dir="ltr"></dd></div><div><dt>محل اجرا</dt><dd>حساب کلادفلر انتخاب‌شده</dd></div><div><dt>دیتابیس و کلید امنیتی</dt><dd id="review-data">ساخت خودکار</dd></div></dl>
             <p class="helper">نصب از سهمیهٔ سرویس‌های حساب شما استفاده می‌کند. محدودیت‌های پلن کلادفلر برقرار است؛ نصب‌کننده پلن پولی فعال نمی‌کند.</p>
-            <label class="helper"><input id="enable-updater" type="checkbox"> فعال‌کردن به‌روزرسانی سرور از داخل پیام‌رسان</label>
+            <details><summary>بازیابی پشتیبان روی نصب تازه</summary><p class="helper">نام تازه انتخاب کن؛ نصب قبلی پاک نمی‌شود. فایل و نصب‌کننده باید هم‌نسخه باشند.</p><input id="restore-file" type="file" accept="application/json,.json"><label>رمز فایل پشتیبان<input id="restore-password" type="password" autocomplete="off"></label></details><label class="helper"><input id="enable-updater" type="checkbox"> فعال‌کردن به‌روزرسانی سرور از داخل پیام‌رسان</label>
             <p class="helper">با انتخاب این گزینه، توکن دسترسی به‌صورت Secret در یک به‌روزرسان جدا روی حساب کلادفلر شما نگه داشته می‌شود؛ در فایل یا مرورگر ذخیره نمی‌شود. بعداً می‌توانید با تأیید خودتان یا خودکار آپدیت کنید. حذف یا انقضای این توکن، آپدیت سرور را متوقف می‌کند. پیش‌فرض، پرسیدن پیش از آپدیت است.</p>
             <button class="button" type="button" id="install-button">نصب پیام‌رسان</button>
           </div>
@@ -99,6 +103,7 @@
             <li data-phase="assets">بارگذاری رابط پیام‌رسان</li>
             <li data-phase="publish">تنظیم کلید امنیتی و انتشار</li>
             <li data-phase="verify">بررسی سلامت پیام‌رسان</li>
+            <li data-phase="domain" hidden>اتصال دامنهٔ شخصی</li>
           </ol>
           <p class="helper" id="current-status" role="status" aria-live="polite"></p>
           <div id="install-error" class="notice error" role="alert" hidden><h2>این مرحله کامل نشد.</h2><p id="install-error-text"></p><p>اطلاعات ساخته‌شده حفظ می‌شود. بعد از رفع مشکل دوباره تلاش کن.</p><div class="actions"><button class="button" id="retry" type="button">تلاش دوباره</button><button class="text-button" id="back-configure" type="button">اصلاح تنظیمات</button></div></div>
@@ -106,10 +111,12 @@
             <h2 id="result-title">پیام‌رسان آماده است.</h2>
             <p id="result-description">لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.</p>
             <a id="app-url" class="app-url" dir="ltr" target="_blank" rel="noreferrer"></a>
+            <div id="domain-result" hidden><p id="domain-status" class="helper" role="status"></p><a id="domain-url" class="app-url" dir="ltr" target="_blank" rel="noreferrer" hidden></a></div>
             <div class="actions"><a id="open-app" class="button" target="_blank" rel="noreferrer">باز کردن پیام‌رسان ↗</a><button type="button" id="copy-url" class="button secondary">کپی لینک</button><button type="button" id="save-receipt" class="text-button">ذخیرهٔ مشخصات</button></div>
             <p id="copy-status" role="status" class="helper"></p>
             <div class="notice"><strong>فعال‌سازی مدیر سرویس</strong><p>با حساب خودت وارد پیام‌رسان شو؛ «تنظیمات ← مدیریت سرویس» را باز کن و این کد را وارد کن. کد را برای دیگران نفرست. اگر مدیر را قبلاً فعال کرده‌ای نیازی به تکرار نیست.</p><input id="admin-code" type="text" readonly dir="ltr" aria-label="کد مدیریت سرویس" autocomplete="off"><button id="copy-admin-code" class="text-button" type="button">کپی کد مدیریت</button></div>
             <p class="helper" id="token-retention-note">از منوی مرورگر، «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را انتخاب کن. اگر به‌روزرسانی سرور را فعال کرده‌ای، توکن را نگه دار؛ حذف آن آپدیت‌های بعدی را متوقف می‌کند. اگر فعال نکرده‌ای، می‌توانی توکن را حذف کنی؛ پیام‌رسان فعال می‌ماند.</p>
+            <button type="button" id="configure-again" class="text-button">بررسی یا اصلاح دامنه و نصب</button>
             <button type="button" id="finish" class="text-button">پایان و بستن نصب‌کننده</button>
           </div>
         </section>

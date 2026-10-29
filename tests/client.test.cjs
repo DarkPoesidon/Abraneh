@@ -32,7 +32,7 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
   }
   const storage = new Map([['cf_msg_token', 'session-token'], ['cf_msg_user', JSON.stringify({ id: 'self', username: 'self', displayName: 'Self' })], ...storageEntries]);
   const navigator = { onLine: online };
-  const document = { documentElement:{style:{setProperty(){},removeProperty(){}}}, visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
+  const document = { querySelector(){return null;}, documentElement:{style:{setProperty(){},removeProperty(){}}}, visibilityState: 'visible', getElementById: id => elements.get(id) || null, createElement: element, addEventListener: (type, fn) => { documentEvents[type] = fn; } };
   const sandbox = {
     console, URLSearchParams, WebSocket, navigator, document,
     requestAnimationFrame:fn=>{fn();return 1;},cancelAnimationFrame(){},

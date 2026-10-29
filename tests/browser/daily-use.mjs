@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 
-const compiled = await build({ entryPoints: ['src/index.ts'], bundle: true, format: 'esm', write: false, platform: 'neutral', external: ['cloudflare:workers'] });
+const compiled = await build({ entryPoints: ['src/index.ts'], bundle: true, format: 'esm', write: false, platform:'neutral', mainFields:['browser','module','main'], external: ['cloudflare:workers'] });
 const mf = new Miniflare(convertV4MiniflareOptions({ name: 'browser-qa', modules: true, script: compiled.outputFiles[0].text,
   compatibilityDate: '2026-01-01', compatibilityFlags: ['nodejs_compat'], bindings: { JWT_SECRET: randomBytes(48).toString('hex'), ADMIN_SETUP_TOKEN: 'qa-only-owner-claim-code' },
   d1Databases: { DB: 'browser-qa-db' }, durableObjects: { CHAT_ROOM: { className: 'ChatRoom', useSQLite: true } },

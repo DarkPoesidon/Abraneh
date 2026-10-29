@@ -48,6 +48,13 @@ export async function sendUpdatePush(env:Env,version:string,after='',fetcher:typ
   checkDeliveries(await Promise.allSettled(results.map(row=>deliver(env,row,{title:'نسخهٔ جدید ابرانه آماده است',body:`نسخهٔ ${version} منتشر شد؛ برای بررسی و تأیید، به‌روزرسانی را از تنظیمات باز کنید.`,kind:'update'},86400,'wihm-update',fetcher))));
   return results.length===24?String(results.at(-1).id):null;
 }
+export async function sendSecurePush(env:Env,userId:string,thread:string,after='',fetcher:typeof fetch=fetch):Promise<string|null>{
+  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return null;
+  const {results}=await env.DB.prepare(`SELECT ps.* FROM push_subscriptions ps JOIN user_sessions s ON s.id=ps.session_id AND s.user_id=ps.user_id JOIN user_profiles p ON p.user_id=ps.user_id AND p.notifications=1 WHERE ps.user_id=? AND s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL} AND NOT EXISTS(SELECT 1 FROM service_user_state us WHERE us.user_id=ps.user_id AND us.disabled_at IS NOT NULL) AND ps.id>? ORDER BY ps.id LIMIT 24`).bind(userId,Date.now(),after).all<any>();
+  const topic=(await tokenHash(thread)).slice(0,32);
+  checkDeliveries(await Promise.allSettled(results.map(row=>deliver(env,row,{title:'پیام امن تازه در ابرانه',body:'برای مشاهده و تأیید دستگاه مخاطب، برنامه را باز کنید.',kind:'secure',chatId:thread},3600,topic,fetcher))));
+  return results.length===24?String(results.at(-1).id):null;
+}
 // Small pages keep a large group's fan-out below the per-invocation fetch budget.
 // The room persists the returned cursor and resumes via its alarm.
 export async function sendPush(env: Env, message: Message, fetcher: typeof fetch = fetch, after = ''): Promise<string | null> {

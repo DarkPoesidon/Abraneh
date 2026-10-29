@@ -13,7 +13,7 @@ if (location.hash) { sessionStorage.setItem('wihm-session', session); history.re
 let config = null;
 try { config = JSON.parse(sessionStorage.getItem('wihm-config') || 'null'); } catch { sessionStorage.removeItem('wihm-config'); }
 let pollTimer, currentResult;
-const phases = ['check', 'address', 'database', 'schema', 'assets', 'publish', 'verify'];
+const phases = ['check', 'address', 'database', 'schema', 'assets', 'publish', 'verify', 'domain'];
 
 async function api(path, data) {
   let response;
@@ -40,6 +40,7 @@ function fillAccounts(accounts) {
   $('account').replaceChildren(...accounts.map(account => { const option = document.createElement('option'); option.value = account.id; option.textContent = account.name; return option; }));
   if (config && accounts.some(account => account.id === config.accountId)) $('account').value = config.accountId;
   if (config?.name) $('name').value = config.name;
+  $('hostname').value = config?.hostname || '';
 }
 function invalidatePlan() { $('review').hidden = true; $('configure-error').hidden = true; }
 $('configure-form').addEventListener('input', invalidatePlan);
@@ -60,13 +61,15 @@ $('change-account').onclick = async () => {
 $('configure-form').onsubmit = async event => {
   event.preventDefault(); invalidatePlan(); $('name').removeAttribute('aria-invalid');
   busy($('plan-button'), true, 'در حال بررسی…', 'بررسی نام و حساب');
-  const candidate = { accountId: $('account').value, name: $('name').value.trim() };
+  const candidate = { accountId: $('account').value, name: $('name').value.trim(), hostname: $('hostname').value.trim().toLowerCase() };
   try {
     const plan = await api('plan', candidate);
     // If input changed during a request, its response no longer describes the form.
-    if (candidate.accountId !== $('account').value || candidate.name !== $('name').value.trim()) return;
+    if (candidate.accountId !== $('account').value || candidate.name !== $('name').value.trim() || candidate.hostname !== $('hostname').value.trim().toLowerCase()) return;
     config = candidate; sessionStorage.setItem('wihm-config', JSON.stringify(config));
     $('review-name').textContent = config.name;
+    $('review-domain').hidden = !plan.domain;
+    $('review-domain').textContent = plan.domain ? `${plan.domain.hostname} — ${plan.domain.connected ? 'اتصال همین برنامه تأیید شد' : 'Zone و خالی‌بودن نام تأیید شد؛ پس از انتشار متصل می‌شود'}. گواهی و دسترسی HTTPS ممکن است با تأخیر فعال شوند.` : '';
     $('enable-updater').checked=!!plan.updaterEnabled;
     $('enable-updater').disabled=!!plan.updaterEnabled;
     $('review-title').textContent = plan.mode === 'update' ? `به‌روزرسانی از ${plan.installedVersion} به ${plan.targetVersion}` : `نصب نسخهٔ ${plan.targetVersion}`;
@@ -80,17 +83,20 @@ $('configure-form').onsubmit = async event => {
 async function start() {
   if (!config) { panel('configure'); return; }
   $('install-error').hidden = true; $('result').hidden = true;
+  $('progress-list').querySelector('[data-phase="domain"]').hidden = !config.hostname;
   $('install-button').disabled = true; $('retry').disabled = true;
-  try { await api('start', {...config,enableUpdater:$('enable-updater').checked}); panel('progress'); await poll(); }
+  try { const file=$('restore-file').files[0];let backup;if(file){backup=await WihmBackup.decrypt(await file.text(),$('restore-password').value);$('restore-password').value='';}await api(file?'restore':'start', {...config,enableUpdater:$('enable-updater').checked,...(backup?{backup}:{})}); panel('progress'); await poll(); }
   catch (error) { panel('progress'); showFailure(error.message); }
   finally { $('install-button').disabled = false; $('retry').disabled = false; }
 }
 $('install-button').onclick = start;
 $('retry').onclick = start;
 $('back-configure').onclick = () => { clearTimeout(pollTimer); invalidatePlan(); panel('configure'); };
+$('configure-again').onclick = $('back-configure').onclick;
 function showFailure(message) { $('install-error-text').textContent = message; $('install-error').hidden = false; $('progress-title').textContent = 'نصب متوقف شد.'; $('progress-intro').textContent = 'مشکل را برطرف کن و از همین‌جا ادامه بده.'; }
 function renderStatus(status) {
   const current = phases.indexOf(status.phase);
+  if (status.phase === 'domain') $('progress-list').querySelector('[data-phase="domain"]').hidden = false;
   [...$('progress-list').children].forEach((item, i) => {
     item.dataset.state = i < current || status.state === 'done' ? 'done' : i === current ? (status.state === 'error' ? 'error' : 'active') : '';
   });
@@ -104,14 +110,27 @@ function renderStatus(status) {
     $('progress-title').textContent = status.result.verified ? 'نصب تمام شد.' : 'منتشر شد؛ بررسی اتصال باقی ماند.';
     $('progress-intro').textContent = status.result.verified ? 'سرور و دیتابیس پاسخ می‌دهند. حالا می‌توانی وارد پیام‌رسان شوی.' : 'کلادفلر انتشار را تأیید کرده، اما این دستگاه هنوز پاسخ سالم نگرفته است.';
     $('result-title').textContent = status.result.verified ? `نسخهٔ ${status.result.version || ''} آماده است.` : 'لینک پیام‌رسان را بررسی کن.';
-    $('result-description').textContent = status.result.verified ? status.result.mode === 'update' ? 'سرور به‌روز شد و اطلاعات قبلی حفظ شدند. پیام‌رسان را روی دستگاه‌ها کامل ببند و دوباره باز کن تا رابط تازه هم دریافت شود؛ در صورت نیاز صفحه را یک بار نوسازی کن.' : 'لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.' : 'ممکن است فعال‌شدن آدرس کمی زمان ببرد یا شبکهٔ فعلی به workers.dev دسترسی نداشته باشد. لینک را با شبکهٔ دیگر هم بررسی کن. نصب دوباره با همین نام اطلاعات را حفظ می‌کند.';
+    $('result-description').textContent = status.result.restored ? 'بازیابی تمام شد؛ با نام کاربری و رمز قبلیِ داخل پشتیبان وارد شوید. ثبت‌نام تازه لازم نیست. اعلان‌ها، ربات و ارتباط سرورها را روی نشانی جدید دوباره تأیید کنید.' : status.result.verified ? status.result.mode === 'update' ? 'سرور به‌روز شد و اطلاعات قبلی حفظ شدند. پیام‌رسان را روی دستگاه‌ها کامل ببند و دوباره باز کن تا رابط تازه هم دریافت شود؛ در صورت نیاز صفحه را یک بار نوسازی کن.' : 'لینک را باز کن و حساب کاربری پیام‌رسانت را بساز. برای دعوت دیگران همین لینک را بفرست.' : 'ممکن است فعال‌شدن آدرس کمی زمان ببرد یا شبکهٔ فعلی به workers.dev دسترسی نداشته باشد. لینک را با شبکهٔ دیگر هم بررسی کن. نصب دوباره با همین نام اطلاعات را حفظ می‌کند.';
     // URLs come only from our fixed workers.dev deployment path; never render API HTML.
     if (!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(status.result.url)) return showFailure('آدرس خروجی معتبر نیست.');
     for (const id of ['app-url', 'open-app']) $(id).href = status.result.url;
     $('app-url').textContent = status.result.url;
+    const domain = status.result.domain;
+    $('progress-list').querySelector('[data-phase="domain"]').hidden = !domain && status.phase !== 'domain';
+    $('domain-result').hidden = !domain;
+    $('domain-url').hidden = true;
+    if (domain) {
+      $('domain-status').textContent = domain.connected
+        ? `اتصال ${domain.hostname} در کلادفلر تأیید شد. ${domain.certificateIssued ? 'شناسهٔ گواهی صادر شده است.' : 'صدور گواهی هنوز تأیید نشده است.'} سلامت HTTPS از این دستگاه بررسی نشده؛ لینک را باز کن. ورود و نصب برنامه روی هر دامنه جداست؛ از لینک قبلی هم می‌توانی استفاده کنی.`
+        : `اتصال دامنه کامل نشد: ${domain.error || 'تنظیمات دامنه را بررسی کن.'} پیام‌رسان از لینک workers.dev در دسترس است. برای بررسی دوباره، «اصلاح تنظیمات» را بزن و نصب را با همین نام تکرار کن.`;
+      if (domain.connected && domain.url === `https://${config?.hostname}` && /^https:\/\/[a-z0-9.-]+$/.test(domain.url)) {
+        $('domain-url').href = domain.url; $('domain-url').textContent = domain.url; $('domain-url').hidden = false;
+      }
+      if (!domain.connected) $('progress-list').querySelector('[data-phase="domain"]').dataset.state = 'error';
+    }
     $('admin-code').value = status.result.adminCode || '';
     $('result').hidden = false;
-    if (!status.result.verified) $('progress-list').lastElementChild.dataset.state = 'error';
+    if (!status.result.verified) $('progress-list').querySelector('[data-phase="verify"]').dataset.state = 'error';
   }
 }
 async function poll() {
@@ -129,7 +148,7 @@ $('copy-url').onclick = async () => {
   catch { $('copy-status').textContent = 'روی لینک نگه دار و «کپی» را انتخاب کن.'; }
 };
 $('save-receipt').onclick = () => {
-  const receipt = `WIHM Cloudflare\n${currentResult.url}\nAccount: ${config?.accountId ?? ''}\nWorker: ${config?.name ?? ''}\nServer check: ${currentResult.verified ? 'passed' : 'pending'}\n`;
+  const receipt = `WIHM Cloudflare\n${currentResult.url}\nAccount: ${config?.accountId ?? ''}\nWorker: ${config?.name ?? ''}\nServer check: ${currentResult.verified ? 'passed' : 'pending'}\nCustom domain: ${currentResult.domain?.hostname || ''}\nDomain connection: ${currentResult.domain?.connected ? 'confirmed by Cloudflare; HTTPS not checked' : 'not connected'}\n`;
   const url = URL.createObjectURL(new Blob([receipt], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = 'WIHM-installation.txt'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

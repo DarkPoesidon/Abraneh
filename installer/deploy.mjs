@@ -138,7 +138,7 @@ export async function deploy({ api, accountId, name, payloadDir, journal, enable
   const updaterAuth=updaterEnabled?randomBytes(32).toString('hex'):null;
   if(updaterEnabled)await installUpdater({api,accountId,name,databaseId:database.uuid,payloadDir,version:release.appVersion,auth:updaterAuth,attachMain:!!plan.settings});
   const metadata = {
-    main_module: 'worker.mjs', compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
+    main_module: 'worker.mjs', compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat','global_fetch_strictly_public'],
     bindings: [
       { name: 'DB', type: 'd1', id: database.uuid },
       { name: 'CHAT_ROOM', type: 'durable_object_namespace', class_name: 'ChatRoom' },

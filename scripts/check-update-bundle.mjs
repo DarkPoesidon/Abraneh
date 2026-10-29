@@ -10,7 +10,7 @@ if(signature){assert.ok(verify(null,payload,createPublicKey({key:Buffer.from(tru
 else assert.notEqual(process.env.GITHUB_REF_TYPE,'tag','Tagged packages must be signed');
 assert.equal(bundle.format,1);assert.equal(bundle.version,JSON.parse(await readFile('package.json','utf8')).version);
 const expected=new Map();const root=resolve(process.argv[3]||'dist/WIHM-Installer/payload');
-async function collect(current,prefix=''){for(const item of await readdir(current,{withFileTypes:true})){assert.ok(!item.isSymbolicLink());const name=prefix+item.name;if(item.isDirectory())await collect(join(current,item.name),name+'/');else if(name!=='release.json')expected.set(name,await readFile(join(current,item.name)));}}
+async function collect(current,prefix=''){for(const item of await readdir(current,{withFileTypes:true})){assert.ok(!item.isSymbolicLink());const name=prefix+item.name;if(item.isDirectory())await collect(join(current,item.name),name+'/');else if(!['release.json','backup-schema.json'].includes(name))expected.set(name,await readFile(join(current,item.name)));}}
 await collect(root);assert.deepEqual(Object.keys(bundle.files).sort(),[...expected.keys()].sort());
 for(const [name,bytes]of expected)assert.deepEqual(Buffer.from(bundle.files[name],'base64'),bytes,'Payload differs: '+name);
 console.log(`${signature?'Signed':'Development'} update payload verified against ${expected.size} actual installer files; version ${bundle.version}.`);

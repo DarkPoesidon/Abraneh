@@ -1,3 +1,6 @@
+import { handleCall, closeCall, CallEvent } from './calls.js';
+import { beginOperation, withOperation } from './maintenance.js';
+import { ROOM_BACKUP_TABLES, roomBackupPage, restoreRoomTable } from './room-backup.js';
 import { DurableObject } from "cloudflare:workers";
 import { Env, ClientWsAction, ServerWsEvent, Message } from "./types.js";
 import { historyOptions } from "./history.js";
@@ -66,7 +69,19 @@ export class ChatRoom extends DurableObject<Env> {
     }
   }
 
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request:Request):Promise<Response>{
+    const path=new URL(request.url).pathname;
+    if(path==='/backup-page'){try{const body=await request.json<any>();return Response.json(roomBackupPage(this.ctx.storage.sql,body.table,body.offset));}catch{return Response.json({error:'صفحهٔ پشتیبان گفتگو معتبر نیست.'},{status:400});}}
+    if(path==='/restore-table'){try{return Response.json({ok:true,...restoreRoomTable(this.ctx,await request.json())});}catch{return Response.json({error:'دادهٔ بازیابی گفتگو معتبر نیست.'},{status:409});}}
+    if(path==='/restore-check'){
+      const counts=await request.json<Record<string,number>>();
+      if(JSON.stringify(Object.keys(counts).sort())!==JSON.stringify([...ROOM_BACKUP_TABLES].sort())||ROOM_BACKUP_TABLES.some(table=>counts[table]!==Number(this.ctx.storage.sql.exec(`SELECT count(*) AS n FROM "${table}"`).toArray()[0].n)))return Response.json({error:'تعداد تاریخچه متفاوت است.'},{status:409});
+      if(this.ctx.storage.sql.exec('SELECT 1 FROM sync_queue LIMIT 1').toArray().length)await this.ctx.storage.setAlarm(Date.now()+30_000);
+      return Response.json({ok:true});
+    }
+    try{return await withOperation(this.env,()=>this.roomFetch(request));}catch(error){return Response.json({error:error instanceof InputError?error.message:'گفتگو موقتاً در دسترس نیست.'},{status:503});}
+  }
+  private async roomFetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     // 1. WebSocket Upgrade Handler
@@ -167,7 +182,13 @@ export class ChatRoom extends DurableObject<Env> {
     return new Response("Not found", { status: 404 });
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+  async webSocketMessage(ws:WebSocket,message:string|ArrayBuffer){
+    const sender=ws.deserializeAttachment() as WsAttachment|null;
+    if(!sender?.chatId||!sender.sessionId)return this.roomMessage(ws,message);
+    try{await withOperation(this.env,()=>this.roomMessage(ws,message));}
+    catch(error){let clientMsgId;try{clientMsgId=JSON.parse(String(message)).clientMsgId;}catch{}try{ws.send(JSON.stringify({event:'error',clientMsgId,retryable:true,message:error instanceof InputError?error.message:'ارتباط موقتاً قطع است؛ دوباره تلاش کنید.'}));}catch{}}
+  }
+  private async roomMessage(ws: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string") return;
     if (message.length > 64_000) { ws.close(1009, 'Message too large'); return; }
 
@@ -197,6 +218,7 @@ export class ChatRoom extends DurableObject<Env> {
       }
     } catch { ws.close(1011, 'Session check unavailable'); return; }
 
+    if(data.action==='call_signal'){try{await handleCall(this.env,this.ctx.storage.sql,sender,data,event=>this.deliverCall(event));}catch(error){ws.send(JSON.stringify({event:'call_error',callId:data.callId,message:error instanceof InputError?error.message:'تماس انجام نشد.'}));}return;}
     if (data.action === "ping") {
       ws.send(JSON.stringify({ event: "pong", timestamp: Date.now() }));
       return;
@@ -296,6 +318,7 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    const closing=ws.deserializeAttachment() as WsAttachment|null;if(closing?.chatId)await closeCall(this.ctx.storage.sql,closing,event=>this.deliverCall(event));
     const sender = ws.deserializeAttachment() as WsAttachment | null;
     if (sender) {
       // Check if user has other open sockets in this room
@@ -365,7 +388,7 @@ export class ChatRoom extends DurableObject<Env> {
     await this.broadcast({event:'message_changed',message}); return message;
   }
 
-  async alarm() { await this.syncPending(); await this.flushPush(); }
+  async alarm() { try{await withOperation(this.env,async()=>{await this.syncPending();await this.flushPush();});}catch(error){await this.ctx.storage.setAlarm(Date.now()+30_000);if(!(error instanceof InputError))throw error;} }
 
   private async flushPush() {
     if(this.pushing) return;this.pushing=true;
@@ -438,6 +461,7 @@ export class ChatRoom extends DurableObject<Env> {
     return permitted;
   }
 
+  private async deliverCall(event:CallEvent){for(const socket of await this.authorizedSockets()){const peer=socket.deserializeAttachment() as WsAttachment|null;if(peer?.userId===event.toUserId&&(!event.toSessionId||peer.sessionId===event.toSessionId))try{socket.send(JSON.stringify(event));}catch{}}}
   private async broadcast(event: ServerWsEvent, excludeWs?: WebSocket) {
     const str = JSON.stringify(event);
     for (const s of await this.authorizedSockets()) {

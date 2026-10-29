@@ -53,7 +53,7 @@ export async function publishMain(api:CloudApi,bundle:UpdateBundle) {
   // An accepted upload followed by a lost response is safe to resume.
   if(settings.bindings.find((b:any)=>b.name==='WIHM_VERSION')?.text===bundle.version)return;
   const jwt=await uploadBundleAssets(api,bundle),form=new FormData();
-  form.append('metadata',new Blob([JSON.stringify({main_module:'worker.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat'],bindings:retainedBindings(settings,bundle.version),assets:{jwt,config:{html_handling:'auto-trailing-slash',not_found_handling:'none'}}})],{type:'application/json'}));
+  form.append('metadata',new Blob([JSON.stringify({main_module:'worker.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings:retainedBindings(settings,bundle.version),assets:{jwt,config:{html_handling:'auto-trailing-slash',not_found_handling:'none'}}})],{type:'application/json'}));
   form.append('worker.mjs',new Blob([decode64(bundle.files['worker.mjs'])],{type:'application/javascript+module'}),'worker.mjs');
   await api.request(`/accounts/${api.env.ACCOUNT_ID}/workers/scripts/${api.env.WORKER_NAME}?bindings_inherit=strict`,'PUT',form);
 }
@@ -64,7 +64,7 @@ export async function publishUpdater(api:CloudApi,bundle:UpdateBundle,replacemen
   if(validVersion(installed)&&newer(installed,bundle.version))throw new Error('به‌روزرسان از این بسته جدیدتر است؛ نسخهٔ قدیمی جایگزین نشد.');
   if(settings.bindings.find((b:any)=>b.name==='WIHM_UPDATER_VERSION')?.text===bundle.version&&!replacementToken)return;
   const bindings=retainedBindings(settings,bundle.version).map((binding:any)=>replacementToken&&binding.name==='CF_TOKEN'?{name:'CF_TOKEN',type:'secret_text',text:replacementToken}:binding);
-  const form=new FormData();form.append('metadata',new Blob([JSON.stringify({main_module:'updater.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat'],bindings})],{type:'application/json'}));
+  const form=new FormData();form.append('metadata',new Blob([JSON.stringify({main_module:'updater.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings})],{type:'application/json'}));
   form.append('updater.mjs',new Blob([decode64(bundle.files['updater.mjs'])],{type:'application/javascript+module'}),'updater.mjs');
   await api.request(`/accounts/${api.env.ACCOUNT_ID}/workers/scripts/${api.env.UPDATER_NAME}?bindings_inherit=strict`,'PUT',form);
 }

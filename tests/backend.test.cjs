@@ -13,7 +13,7 @@ const accounts = {};
 let serial = 0;
 
 before(async () => {
-  const result = await build({ entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral', external: ['cloudflare:workers'] });
+  const result = await build({ entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform:'neutral', mainFields:['browser','module','main'], external: ['cloudflare:workers'] });
   const options = { name: 'test-worker', modules: true, script: result.outputFiles[0].text, compatibilityDate: '2026-01-01', compatibilityFlags: ['nodejs_compat'], d1Databases: { DB: 'test-db' }, durableObjects: { CHAT_ROOM: { className: 'ChatRoom', useSQLite: true } } };
   mf = new Miniflare(convertV4MiniflareOptions({ ...options, bindings: { JWT_SECRET: secret, ADMIN_SETUP_TOKEN: adminCode } }));
   unconfigured = new Miniflare(convertV4MiniflareOptions(options));
@@ -51,7 +51,7 @@ async function account(name, displayName = name) {
 test('readiness endpoint checks schema without exposing configuration', async () => {
   const ready = await api('/api/health');
   assert.equal(ready.status, 200);
-  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.4.2', database: true });
+  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.5.0', database: true });
   const missingSecret = await api('/api/health', { runtime: unconfigured });
   assert.equal(missingSecret.status, 503);
   assert.ok(!JSON.stringify(missingSecret.data).includes(secret));

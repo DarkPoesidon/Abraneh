@@ -9,14 +9,15 @@ const vapid=createECDH('prime256v1');vapid.generateKeys();
 const receiver=createECDH('prime256v1');receiver.generateKeys();
 const auth=randomBytes(16),endpoint='https://fcm.googleapis.com/fcm/send/test-private-endpoint';
 before(async()=>{
-  const compiled=await build({stdin:{contents:`import {sendPush,validPushEndpoint,validatePush} from './src/push.ts';
+  const compiled=await build({stdin:{contents:`import {sendPush,sendSecurePush,validPushEndpoint,validatePush} from './src/push.ts';
     export default {async fetch(request,env){
       const url=new URL(request.url);
       if(url.pathname==='/validate') {try{validatePush(await request.json());return Response.json({ok:true});}catch{return Response.json({ok:false},{status:400});}}
-      const calls=[];const cursor=await sendPush(env,{id:'message',chatId:'room',senderId:'sender',senderName:'فرستنده',text:'متن خصوصی فارسی',createdAt:1},async(endpoint,options)=>{
+      const calls=[];const transport=async(endpoint,options)=>{calls.push({endpoint,headers:options.headers,body:[...options.body]});return new Response(null,{status:201});};if(url.searchParams.has('secure')){await sendSecurePush(env,'receiver','secure-thread','',transport);return Response.json(calls);}
+      const cursor=await sendPush(env,{id:'message',chatId:'room',senderId:'sender',senderName:'فرستنده',text:'متن خصوصی فارسی',createdAt:1},async(endpoint,options)=>{
         calls.push({endpoint,headers:options.headers,body:[...options.body]});return new Response(null,{status:url.searchParams.has('gone')?410:201});},url.searchParams.get('after')||'');
       return Response.json(url.searchParams.has('page')?{calls,cursor}:calls);
-    }};`,resolveDir:process.cwd()},bundle:true,format:'esm',platform:'neutral',write:false});
+    }};`,resolveDir:process.cwd()},bundle:true,format:'esm',platform:'neutral', mainFields:['browser','module','main'],write:false});
   mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:compiled.outputFiles[0].text,compatibilityDate:'2026-01-01',d1Databases:{DB:'push-test'},bindings:{VAPID_PUBLIC_KEY:vapid.getPublicKey().toString('base64url'),VAPID_PRIVATE_KEY:vapid.getPrivateKey().toString('base64url')}}));
   db=await mf.getD1Database('DB');
   for(const sql of readFileSync('schema.sql','utf8').replace(/^--.*$/gm,'').split(';').map(s=>s.trim()).filter(Boolean))await db.prepare(sql).run();
@@ -48,6 +49,11 @@ test('Web Push uses decryptable RFC 8291 encryption and a verifiable VAPID signa
   assert.ok(verify('sha256',Buffer.from(parts[0]+'.'+parts[1]),{key:publicKey,dsaEncoding:'ieee-p1363'},Buffer.from(parts[2],'base64url')));
   await db.prepare("UPDATE user_profiles SET notification_preview=1 WHERE user_id='receiver'").run();payload=decrypt(await trigger());assert.equal(payload.body,'متن خصوصی فارسی');
 });
+test('secure message notifications contain no plaintext or sender identity and respect account revocation',async()=>{
+ const payload=decrypt(await trigger('?secure'));assert.equal(payload.kind,'secure');assert.equal(payload.chatId,'secure-thread');assert.ok(!JSON.stringify(payload).includes('متن خصوصی فارسی'));assert.equal(payload.title,'پیام امن تازه در ابرانه');
+ await db.prepare("INSERT INTO service_user_state VALUES ('receiver',1,'disabled')").run();assert.equal((await trigger('?secure')).length,0);await db.prepare('DELETE FROM service_user_state').run();
+});
+
 test('muted chats, blocks, revoked or outdated sessions and removed membership never receive push; expired endpoints are removed',async()=>{
   for(const [set,reset] of [
     ["INSERT INTO chat_preferences(chat_id,user_id,muted) VALUES ('room','receiver',1)","DELETE FROM chat_preferences"],

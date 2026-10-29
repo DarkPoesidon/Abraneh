@@ -1,7 +1,7 @@
 // The browser shell waits for consent; server deployment is controlled separately.
 (() => {
   const read=(key,fallback)=>{try{return localStorage.getItem(key)||fallback;}catch{return fallback;}};
-  const version=document.querySelector('meta[name="wihm-version"]')?.content||'1.4.2';
+  const version=document.querySelector('meta[name="wihm-version"]')?.content||'1.5.0';
   const state={version,available:null,mode:read('cf_msg_update_mode','notify'),checking:false,message:'',supported:'serviceWorker' in navigator};
   if(!['notify','automatic','manual'].includes(state.mode))state.mode='notify';
   let registration=null,waiting=null,changed=false,applying=false,options={},started=false,automaticTimer=null;

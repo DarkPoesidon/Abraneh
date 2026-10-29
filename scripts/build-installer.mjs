@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 import { build } from 'esbuild';
 import { mkdir, cp, copyFile, chmod, writeFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -11,22 +12,24 @@ if (!(await readFile('public/index.html', 'utf8')).includes(`WIHM ${version}`) |
 if(!(await readFile('public/index.html','utf8')).includes(`<meta name="wihm-version" content="${version}">`))throw new Error('Application update metadata/package versions differ');
 if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== 'installer-v' + version) throw new Error('Release tag/package versions differ');
 await mkdir(join(output, 'payload/public'), { recursive: true });
-await build({ entryPoints: ['src/index.ts'], outfile: join(output, 'payload/worker.mjs'), bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', external: ['cloudflare:workers'], minify: true });
-await build({ entryPoints: ['src/updater.ts'], outfile: join(output, 'payload/updater.mjs'), bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', external: ['cloudflare:workers'], minify: true });
+await build({entryPoints:['public/secure.js'],outfile:'public/secure.bundle.js',bundle:true,format:'iife',platform:'browser',target:'es2022',external:['@noble/*'],minify:true});
+await build({ entryPoints: ['src/index.ts'], outfile: join(output, 'payload/worker.mjs'), bundle: true, format: 'esm', platform:'neutral', mainFields:['browser','module','main'], target: 'es2022', external: ['cloudflare:workers'], minify: true });
+await build({ entryPoints: ['src/updater.ts'], outfile: join(output, 'payload/updater.mjs'), bundle: true, format: 'esm', platform:'neutral', mainFields:['browser','module','main'], target: 'es2022', external: ['cloudflare:workers'], minify: true });
 await cp('public', join(output, 'payload/public'), { recursive: true });
 await copyFile('schema.sql', join(output, 'payload/schema.sql'));
 await cp('migrations', join(output, 'payload/migrations'), { recursive: true });
 await writeFile(join(output, 'payload/release.json'), JSON.stringify({ appVersion: version, migrations: (await readdir('migrations')).filter(name => name.endsWith('.sql')).sort() }, null, 2) + '\n');
-for (const name of ['start.mjs', 'server.mjs', 'cloudflare.mjs', 'deploy.mjs', 'updater.mjs', 'journal.mjs', 'migrations.mjs', 'install.ps1', 'install.sh', 'Start-Windows.cmd', 'Start-Mac.command', 'Start-Linux.sh']) {
+for (const name of ['start.mjs', 'server.mjs', 'backup.mjs', 'domains.mjs', 'cloudflare.mjs', 'deploy.mjs', 'updater.mjs', 'journal.mjs', 'migrations.mjs', 'install.ps1', 'install.sh', 'Start-Windows.cmd', 'Start-Mac.command', 'Start-Linux.sh']) {
   await copyFile(join('installer', name), join(output, name));
 }
 await cp('installer/ui', join(output, 'ui'), { recursive: true });
+await copyFile('public/backup.js',join(output,'ui/backup.js'));
 await cp('public/fonts',join(output,'ui/fonts'),{recursive:true});
 await copyFile('public/icon.svg', join(output, 'ui/icon.svg'));
 const bundledGuide=(await readFile('docs/EASY-INSTALL.fa.md','utf8')).replace(/\]\(((?:UPDATE|DAILY-USE|AUTO-UPDATE|TELEGRAM)\.fa\.md)\)/g,'](docs/$1)');
 await writeFile(join(output,'راهنما.md'),bundledGuide);
 await mkdir(join(output, 'docs/releases'), { recursive: true });
-for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md','AUTO-UPDATE.fa.md','AUTO-UPDATE-DESIGN.fa.md','TELEGRAM.fa.md','SERVICE-MANAGEMENT.fa.md','FEDERATION-E2EE-DESIGN.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
+for (const name of ['EASY-INSTALL.fa.md', 'UPDATE.fa.md', 'ROADMAP.fa.md', 'ENCRYPTION-DESIGN.fa.md','DAILY-USE.fa.md','AUTO-UPDATE.fa.md','AUTO-UPDATE-DESIGN.fa.md','TELEGRAM.fa.md','SERVICE-MANAGEMENT.fa.md','FEDERATION-E2EE-DESIGN.fa.md','ADVANCED.fa.md']) await copyFile(join('docs', name), join(output, 'docs', name));
 await readFile(join('docs/releases',version+'.fa.md'),'utf8');
 await cp('docs/releases',join(output,'docs/releases'),{recursive:true});
 await copyFile('THIRD-PARTY-NOTICES.md',join(output,'THIRD-PARTY-NOTICES.md'));
@@ -41,3 +44,10 @@ for (const name of ['install.sh', 'Start-Mac.command', 'Start-Linux.sh']) await 
 const workerHash = createHash('sha256').update(await readFile(join(output, 'payload/worker.mjs'))).digest('hex');
 await writeFile(join(output, 'build.json'), JSON.stringify({ installerVersion: version, appVersion: version, workerSha256: workerHash }, null, 2) + '\n');
 console.log(`Installer built: ${output} (no runtime npm dependencies)`);
+
+const excluded=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions']);
+const db=new DatabaseSync(':memory:');db.exec(await readFile('schema.sql','utf8'));
+const tables=Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().filter(row=>!excluded.has(row.name)).map(row=>[row.name,{columns:db.prepare(`PRAGMA table_info("${row.name}")`).all().map(c=>c.name),dependencies:[...new Set(db.prepare(`PRAGMA foreign_key_list("${row.name}")`).all().map(f=>f.table))]}]));
+const roomDb=new DatabaseSync(':memory:'),source=await readFile('src/chatRoom.ts','utf8');roomDb.exec(source.match(/this\.ctx\.storage\.sql\.exec\(`([\s\S]*?)`\);/)[1]);
+const roomTables=Object.fromEntries(['messages','message_keys','room_meta','sync_queue','message_details','message_reactions'].map(table=>[table,{columns:roomDb.prepare(`PRAGMA table_info("${table}")`).all().map(c=>c.name)}]));
+await writeFile(join(output,'payload/backup-schema.json'),JSON.stringify({tables,roomTables},null,2));db.close();roomDb.close();

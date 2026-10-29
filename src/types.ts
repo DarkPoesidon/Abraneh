@@ -9,6 +9,7 @@ export interface Env {
   UPDATER?: Fetcher;
   UPDATER_AUTH?: string;
   TELEGRAM_KEY?: string;
+  RESTORE_TOKEN?: string;
 }
 
 export interface User {
@@ -67,12 +68,15 @@ export interface JwtPayload {
 
 // WebSocket Message Types
 export type ClientWsAction =
+  | { action:'call_signal';chatId:string;callId:string;kind:string;video?:boolean;payload?:unknown }
   | { action: 'auth'; token: string }
   | { action: 'send_message'; chatId: string; text: string; clientMsgId?: string; replyToId?: string }
   | { action: 'typing'; chatId: string; isTyping: boolean }
   | { action: 'ping' };
 
 export type ServerWsEvent =
+  | import('./calls.js').CallEvent
+  | {event:'call_error';callId:string;message:string}
   | { event: 'auth_ok'; user: User }
   | { event: 'session_revoked' }
   | { event: 'new_message'; message: Message }

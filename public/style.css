@@ -698,6 +698,7 @@ button:disabled { opacity:.6; cursor:wait; }
 #btn-group-mode { align-self:flex-start; min-height:42px; padding:8px 16px; }
 #search-modal .search-input-wrapper { margin-bottom:0 !important; }
 .modal-card { max-height:calc(100dvh - 32px); display:flex; flex-direction:column; }
+dialog.modal-card:not([open]) { display:none; }
 .modal-header { flex-shrink:0; gap:16px; }
 .modal-body { overflow-y:auto; overscroll-behavior:contain; min-height:0; }
 .feature-card { max-width:520px; }

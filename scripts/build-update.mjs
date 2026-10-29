@@ -5,7 +5,7 @@ import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
 const directory='dist/WIHM-Installer/payload';
 const {version}=JSON.parse(await readFile('package.json','utf8'));
 const files={};
-async function collect(root,prefix=''){for(const item of await readdir(root,{withFileTypes:true})){const name=prefix+item.name;if(item.isSymbolicLink())throw Error('Links are not update payloads');if(item.isDirectory())await collect(join(root,item.name),name+'/');else if(item.isFile()&&name!=='release.json')files[name]=(await readFile(join(root,item.name))).toString('base64');}}
+async function collect(root,prefix=''){for(const item of await readdir(root,{withFileTypes:true})){const name=prefix+item.name;if(item.isSymbolicLink())throw Error('Links are not update payloads');if(item.isDirectory())await collect(join(root,item.name),name+'/');else if(item.isFile()&&!['release.json','backup-schema.json'].includes(name))files[name]=(await readFile(join(root,item.name))).toString('base64');}}
 await collect(directory);
 const sourceCommit=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout.trim();
 if(!/^[a-f0-9]{40}$/.test(sourceCommit))throw Error('Missing source commit');

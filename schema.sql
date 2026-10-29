@@ -151,3 +151,81 @@ CREATE TABLE IF NOT EXISTS service_audit (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_service_audit_time ON service_audit(created_at,id);
+
+CREATE TABLE IF NOT EXISTS service_control (id INTEGER PRIMARY KEY CHECK(id=1),snapshot_id TEXT NOT NULL,paused_until INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS service_operations (id TEXT PRIMARY KEY,started_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS service_restore (id INTEGER PRIMARY KEY CHECK(id=1),digest TEXT NOT NULL,state TEXT NOT NULL,created_at INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS passkeys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  transports TEXT NOT NULL DEFAULT '[]',
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
+CREATE TABLE IF NOT EXISTS security_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  challenge TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  session_id TEXT NOT NULL DEFAULT '',
+  password_version INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS security_challenges_expiry ON security_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS security_challenges_user ON security_challenges(user_id);
+CREATE TABLE IF NOT EXISTS user_totp (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  secret TEXT NOT NULL,
+  last_step INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS security_recovery (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  PRIMARY KEY(user_id,code_hash)
+);
+
+-- Secure device mailboxes are separate from legacy plaintext chat history.
+CREATE TABLE IF NOT EXISTS secure_devices (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,device_id TEXT NOT NULL,identity_key TEXT NOT NULL,key_package TEXT NOT NULL,signature TEXT NOT NULL,created_at INTEGER NOT NULL,revoked_at INTEGER,PRIMARY KEY(user_id,device_id));
+CREATE TABLE IF NOT EXISTS secure_prekeys (user_id TEXT NOT NULL,device_id TEXT NOT NULL,package_id TEXT NOT NULL,key_package TEXT NOT NULL,signature TEXT NOT NULL,claimed_at INTEGER,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,device_id,package_id),FOREIGN KEY(user_id,device_id) REFERENCES secure_devices(user_id,device_id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS secure_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,device_id TEXT NOT NULL,envelope TEXT NOT NULL,digest TEXT NOT NULL,created_at INTEGER NOT NULL,push_cursor TEXT NOT NULL DEFAULT '',notified_at INTEGER,push_next_attempt INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_secure_inbox ON secure_events(owner_id,device_id,sequence);
+CREATE INDEX IF NOT EXISTS idx_secure_push ON secure_events(notified_at,push_next_attempt);
+CREATE TABLE IF NOT EXISTS secure_outbox (id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,peer TEXT NOT NULL,envelope TEXT NOT NULL,digest TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_attempt INTEGER NOT NULL,delivered_at INTEGER,last_error TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS secure_nonces (peer TEXT NOT NULL,nonce TEXT NOT NULL,expires_at INTEGER NOT NULL,PRIMARY KEY(peer,nonce));
+CREATE TABLE IF NOT EXISTS secure_blocks (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,address TEXT NOT NULL,PRIMARY KEY(user_id,address));
+CREATE TABLE IF NOT EXISTS secure_peer_keys (host TEXT PRIMARY KEY,public_key TEXT NOT NULL,created_at INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS channels (
+  id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL,
+  visibility TEXT NOT NULL CHECK(visibility IN ('public','private')), invite_hash TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS channels_owner ON channels(owner_id);
+CREATE TABLE IF NOT EXISTS channel_members (
+  channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('admin','subscriber')), PRIMARY KEY(channel_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS channel_members_user ON channel_members(user_id);
+CREATE TABLE IF NOT EXISTS channel_posts (
+  id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, author_id TEXT NOT NULL,
+  text TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER NOT NULL DEFAULT 0, event_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS channel_posts_cursor ON channel_posts(channel_id,created_at DESC,id DESC);
+CREATE TABLE IF NOT EXISTS channel_tokens (
+  id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, owner_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE, label TEXT NOT NULL, scope TEXT NOT NULL CHECK(scope IN ('read','write','read-write')), expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS channel_tokens_channel ON channel_tokens(channel_id);
+CREATE TABLE IF NOT EXISTS channel_webhooks (
+  id TEXT PRIMARY KEY, channel_id TEXT NOT NULL UNIQUE REFERENCES channels(id) ON DELETE CASCADE,
+  url TEXT NOT NULL, secret_cipher TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS channel_outbox (
+  id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES channel_webhooks(id) ON DELETE CASCADE,
+  payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, locked_until INTEGER NOT NULL DEFAULT 0, error TEXT
+);
+CREATE INDEX IF NOT EXISTS channel_outbox_due ON channel_outbox(next_at,locked_until);

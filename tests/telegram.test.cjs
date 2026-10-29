@@ -12,7 +12,7 @@ const preview=`<html><div class="tgme_channel_info_header_title"><span>کانا�
  <div class="tgme_widget_message" data-post="sample_channel/13"><div class="tgme_widget_message_text">پست دوم</div><a class="tgme_widget_message_date"><time datetime="2026-10-29T02:00:00Z"></time></a></div></html>`;
 async function api(path,{method='GET',body,user=owner,headers={}}={}){const response=await mf.dispatchFetch('https://app.test'+path,{method:body===undefined?method:method==='GET'?'POST':method,headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+user.token}:{}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:response.status,data:await response.json()};}
 before(async()=>{
- const compiled=await build({entryPoints:['src/index.ts'],bundle:true,write:false,format:'esm',platform:'neutral',external:['cloudflare:workers']});
+ const compiled=await build({entryPoints:['src/index.ts'],bundle:true,write:false,format:'esm',platform:'neutral', mainFields:['browser','module','main'],external:['cloudflare:workers']});
  mf=new Miniflare(convertV4MiniflareOptions({name:'telegram-test',modules:true,script:compiled.outputFiles[0].text,compatibilityDate:'2026-01-01',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'telegram-db'},durableObjects:{CHAT_ROOM:{className:'ChatRoom',useSQLite:true}},bindings:{JWT_SECRET:randomBytes(32).toString('hex'),TELEGRAM_KEY:randomBytes(32).toString('hex')},outboundService:async request=>{
    const url=new URL(request.url);requests.push({host:url.hostname,path:url.pathname});
    if(url.hostname==='t.me'){assert.equal(url.pathname,'/s/sample_channel');return new Response(preview,{headers:{'Content-Type':'text/html'}});}

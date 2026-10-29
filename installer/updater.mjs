@@ -14,7 +14,7 @@ export async function inspectUpdater(api,accountId,name) {
 export async function installUpdater({api,accountId,name,databaseId,payloadDir,version,auth,attachMain}) {
   if(typeof api.token!=='string'||!api.token)throw new Error('دسترسی انتشار در اختیار نصب‌کننده نیست؛ دوباره حساب را متصل کنید.');
   const prior=await inspectUpdater(api,accountId,name),updaterName=name+'-updates';
-  const metadata={main_module:'updater.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat'],bindings:[
+  const metadata={main_module:'updater.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings:[
     {name:'MANAGER',type:'durable_object_namespace',class_name:'UpdateManager'},
     {name:'WIHM_UPDATER',type:'plain_text',text:MARKER},{name:'WIHM_UPDATER_VERSION',type:'plain_text',text:version},
     {name:'WORKER_NAME',type:'plain_text',text:name},{name:'UPDATER_NAME',type:'plain_text',text:updaterName},

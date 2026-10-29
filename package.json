@@ -1,11 +1,11 @@
 {
   "name": "cloudflare-messenger",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "installer:build": "node scripts/build-installer.mjs",
     "installer:start": "node dist/WIHM-Installer/start.mjs",
-    "test:installer": "node --test tests/installer.test.mjs tests/termux-bootstrap.test.mjs",
+    "test:installer": "node --test tests/installer.test.mjs tests/termux-bootstrap.test.mjs tests/installer-domain.test.mjs tests/backup-restore.test.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-concurrency=1 tests/*.test.cjs",
     "dev": "wrangler dev",
@@ -21,6 +21,8 @@
     "wrangler": "^4.154.0"
   },
   "dependencies": {
-    "@block65/webcrypto-web-push": "2.0.0"
+    "@block65/webcrypto-web-push": "2.0.0",
+    "@simplewebauthn/server": "14.0.3",
+    "ts-mls": "1.6.4"
   }
 }

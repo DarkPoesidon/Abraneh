@@ -9,14 +9,14 @@ export function corsResponse(body: BodyInit | null, status = 200, headers: Heade
 export const jsonResponse = (data: unknown, status = 200) => corsResponse(JSON.stringify(data), status, { 'Content-Type': 'application/json; charset=utf-8' });
 export const errorResponse = (message: string, status = 400) => jsonResponse({ error: message }, status);
 export class InputError extends Error { constructor(message: string, public status = 400) { super(message); } }
-export async function inputJson(request: Request): Promise<any> {
+export async function inputJson(request: Request, maximum = 64_000): Promise<any> {
   const reader = request.body?.getReader();
   if (!reader) throw new InputError('محتوای درخواست خالی است.');
   const decoder = new TextDecoder(); let size = 0, text = '';
   while (true) {
     const chunk = await reader.read(); if (chunk.done) break;
     size += chunk.value.byteLength;
-    if (size > 64_000) { await reader.cancel(); throw new InputError('حجم درخواست بیش از حد مجاز است.', 413); }
+    if (size > maximum) { await reader.cancel(); throw new InputError('حجم درخواست بیش از حد مجاز است.', 413); }
     text += decoder.decode(chunk.value, { stream: true });
   }
   text += decoder.decode(); let value;

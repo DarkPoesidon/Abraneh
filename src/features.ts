@@ -1,3 +1,4 @@
+import { enforceSecondFactor } from './security.js';
 import { Env, JwtPayload, Message } from './types.js';
 import { InputError, inputJson, jsonResponse } from './http.js';
 import { chatAccess, isBlocked, manager, validId, tokenHash, inviteToken, normalizePersian, refreshRoom } from './access.js';
@@ -110,6 +111,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(await allowRequest(env,'password-change',userId,10,3600_000),'تلاش‌های تغییر رمز زیاد است؛ یک ساعت دیگر تلاش کنید.',429);
     const row = await env.DB.prepare('SELECT salt,password_hash FROM users WHERE id = ?').bind(userId).first<any>();
     check(await verifyPassword(body.currentPassword,row.salt,row.password_hash),'رمز فعلی درست نیست.',403);
+    await enforceSecondFactor(env,userId,body,403);
     const salt = generateSalt(), hash = await hashPassword(body.newPassword,salt);
     const { results } = await env.DB.prepare('SELECT id FROM user_sessions WHERE user_id = ? AND id != ?').bind(userId,auth.sid).all<{ id:string }>();
     const changed = await env.DB.batch([

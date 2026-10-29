@@ -25,8 +25,9 @@ export async function handleManagement(request:Request,env:Env,auth:JwtPayload) 
       (SELECT count(*) FROM user_sessions s WHERE revoked_at IS NULL AND expires_at>? AND NOT EXISTS(SELECT 1 FROM service_user_state us WHERE us.user_id=s.user_id AND us.disabled_at IS NOT NULL)) AS sessions,
       (SELECT count(*) FROM abuse_reports WHERE status='open') AS openReports,
       (SELECT count(*) FROM telegram_posts) AS telegramPosts,
-      (SELECT COALESCE(sum(length(CAST(text AS BLOB))),0) FROM messages) AS indexedTextBytes`).bind(Date.now()).first();
-    return jsonResponse({version:APP_VERSION,database:true,counts:row,limits:{groupMembers:100,telegramChannelsPerUser:20,cachedTelegramPostsPerChannel:500,uploadSupported:false},encryption:'transport-only',federation:'discovery-only',backupAvailable:false});
+      (SELECT COALESCE(sum(length(CAST(text AS BLOB))),0) FROM messages) AS indexedTextBytes`).bind(Date.now()).all();
+    const databaseBytes=Number.isSafeInteger(row.meta.size_after)&&row.meta.size_after>0?row.meta.size_after:null;
+    return jsonResponse({version:APP_VERSION,database:true,counts:row.results[0],storage:{databaseBytes,warning:databaseBytes!==null&&databaseBytes>=400*1024*1024,accountQuotaKnown:false},limits:{groupMembers:100,telegramChannelsPerUser:20,cachedTelegramPostsPerChannel:500,uploadSupported:false,backupBytes:32*1024*1024,backupRooms:200},encryption:'legacy-transport;experimental-mls',federation:'automatic-signed',backupAvailable:true});
   }
   if(path==='/api/service/audit'&&request.method==='GET'){
     const {results}=await env.DB.prepare('SELECT a.action,a.created_at AS createdAt,u.username AS actor,t.username AS target FROM service_audit a LEFT JOIN users u ON u.id=a.actor_id LEFT JOIN users t ON t.id=a.target_id ORDER BY a.created_at DESC,a.id DESC LIMIT 100').all();return jsonResponse(results);

@@ -3,6 +3,23 @@
   // State
   let token = localStorage.getItem('cf_msg_token') || '';
   let currentUser = null;
+  let secureItems=[],securePoll=null,secureRequest=null;
+  async function refreshSecure(){
+    if(!token||!currentUser||!window.WihmSecure||secureRequest)return;
+    const owner=currentUser,session=token;
+    const task=(async()=>{try{
+      const {client}=await window.WihmSecure.connect(api,owner);if(token!==session)return;
+      await client.sync();const view=await client.view();if(token!==session)return;
+      secureItems=view.threads.map(t=>({id:t.id,threadId:t.id,secure:true,title:t.peer,lastMessage:t.messages.at(-1),updatedAt:t.messages.at(-1)?.createdAt||0}));
+      for(const e of view.pending.filter(e=>e.kind==='welcome'))if(!secureItems.some(t=>t.id===e.thread))secureItems.push({id:e.thread,threadId:e.thread,secure:true,title:e.from,lastMessage:{text:'دعوت گفتگو · منتظر تأیید دستگاه',createdAt:Date.now()},updatedAt:Date.now(),unreadCount:1});
+      renderFilteredChats();await window.WihmSecure.refresh?.();
+    }catch(e){console.warn('Secure sync:',e.message);}})();secureRequest=task;try{await task;}finally{if(secureRequest===task)secureRequest=null;}
+  }
+  async function openSecure(initialAddress='',threadId=''){
+    if(!currentUser)return;
+    const session=token;
+    try{await window.WihmSecure.open({api,post,show:(title,html)=>{if(token===session)return showFeature(title,html);},error:featureError,escape:escapeHtml,user:currentUser,initialAddress,threadId});}catch(e){if(token===session)featureError(e);}
+  }
   try { currentUser = JSON.parse(localStorage.getItem('cf_msg_user') || 'null'); } catch { /* Start a new session. */ }
   let chats = [];
   let activeChat = null;
@@ -25,7 +42,7 @@
   let locatingUnread = null;
   let openingChatId = null;
   let profile = {}, archivedView = false, composerContext = null;
-  let extras=null;
+  let extras=null,calls=null;
   let sidebarCompact=false,lastMobileLayout=window.innerWidth<=768;
   try {sidebarCompact=localStorage.getItem('cf_msg_sidebar_compact')==='1';}catch{/* Preferences are optional when device storage is unavailable. */}
   const hiddenMessages = new Map(), deniedChats = new Set(), chatDetails = new Map();
@@ -132,8 +149,8 @@
 
   // --- Service Worker Registration ---
   window.WihmUpdates?.init({
-    canReload:()=>document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
-    prepareReload:()=>!messageInput.value.trim()&&(!outbox.length||saveOutbox()),
+    canReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||document.getElementById('feature-title')?.textContent==='به‌روزرسانی')&&document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
+    prepareReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||document.getElementById('feature-title')?.textContent==='به‌روزرسانی')&&!messageInput.value.trim()&&(!outbox.length||saveOutbox()),
   });
 
   // --- PWA Installation Handling ---
@@ -185,7 +202,7 @@
       authSubmitBtn.textContent = 'در حال پردازش...';
 
       const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
-      const body = { username, password, displayName, inviteToken: invitation.get('register') || '' };
+      const body = { username, password, displayName, otp:document.getElementById('input-otp')?.value||'', inviteToken: invitation.get('register') || '' };
       const res = await api(endpoint, { method: 'POST', body: JSON.stringify(body) });
 
       token = res.token;
@@ -214,6 +231,8 @@
   });
 
   function endSession() {
+    calls?.reset();
+    window.WihmSecure?.reset();secureItems=[];clearInterval(securePoll);securePoll=null;secureRequest=null;
     token = '';
     currentUser = null;
     activeChat = null;
@@ -257,6 +276,9 @@
     } catch { outbox = []; chatError.textContent = 'خواندن صف پیام‌های این دستگاه انجام نشد.'; }
     for (const item of outbox) addPending(item);
     loadProfile().catch(() => {});
+    const secureLaunch=new URLSearchParams(location.search||'').get('secure');if(secureLaunch&&/^[a-f0-9-]{36}$/.test(secureLaunch)){openSecure('',secureLaunch);history.replaceState(null,'',location.pathname);}
+    refreshSecure();
+    if(!securePoll)securePoll=setInterval(()=>{if(document.visibilityState!=='hidden')refreshSecure();},15000);
     redeemInvitation().catch(error => { chatError.textContent=error.message; });
     loadChats().then(()=>{const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
     if (!chatPollInterval) chatPollInterval = setInterval(() => {
@@ -311,7 +333,7 @@
 
   function renderFilteredChats() {
     const q = chatFilterInput.value.trim().toLowerCase();
-    renderChats(chats.filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)));
+    renderChats([...chats,...(archivedView?[]:secureItems)].filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)));
   }
 
   function renderChats(list) {
@@ -342,7 +364,7 @@
         </div>
       `;
 
-      item.addEventListener('click', () => {if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');reportReceipt(chat.id);return;}return openChat(chat);});
+      item.addEventListener('click', () => {if(chat.secure)return openSecure('',chat.threadId);if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');reportReceipt(chat.id);return;}return openChat(chat);});
       chatsList.appendChild(item);
     });
   }
@@ -539,6 +561,7 @@
 
   // --- WebSocket Connection Management ---
   function disconnectWebSocket() {
+    calls?.reset();
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
     clearInterval(wsPingInterval);
@@ -589,6 +612,7 @@
 
     socket.onclose = (event) => {
       if (ws !== socket) return;
+      calls?.reset(false);
       ws = null;
       statusIndicatorDot.className = 'status-dot offline';
       statusText.textContent = 'در حال اتصال مجدد...';
@@ -611,6 +635,7 @@
   }
 
   window.addEventListener('online', () => {
+    refreshSecure();
     loadChats();
     flushOutbox();
     if (activeChat && (!ws || ws.readyState === WebSocket.CLOSED)) {
@@ -620,6 +645,7 @@
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && token) {
+      refreshSecure();
       loadChats();
       if (activeChat) {loadMessages(activeChat.id, { catchUp: true });refreshLoadedMessages(activeChat.id).catch(()=>{});}
       if (activeChat) { refreshReceipts(activeChat.id); reportReceipt(activeChat.id); }
@@ -627,6 +653,7 @@
   });
 
   function handleServerWsEvent(data) {
+    if(data.event==='call_signal'||data.event==='call_error'){void calls?.receive(data);return;}
     if (data.event === 'session_revoked') { endSession(); authError.textContent = 'دسترسی این دستگاه لغو شده است. دوباره وارد شوید.'; authError.style.display = 'block'; return; }
     if (data.event === 'chat_access_revoked') { denyChat(data.chatId); return; }
     if (data.event === 'message_changed') { acceptMutation(data.message); return; }
@@ -946,6 +973,12 @@
 
     searchDebounce = setTimeout(async () => {
       try {
+        if(searchMode==='dm'&&q.includes('@')&&q.replace(/^@/,'').includes('@')){
+          const remote=await post('/api/network/lookup',{address:q});
+          if(version!==searchVersion)return;
+          searchResultsList.innerHTML=`<button type="button" id="remote-start-chat" class="settings-row"><span>${escapeHtml(remote.displayName)}<small dir="ltr">${escapeHtml(remote.address)}</small></span><span>گفتگو</span></button>`;
+          byId('remote-start-chat').addEventListener('click',()=>{searchModal.style.display='none';openSecure(remote.address);});return;
+        }
         const users = await api(`/api/users/search?q=${encodeURIComponent(q)}`);
         if (version !== searchVersion) return;
         renderSearchResults(users);
@@ -1121,8 +1154,19 @@
   for(const section of ['profile','appearance','notifications','password'])byId('settings-'+section).addEventListener('click',()=>editSettings(section).catch(featureError));
   byId('settings-blocks').addEventListener('click',()=>showBlocks().catch(featureError));
   byId('settings-admin').addEventListener('click',()=>serviceSettings().catch(featureError));
-  extras=window.WihmExtras?.create({api,post,show:showFeature,error:featureError,escape:escapeHtml,profile:()=>profile,generation:()=>featureGeneration});
+  extras=window.WihmExtras?.create({api,post,show:showFeature,error:featureError,escape:escapeHtml,profile:()=>profile,generation:()=>featureGeneration,startChat:openSecure});
   byId('settings-discovery')?.addEventListener('click',()=>extras?.discovery().catch(featureError));
+  byId('settings-security')?.addEventListener('click',()=>window.WihmSecurity.create({api,post,show:showFeature,error:featureError,escape:escapeHtml,profile:()=>profile,generation:()=>featureGeneration}).open().catch(featureError));
+  byId('settings-secure')?.addEventListener('click',()=>openSecure());
+  byId('settings-channels')?.addEventListener('click',()=>window.WihmChannels.open({api,post,show:showFeature,error:featureError,escape:escapeHtml,user:()=>currentUser}).catch(featureError));
+  byId('settings-federation')?.addEventListener('click',async()=>{try{
+    const data=await api('/api/service/federation');
+    showFeature('اتصال سرورهای امن',`<p class="session-help">سرورها از طریق HTTPS به‌صورت خودکار متصل و کلید نخستین اتصال ثبت می‌شود. فهرست زیر فقط برای ثبت دستی کلیدهای مورد اعتماد مدیر است و برای گفتگو لازم نیست. تأیید اثرانگشت دستگاه مخاطب همچنان لازم است.</p><label>کلید عمومی این سرور<input id="federation-own-key" class="form-input" dir="ltr" readonly value="${escapeHtml(data.publicKey)}"></label><form id="federation-form" class="feature-form"><label><input id="federation-enabled" type="checkbox" ${data.enabled?'checked':''}> اجازهٔ پیام رمز‌شده بین سرورها</label><div id="federation-peers">${[...Object.entries(data.peers),['','']].map(([host,key])=>`<div class="field-pair"><label>نام دامنهٔ سرور<input class="form-input peer-host" dir="ltr" value="${escapeHtml(host)}" placeholder="chat.account.workers.dev"></label><label>کلید عمومی همان سرور<input class="form-input peer-key" dir="ltr" value="${escapeHtml(key)}"></label></div>`).join('')}</div><button class="btn-primary">ذخیرهٔ سرورهای مجاز</button></form>`);
+    bind('federation-form',async()=>{const hosts=[...byId('federation-peers').querySelectorAll('.peer-host')],keys=[...byId('federation-peers').querySelectorAll('.peer-key')],peers={};hosts.forEach((host,i)=>{if(host.value.trim())peers[host.value.trim().toLowerCase()]=keys[i].value.trim();});await api('/api/service/federation',{method:'PATCH',body:JSON.stringify({enabled:byId('federation-enabled').checked,origin:data.origin,peers})});byId('feature-status').textContent='تنظیمات ذخیره شد؛ برای افزودن سرور دیگر دوباره این صفحه را باز کنید.';},'submit');
+  }catch(error){featureError(error);}});
+  byId('settings-backup')?.addEventListener('click',()=>window.WihmBackup.open({api,post,show:showFeature,error:featureError,escape:escapeHtml,generation:()=>featureGeneration}).catch(featureError));
+  byId('btn-passkey-login')?.addEventListener('click',async()=>{try{const result=await window.WihmSecurity.login(post,inputUsername.value);token=result.token;currentUser=result.user;localStorage.setItem('cf_msg_token',token);localStorage.setItem('cf_msg_user',JSON.stringify(currentUser));setupUserSession();}catch(error){authError.textContent=error.message;authError.style.display='block';}});
+  const callMount=document.querySelector('.chat-header');if(callMount&&window.WihmCalls)calls=window.WihmCalls.create({getChat:()=>activeChat,getUser:()=>currentUser,send:data=>{if(!ws||ws.readyState!==WebSocket.OPEN)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));},mount:callMount,notify:message=>chatError.textContent=message});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
   byId('btn-channels')?.addEventListener('click',()=>{closeMainMenu();extras?.channels().catch(featureError);});
@@ -1155,7 +1199,7 @@
         <button class="btn-primary" type="submit">ذخیرهٔ تنظیمات</button>
       </form>
       <section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="test-notifications" class="quiet-button" type="button">آزمایش ارسال سرور</button><button id="test-local-notification" class="quiet-button" type="button">آزمایش نمایش دستگاه</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
-      <section class="feature-section password-controls"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
+      <section class="feature-section password-controls"><h4>تغییر رمز عبور</h4><form id="password-form" class="feature-form"><label>رمز فعلی<input id="password-current" class="form-input" type="password" autocomplete="current-password" required></label><label>کد دومرحله‌ای؛ اگر فعال است<input id="password-otp" class="form-input" autocomplete="one-time-code"></label><label>رمز تازه<input id="password-new" class="form-input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label><label>تکرار رمز تازه<input id="password-confirm" class="form-input" type="password" autocomplete="new-password" minlength="8" required></label><p class="session-help">پس از تغییر رمز، سایر دستگاه‌ها از حساب خارج می‌شوند.</p><button class="quiet-button" type="submit">تغییر رمز</button></form></section>
       `);
     featureContent.dataset.settingsPage=section;byId('btn-settings-back').hidden=false;
     byId('profile-theme').value=profile.theme||'dark'; byId('profile-font').value=profile.font_size||'normal';
@@ -1168,7 +1212,7 @@
     },'change');
     bind('remove-avatar',()=>{avatarDraft='';byId('profile-avatar').innerHTML=avatarHtml('',currentUser.displayName);});
     bind('profile-form',async()=>{await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
-    bind('password-form',async()=>{if(byId('password-new').value!==byId('password-confirm').value) throw new Error('تکرار رمز تازه مطابقت ندارد.'); await post('/api/profile/password',{currentPassword:byId('password-current').value,newPassword:byId('password-new').value}); byId('password-form').reset();byId('feature-status').textContent='رمز تغییر کرد؛ سایر دستگاه‌ها خارج شدند.';},'submit');
+    bind('password-form',async()=>{if(byId('password-new').value!==byId('password-confirm').value) throw new Error('تکرار رمز تازه مطابقت ندارد.'); await post('/api/profile/password',{currentPassword:byId('password-current').value,newPassword:byId('password-new').value,otp:byId('password-otp')?.value||''}); byId('password-form').reset();byId('feature-status').textContent='رمز تغییر کرد؛ سایر دستگاه‌ها خارج شدند.';},'submit');
     bind('test-notifications',async()=>{const result=await post('/api/push/test',{});byId('notification-state').textContent=result.message;});
     bind('test-local-notification',async()=>{if(Notification.permission!=='granted')throw new Error('ابتدا اعلان را فعال کنید.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('آزمایش نمایش ابرانه',{body:'اگر این اعلان را می‌بینید، نمایش اعلان روی دستگاه فعال است.',tag:'wihm-local-test',icon:'/icon.svg',dir:'rtl'});byId('notification-state').textContent='این آزمایش فقط نمایش دستگاه را بررسی می‌کند؛ برای مسیر شبکه، آزمایش ارسال سرور را بزنید.';});
     bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
@@ -1338,7 +1382,7 @@
   }
   window.addEventListener('hashchange',()=>{invitation=new URLSearchParams(location.hash.slice(1));redeemInvitation().catch(error=>{chatError.textContent=error.message;});});
   api('/api/bootstrap').then(data=>{if(!data)return;byId('registration-help').textContent=data.registration==='invite'?'ثبت‌نام در این سرویس فقط با لینک دعوت مدیر ممکن است.':data.registration==='closed'?'ثبت‌نام فعلاً بسته است؛ با حساب موجود وارد شوید.':'';if(invitation.get('register')){byId('registration-help').textContent='دعوت‌نامهٔ ثبت‌نام دریافت شد. اطلاعات حساب تازه را وارد کنید.';tabRegister.click?.();}}).catch(()=>{});
-  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
+  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='open-secure'&&token){openSecure('',event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
 
   // Start app
   setupUserSession();
