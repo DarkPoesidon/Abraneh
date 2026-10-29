@@ -72,12 +72,12 @@ async function connect(user, chatId, path = '/ws') {
   return socket;
 }
 
-function nextEvent(socket, event) {
+function nextEvent(socket, event, accepts = () => true) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { socket.removeEventListener('message', listener); reject(new Error('Timed out waiting for ' + event)); }, 5000);
     function listener(message) {
       const data = JSON.parse(message.data);
-      if (data.event !== event) return;
+      if (data.event !== event || !accepts(data)) return;
       clearTimeout(timeout);
       socket.removeEventListener('message', listener);
       resolve(data);
@@ -373,8 +373,11 @@ test('malformed and oversized JSON is rejected before hashing a password', async
   assert.equal((await api('/api/auth/login', { body: { username: 'nobody', password: 'x'.repeat(65000) } })).status, 413);
 });
 async function sent(socket, chatId, text, extra = {}) {
-  const received = nextEvent(socket, 'new_message');
-  socket.send(JSON.stringify({ action: 'send_message', chatId, text, clientMsgId: 'daily_' + (++serial), ...extra }));
+  const clientMsgId=extra.clientMsgId || 'daily_' + (++serial);
+  // Another sender's broadcast can arrive between registering this listener
+  // and our own acknowledgement. Match the stable send ID, not only the event.
+  const received = nextEvent(socket, 'new_message',data=>data.message.clientMsgId===clientMsgId);
+  socket.send(JSON.stringify({ action: 'send_message', chatId, text, ...extra, clientMsgId }));
   return (await received).message;
 }
 const change = (user, chat, message, action, body = {}) => api(`/api/chats/${chat}/messages/${message}/${action}`, { token: user.token, body });
