@@ -1,0 +1,64 @@
+{
+  "release": "https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/installer-v1.5.1",
+  "sourceCommit": "319d5c5c4470d6c29a7f1600ff49780cc7716d85",
+  "workerSha256": "c225b844d42b082ef640c5e8a06e33296693187db86e07df881d3ed3e916de38",
+  "checksums": {
+    "wihm-installer.zip": "2f9a7ee3106f48c537bc599cfbe37a3ecd398979ed1f98defe27ee33e943b871",
+    "wihm-installer.tar.gz": "c22b2f7ba1e6e90567d3088f2fc61a6a78fb5de6ee51789edc4061261f72d70a",
+    "wihm-update.json": "8ce7d89631d11a2d3a87828efebc46c672fa641087ff9729e91866f70a47f466",
+    "wihm-update.sig": "f468a4fe2e10b709f59f53f9f5664e63c45429d64d1d640ce59f1855e07efcfd"
+  },
+  "identicalArchiveFiles": 105,
+  "sourceFilesVerified": 97,
+  "relativeDocumentLinks": 127,
+  "fontSha256": "3d7c6820aa45e4f1c569561a7dabc6472153e14ea883b5b6ef41aa764c66def0",
+  "version": "1.5.1",
+  "workflow": "https://github.com/DarkPoesidon/WIHM-Cloudflare/actions/runs/40985918156",
+  "ci": {
+    "windows": "success",
+    "linux": "success",
+    "macos": "success",
+    "publish": "success"
+  },
+  "localTests": 103,
+  "localInstallerTests": {
+    "passed": 26,
+    "skipped": 2,
+    "reason": "Shell-only Termux checks run on Unix CI"
+  },
+  "signatureVerified": true,
+  "publicDownloadWithoutAuthentication": true,
+  "packagedLauncherVerified": true,
+  "realDeviceOrCarrierTest": false,
+  "browser": {
+    "passed": true,
+    "fullApplication": true,
+    "realWorkerSignaling": true,
+    "incomingWithoutOpenChat": true,
+    "audioBytes": true,
+    "decodedVideoFrames": true,
+    "muteAndCamera": true,
+    "stopTracks": true,
+    "physicalDevices": false,
+    "errors": []
+  },
+  "layout": {
+    "passed": true,
+    "nativeWebRTC": true,
+    "syntheticMicrophone": true,
+    "physicalDevicesChecked": false,
+    "directLocalICE": true,
+    "consent": true,
+    "remoteAudioBytes": true,
+    "hangupStopsTracks": true,
+    "closedDialogHidden": true,
+    "centeredDialog": true,
+    "audioPlayer": true,
+    "shortViewport": true,
+    "errors": []
+  },
+  "screenshots": {
+    "call-mobile.png": "a22bdf7dfee266a15670a0f1ab2d0b87fcb0a4429cc76dff97fc7e85946bf699",
+    "call-video-desktop.png": "aac16ca02eeead3eb293e5007899dd772f8b353ff35b5f6ed6a9a355b21a7647"
+  }
+}
