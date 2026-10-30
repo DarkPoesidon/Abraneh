@@ -286,10 +286,11 @@
     refreshSecure();
     if(!securePoll)securePoll=setInterval(()=>{if(document.visibilityState!=='hidden')refreshSecure();},15000);
     redeemInvitation().catch(error => { chatError.textContent=error.message; });
-    loadChats().then(()=>{const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
+    loadChats().then(()=>{checkIncomingCalls();const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
     if (!chatPollInterval) chatPollInterval = setInterval(() => {
       if (document.visibilityState !== 'hidden') loadChats();
       flushOutbox();
+      checkIncomingCalls();
     }, 5000);
     flushOutbox();
   }
@@ -380,7 +381,7 @@
   });
 
   // --- Open Chat & Connect WebSocket ---
-  async function openChat(chat) {
+  async function openChat(chat, preserveCall = false) {
     activeChat = chat;
     openingChatId = chat.id;
     cancelComposer();
@@ -405,7 +406,7 @@
     statusText.textContent = 'در حال اتصال...';
 
     // Disconnect old socket
-    disconnectWebSocket();
+    disconnectWebSocket(preserveCall);
     reconnectAttempt = 0;
 
     // Connect WebSocket
@@ -566,8 +567,8 @@
   }
 
   // --- WebSocket Connection Management ---
-  function disconnectWebSocket() {
-    calls?.reset();
+  function disconnectWebSocket(preserveCall = false) {
+    if (!preserveCall) calls?.reset();
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
     clearInterval(wsPingInterval);
@@ -1190,7 +1191,33 @@
   }catch(error){featureError(error);}});
   byId('settings-backup')?.addEventListener('click',()=>window.WihmBackup.open({api,post,show:showFeature,error:featureError,escape:escapeHtml,generation:()=>featureGeneration}).catch(featureError));
   byId('btn-passkey-login')?.addEventListener('click',async()=>{try{const result=await window.WihmSecurity.login(post,inputUsername.value);token=result.token;currentUser=result.user;localStorage.setItem('cf_msg_token',token);localStorage.setItem('cf_msg_user',JSON.stringify(currentUser));setupUserSession();}catch(error){authError.textContent=error.message;authError.style.display='block';}});
-  const callMount=document.querySelector('.chat-header');if(callMount&&window.WihmCalls)calls=window.WihmCalls.create({getChat:()=>activeChat,getUser:()=>currentUser,send:data=>{if(!ws||ws.readyState!==WebSocket.OPEN)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));},mount:callMount,notify:message=>chatError.textContent=message});
+  let incomingRequest = false;
+  async function checkIncomingCalls() {
+    if (!token || !calls || incomingRequest) return;
+    incomingRequest = true; const session = token, ringingId = calls.ringingId();
+    try {
+      const events = await api('/api/calls/incoming'); if (token !== session) return;
+      const incoming = events.find(event => chats.some(chat => chat.id === event.chatId));
+      if (incoming && !calls.active()) await calls.receive(incoming);
+      else if (ringingId && calls.ringingId() === ringingId && !events.some(event => event.callId === ringingId)) calls.reset(false);
+    } catch (error) { console.warn('Incoming calls:', error.message); }
+    finally { incomingRequest = false; }
+  }
+  async function activateCall(chatId) {
+    const chat = chats.find(chat => chat.id === chatId); if (!chat || chat.blocked) throw Error('گفتگو در دسترس نیست.');
+    if (activeChat?.id !== chatId) await openChat(chat, true);
+    const socket = ws; if (!socket) throw Error('اتصال گفتگو برقرار نیست.');
+    if (socket.readyState === WebSocket.OPEN) return;
+    await new Promise((resolve, reject) => {
+      const finish = error => { clearTimeout(timer); socket.removeEventListener('open', ready); socket.removeEventListener('close', failed); error ? reject(error) : resolve(); };
+      const ready = () => finish(), failed = () => finish(Error('اتصال گفتگو برقرار نشد.'));
+      const timer = setTimeout(failed, 10000); socket.addEventListener('open', ready, { once: true }); socket.addEventListener('close', failed, { once: true });
+    });
+  }
+  const callMount=document.querySelector('.chat-header');if(callMount&&window.WihmCalls)calls=window.WihmCalls.create({getChat:id=>id?chats.find(chat=>chat.id===id):activeChat,getUser:()=>currentUser,activate:activateCall,getIceServers:async(chatId,callId)=>(await post('/api/calls/ice',{chatId,callId})).iceServers,send:data=>{
+    if(data.kind==='decline'&&(activeChat?.id!==data.chatId||ws?.readyState!==WebSocket.OPEN)){post('/api/calls/decline',{chatId:data.chatId,callId:data.callId}).catch(error=>{chatError.textContent=error.message;});return;}
+    if(!ws||ws.readyState!==WebSocket.OPEN||activeChat?.id!==data.chatId)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));
+  },mount:callMount,notify:message=>chatError.textContent=message});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
   byId('settings-server')?.addEventListener('click',()=>{closeFeature();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
@@ -1423,9 +1450,17 @@
     const settings=await api('/api/service/settings');
     showFeature('مدیریت سرویس',`<form id="service-form" class="feature-form"><label>ثبت‌نام<select id="registration-mode" class="form-input"><option value="open">آزاد؛ همه می‌توانند حساب بسازند</option><option value="invite">فقط با دعوت‌نامهٔ ثبت‌نام</option><option value="closed">بسته؛ فقط ورود حساب‌های موجود</option></select></label><button class="btn-primary" type="submit">ذخیرهٔ وضعیت ثبت‌نام</button></form><div class="button-row feature-section"><button id="service-overview" class="quiet-button">وضعیت و مدیریت کاربران</button><button id="registration-invites" class="quiet-button">دعوت‌نامه‌های ثبت‌نام</button><button id="service-reports" class="quiet-button">گزارش‌های مزاحمت</button></div><p class="session-help">مدیر سرویس به پایگاه داده دسترسی دارد؛ این نسخه رمزگذاری سرتاسری ندارد.</p>`);
     byId('registration-mode').value=settings.registration;
+    const callSettings = document.createElement('button'); callSettings.id = 'service-call-settings'; callSettings.type = 'button'; callSettings.className = 'quiet-button'; callSettings.textContent = 'تنظیم اتصال تماس (TURN)';
+    byId('service-form').after(callSettings); callSettings.addEventListener('click', () => turnSettings().catch(featureError));
     bind('service-overview',()=>extras?.management());
     bind('service-form',async()=>{await patch('/api/service/settings',{registration:byId('registration-mode').value});byId('feature-status').textContent='وضعیت ثبت‌نام ذخیره شد.';},'submit');bind('registration-invites',()=>invitesView());
     bind('service-reports',async()=>{const rows=await api('/api/service/reports');showFeature('گزارش‌های مزاحمت',rows.length?rows.map((row,i)=>`<section class="feature-section"><p><bdi>@${escapeHtml(row.reporter)}</bdi> ← <bdi>@${escapeHtml(row.target)}</bdi></p><p>${escapeHtml(row.reason)}</p>${row.snapshot?`<blockquote class="action-preview">${escapeHtml(row.snapshot)}</blockquote>`:''}<p class="session-help">${dateLabel(row.created_at)} · ${row.status==='resolved'?'بررسی‌شده':'باز'}</p><button id="resolve-report-${i}" class="quiet-button">${row.status==='resolved'?'باز کردن دوباره':'علامت بررسی‌شده'}</button></section>`).join(''):'<p class="session-help">گزارشی ثبت نشده است.</p>');rows.forEach((row,i)=>bind('resolve-report-'+i,async()=>{await patch('/api/service/reports',{id:row.id,status:row.status==='resolved'?'open':'resolved'});byId('resolve-report-'+i).disabled=true;byId('feature-status').textContent='وضعیت گزارش تغییر کرد.';}));});
+  }
+  async function turnSettings() {
+    const config = await api('/api/service/calls');
+    showFeature('اتصال تماس در شبکه‌های محدود', `<p class="session-help">${config.configured?'واسط TURN فعال است. برای تعویض، کلید جدید وارد کنید.':'فعلاً تماس مستقیم فعال است؛ اینترنت موبایل و بعضی شبکه‌ها به TURN نیاز دارند.'} کلید را از بخش Realtime ← TURN در حساب Cloudflare خود بسازید. مصرف این سرویس تابع تعرفهٔ کلادفلر است.</p><a href="https://dash.cloudflare.com/?to=/:account/realtime/turn" target="_blank" rel="noopener noreferrer">باز کردن بخش TURN در کلادفلر</a><form id="turn-form" class="feature-form"><label>TURN Key ID<input id="turn-key-id" class="form-input" dir="ltr" maxlength="128" value="${escapeHtml(config.keyId)}" required></label><label>API Token همان کلید<input id="turn-key-token" type="password" class="form-input" dir="ltr" autocomplete="off" maxlength="1024" required></label><button class="btn-primary" type="submit">بررسی کلید و فعال‌سازی واسط تماس</button></form><button id="turn-disable" class="quiet-button danger-text" ${config.configured?'':'hidden'}>قطع واسط و استفاده از تماس مستقیم</button><p class="session-help">توکن اصلی فقط به سرور خودتان ارسال و رمزگذاری می‌شود. دستگاه‌های کاربران مجوز موقت ۲۰ دقیقه‌ای دریافت می‌کنند.</p>`);
+    bind('turn-form', async () => { await post('/api/service/calls', { keyId: byId('turn-key-id').value.trim(), token: byId('turn-key-token').value.trim() }); byId('turn-key-token').value = ''; byId('turn-disable').hidden = false; byId('feature-status').textContent = 'کلید تأیید شد؛ تماس‌های بعدی از مسیر مستقیم یا واسط برقرار می‌شوند.'; }, 'submit');
+    bind('turn-disable', async () => { if (!confirm('واسط تماس غیرفعال شود؟ بعضی شبکه‌ها بدون آن وصل نمی‌شوند.')) return; await api('/api/service/calls', { method: 'DELETE' }); await turnSettings(); });
   }
   byId('btn-message-search').addEventListener('click',()=>{
     if(!activeChat)return;const chatId=activeChat.id;
@@ -1458,7 +1493,7 @@
   }
   window.addEventListener('hashchange',()=>{invitation=new URLSearchParams(location.hash.slice(1));redeemInvitation().catch(error=>{chatError.textContent=error.message;});});
   api('/api/bootstrap').then(data=>{if(!data)return;byId('registration-help').textContent=data.registration==='invite'?'ثبت‌نام در این سرویس فقط با لینک دعوت مدیر ممکن است.':data.registration==='closed'?'ثبت‌نام فعلاً بسته است؛ با حساب موجود وارد شوید.':'';if(invitation.get('register')){byId('registration-help').textContent='دعوت‌نامهٔ ثبت‌نام دریافت شد. اطلاعات حساب تازه را وارد کنید.';tabRegister.click?.();}}).catch(()=>{});
-  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='open-secure'&&token){openSecure('',event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
+  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='incoming-call'&&token){loadChats(true).then(checkIncomingCalls).catch(()=>{});return;}if(event.data?.type==='open-secure'&&token){openSecure('',event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
 
   // Start app
   setupUserSession();

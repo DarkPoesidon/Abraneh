@@ -15,7 +15,7 @@ before(async()=>{
       if(url.pathname==='/validate') {try{validatePush(await request.json());return Response.json({ok:true});}catch{return Response.json({ok:false},{status:400});}}
       const calls=[];const transport=async(endpoint,options)=>{calls.push({endpoint,headers:options.headers,body:[...options.body]});return new Response(null,{status:201});};if(url.searchParams.has('secure')){await sendSecurePush(env,'receiver','secure-thread','',transport);return Response.json(calls);}
       const cursor=await sendPush(env,{id:'message',chatId:'room',senderId:'sender',senderName:'فرستنده',text:'متن خصوصی فارسی',createdAt:1},async(endpoint,options)=>{
-        calls.push({endpoint,headers:options.headers,body:[...options.body]});return new Response(null,{status:url.searchParams.has('gone')?410:201});},url.searchParams.get('after')||'');
+        calls.push({endpoint,headers:options.headers,body:[...options.body]});return new Response(null,{status:url.searchParams.has('gone')?410:201});},url.searchParams.get('after')||'',url.searchParams.has('call')?{callId:'incoming-call',expiresAt:Date.now()+45000,video:true}:undefined);
       return Response.json(url.searchParams.has('page')?{calls,cursor}:calls);
     }};`,resolveDir:process.cwd()},bundle:true,format:'esm',platform:'neutral', mainFields:['browser','module','main'],write:false});
   mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:compiled.outputFiles[0].text,compatibilityDate:'2026-01-01',d1Databases:{DB:'push-test'},bindings:{VAPID_PUBLIC_KEY:vapid.getPublicKey().toString('base64url'),VAPID_PRIVATE_KEY:vapid.getPrivateKey().toString('base64url')}}));
@@ -32,6 +32,12 @@ before(async()=>{
 });
 after(async()=>mf?.dispose());
 const trigger=async(suffix='')=>(await mf.dispatchFetch('http://localhost/'+suffix)).json();
+test('incoming call push has a short lifetime and never exposes private message content',async()=>{
+  const calls=await trigger('?call');const payload=decrypt(calls);
+  assert.equal(payload.kind,'call');assert.equal(payload.callId,'incoming-call');assert.equal(payload.chatId,'room');
+  assert.ok(payload.expiresAt>Date.now());assert.ok(Number(calls[0].headers.ttl)>0&&Number(calls[0].headers.ttl)<=45);
+  assert.ok(!JSON.stringify(payload).includes('متن خصوصی'));assert.equal(payload.title,'تماس ورودی در ابرانه');
+});
 function decrypt(calls){
   const data=Buffer.from(calls[0].body),salt=data.subarray(0,16),senderKey=data.subarray(21,21+data[20]),ciphertext=data.subarray(21+data[20]);
   const ikm=hkdfSync('sha256',receiver.computeSecret(senderKey),auth,Buffer.concat([Buffer.from('WebPush: info\0'),receiver.getPublicKey(),senderKey]),32);

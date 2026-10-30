@@ -11,6 +11,7 @@ before(async()=>{
  owner=(await api(source,'/api/auth/register',{user:null,body:{username:'backupowner',password:'backuppass123'}})).data;
  other=(await api(source,'/api/auth/register',{user:null,body:{username:'backupother',password:'backuppass123'}})).data;
  await source.db.prepare('INSERT INTO service_admins VALUES (1,?)').bind(owner.user.id).run();
+ await source.db.prepare("INSERT INTO site_settings VALUES ('call_turn','opaque-test-configuration')").run();
  room=(await api(source,'/api/chats',{body:{targetUserId:other.user.id}})).data.id;
  const response=await source.mf.dispatchFetch('https://source.test/ws?chatId='+room+'&token='+owner.token,{headers:{Upgrade:'websocket'}});socket=response.webSocket;socket.accept();
  const saved=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Message not acknowledged')),5000);socket.addEventListener('message',e=>{if(JSON.parse(e.data).event==='new_message'){clearTimeout(timer);resolve();}});});socket.send(JSON.stringify({action:'send_message',chatId:room,text:'تاریخچهٔ اصلی برای بازیابی',clientMsgId:'backup-message'}));await saved;
@@ -50,6 +51,7 @@ test('actual installer helper restores all D1/DO data into a fresh worker and ne
  let installed=false;const fetcher=async(url,options)=>{if(!installed){target.options.bindings={...target.options.bindings,...secrets};await target.mf.setOptions(convertV4MiniflareOptions(target.options));target.db=await target.mf.getD1Database('DB');installed=true;}const response=await target.mf.dispatchFetch(url,options);if(!response.ok)console.error(new URL(url).pathname,response.status,await response.clone().text());return response;};
  const restored=await restoreBackup({api:cloud,accountId:'a'.repeat(32),name:'restored-chat',backup,payloadDir:'dist/WIHM-Installer/payload',fetcher});assert.equal(restored.restored,true);assert.equal(secrets.RESTORE_TOKEN,undefined);
  assert.equal((await api(target,'/api/profile')).status,401);assert.equal((await target.db.prepare('SELECT count(*) AS n FROM users').first()).n,2);
+ assert.equal(await target.db.prepare("SELECT 1 FROM site_settings WHERE key='call_turn'").first(),null,'Restore must not revive paid TURN credentials');
  const login=await api(target,'/api/auth/login',{user:null,body:{username:'backupowner',password:'backuppass123'}});assert.equal(login.status,200,JSON.stringify(login));const history=await api(target,`/api/chats/${room}/messages`,{user:login.data});assert.equal(history.status,200);assert.equal(history.data[0].text,'تاریخچهٔ اصلی برای بازیابی');
  assert.equal((await restoreBackup({api:cloud,accountId:'a'.repeat(32),name:'restored-chat',backup,payloadDir:'dist/WIHM-Installer/payload',fetcher})).restored,true);assert.equal((await api(target,'/api/profile',{user:login.data})).status,200,'Retry after finish must preserve new sessions');
 });

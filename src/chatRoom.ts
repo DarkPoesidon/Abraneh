@@ -1,4 +1,4 @@
-import { handleCall, closeCall, CallEvent } from './calls.js';
+import { handleCall, closeCall, callInbox, activeCall, CallEvent, CallIdentity } from './calls.js';
 import { beginOperation, withOperation } from './maintenance.js';
 import { ROOM_BACKUP_TABLES, roomBackupPage, restoreRoomTable } from './room-backup.js';
 import { DurableObject } from "cloudflare:workers";
@@ -83,6 +83,30 @@ export class ChatRoom extends DurableObject<Env> {
   }
   private async roomFetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/call-active' && request.method === 'POST') {
+      const body = await request.json<{ userId: string; sid: string; callId: string }>();
+      return new Response(null, { status: activeCall(this.ctx.storage.sql, body.userId, body.sid, body.callId) ? 204 : 403 });
+    }
+    if (url.pathname === '/call-inbox') {
+      this.ctx.storage.sql.exec("DELETE FROM room_meta WHERE key LIKE 'incoming:%' AND json_extract(value,'$.expiresAt')<=?", Date.now());
+      if (request.method !== 'GET') {
+        const event = await request.json<CallEvent>(), key = 'incoming:' + event.chatId;
+        if (request.method === 'PUT') {
+          const count = Number(this.ctx.storage.sql.exec("SELECT count(*) AS n FROM room_meta WHERE key LIKE 'incoming:%'").toArray()[0].n);
+          if (count >= 32) return new Response(null, { status: 429 });
+          this.ctx.storage.sql.exec('INSERT INTO room_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(event));
+        } else this.ctx.storage.sql.exec("DELETE FROM room_meta WHERE key=? AND json_extract(value,'$.callId')=?", key, event.callId);
+        return new Response(null, { status: 204 });
+      }
+      const count = this.ctx.storage.sql.exec('INSERT INTO send_limits VALUES (?,?,1) ON CONFLICT(user_id) DO UPDATE SET count=CASE WHEN window_start=excluded.window_start THEN count+1 ELSE 1 END,window_start=excluded.window_start RETURNING count', 'poll', Math.floor(Date.now()/60000)*60000).toArray()[0];
+      if (Number(count.count) > 120) return Response.json({ error: 'Too many call checks' }, { status: 429 });
+      return Response.json(this.ctx.storage.sql.exec("SELECT value FROM room_meta WHERE key LIKE 'incoming:%' LIMIT 32").toArray().map(row => JSON.parse(String(row.value))));
+    }
+    if (url.pathname === '/call-decline' && request.method === 'POST') {
+      const sender = await request.json<CallIdentity & { callId: string }>();
+      try { await handleCall(this.env, this.ctx.storage.sql, sender, { action: 'call_signal', chatId: sender.chatId, callId: sender.callId, kind: 'decline' }, event => this.deliverCall(event)); return Response.json({ ok: true }); }
+      catch (error) { return Response.json({ error: error instanceof InputError ? error.message : 'رد تماس کامل نشد.' }, { status: error instanceof InputError ? error.status : 500 }); }
+    }
 
     // 1. WebSocket Upgrade Handler
     if (request.headers.get("Upgrade") === "websocket") {
@@ -461,7 +485,18 @@ export class ChatRoom extends DurableObject<Env> {
     return permitted;
   }
 
-  private async deliverCall(event:CallEvent){for(const socket of await this.authorizedSockets()){const peer=socket.deserializeAttachment() as WsAttachment|null;if(peer?.userId===event.toUserId&&(!event.toSessionId||peer.sessionId===event.toSessionId))try{socket.send(JSON.stringify(event));}catch{}}}
+  private async deliverCall(event:CallEvent){
+    if(event.kind==='invite') {
+      await callInbox(this.env,event.toUserId,'PUT',event);
+      this.ctx.waitUntil((async()=>{
+        let after='';
+        do { after=await sendPush(this.env,{id:event.callId,chatId:event.chatId,senderId:event.from,senderName:'',text:'',createdAt:Date.now()},fetch,after,{callId:event.callId,expiresAt:event.expiresAt!,video:event.video})||''; }
+        while(after&&event.expiresAt!>Date.now());
+      })().catch(error=>console.warn('Incoming call notification failed:',error instanceof Error?error.message:'unknown')));
+    }
+    else if(['accept','decline','end','claimed'].includes(event.kind)) await Promise.all([...new Set([event.from,event.toUserId])].map(id=>callInbox(this.env,id,'DELETE',event)));
+    for(const socket of await this.authorizedSockets()){const peer=socket.deserializeAttachment() as WsAttachment|null;if(peer?.userId===event.toUserId&&(!event.toSessionId||peer.sessionId===event.toSessionId))try{socket.send(JSON.stringify(event));}catch{}}
+  }
   private async broadcast(event: ServerWsEvent, excludeWs?: WebSocket) {
     const str = JSON.stringify(event);
     for (const s of await this.authorizedSockets()) {

@@ -66,7 +66,7 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
     const claims = Buffer.from(JSON.stringify({ userId: 'legacy-user', username: 'legacy', displayName: 'قدیمی', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
     const token = header + '.' + claims + '.' + createHmac('sha256', secret).update(header + '.' + claims).digest('base64url');
     const health = await (await mf.dispatchFetch('http://localhost/api/health')).json();
-    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.5.0', database: true });
+    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.5.1', database: true });
     const history = await (await mf.dispatchFetch('http://localhost/api/chats/legacy-room/messages', { headers: { Authorization: 'Bearer ' + token } })).json();
     assert.deepEqual(history.map(message => message.id), ['old-a', 'old-b']);
     const response = await mf.dispatchFetch('http://localhost/ws?chatId=legacy-room&token=' + token, { headers: { Upgrade: 'websocket' } });

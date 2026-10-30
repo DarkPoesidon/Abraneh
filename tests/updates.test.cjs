@@ -1,6 +1,7 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
+const currentVersion=JSON.parse(readFileSync('package.json','utf8')).version;
 const {mkdtemp,rm}=require('node:fs/promises');
 const {tmpdir}=require('node:os');
 const {join}=require('node:path');
@@ -13,12 +14,12 @@ const shared='test-private-updater-auth',cloudToken='test-cloud-token-not-for-th
 const baseBundle={format:1,version:'2.0.0',minimumUpdaterVersion:'1.5.0',sourceCommit:'a'.repeat(40),notes:'نسخهٔ آزمایشی برای آزمون ارتقا',files:{'worker.mjs':Buffer.from('export default {}').toString('base64'),'updater.mjs':Buffer.from('export default {}').toString('base64'),'schema.sql':Buffer.from('CREATE TABLE IF NOT EXISTS example(id TEXT)').toString('base64'),'migrations/0001_example.sql':Buffer.from('CREATE TABLE IF NOT EXISTS extra(id TEXT)').toString('base64'),'public/index.html':Buffer.from('<html>دو</html>').toString('base64'),'public/sw.js':Buffer.from('self.version=2').toString('base64'),'public/fonts/Vazir-Variable.woff2':readFileSync('public/fonts/Vazir-Variable.woff2').toString('base64')}};
 const renewedToken='replacement-cloud-token-only-for-updater';
 let signed=Buffer.from(JSON.stringify(baseBundle)),signature=sign(null,signed,key.privateKey).toString('base64'),tamper=false,loseUpload=true,loseSelfUpload=true;
-const state={mainVersion:'1.5.0',updaterVersion:'1.5.0',cloudCalls:[],mainUploads:[],updaterUploads:[],applied:new Set(),manifest:null};
+const state={mainVersion:currentVersion,updaterVersion:currentVersion,cloudCalls:[],mainUploads:[],updaterUploads:[],applied:new Set(),manifest:null};
 const mainBindings=()=>[{name:'WIHM_INSTALLER',type:'plain_text',text:'wihm-cloudflare-v2'},{name:'WIHM_VERSION',type:'plain_text',text:state.mainVersion},{name:'DB',type:'d1',id:'same-database'},{name:'CHAT_ROOM',type:'durable_object_namespace',namespace_id:'same-rooms'},{name:'JWT_SECRET',type:'secret_text'},{name:'TELEGRAM_KEY',type:'secret_text'},{name:'VAPID_PRIVATE_KEY',type:'secret_text'},{name:'UPDATER',type:'service',service:'family-updates'},{name:'UPDATER_AUTH',type:'secret_text'}];
 const success=result=>Response.json({success:true,result});
 async function outgoing(request){
  const url=new URL(request.url);
- if(url.hostname==='github.com'){assert.equal(request.headers.get('Authorization'),null);if(url.pathname.includes('/installer-v1.5.0/')){const payload=Buffer.from(JSON.stringify({...baseBundle,version:'1.5.0'}));return new Response(url.pathname.endsWith('.sig')?sign(null,payload,key.privateKey).toString('base64'):payload);}if(url.pathname.endsWith('.sig'))return new Response(signature);return new Response(tamper?Buffer.concat([signed,Buffer.from(' ')]):signed);}
+ if(url.hostname==='github.com'){assert.equal(request.headers.get('Authorization'),null);if(url.pathname.includes(`/installer-v${currentVersion}/`)){const payload=Buffer.from(JSON.stringify({...baseBundle,version:currentVersion}));return new Response(url.pathname.endsWith('.sig')?sign(null,payload,key.privateKey).toString('base64'):payload);}if(url.pathname.endsWith('.sig'))return new Response(signature);return new Response(tamper?Buffer.concat([signed,Buffer.from(' ')]):signed);}
  assert.equal(url.hostname,'api.cloudflare.com');assert.ok(['Bearer '+cloudToken,'Bearer '+renewedToken,'Bearer upload-session'].includes(request.headers.get('Authorization')));
  const path=url.pathname.replace('/client/v4','');state.cloudCalls.push(path);
  if(path.endsWith('/family/settings'))return success({bindings:mainBindings()});
@@ -27,7 +28,7 @@ async function outgoing(request){
  if(path.endsWith('/assets-upload-session')){state.manifest=(await request.json()).manifest;assert.ok(state.manifest['/fonts/Vazir-Variable.woff2']);return success({jwt:'upload-session',buckets:[[...new Set(Object.values(state.manifest).map(f=>f.hash))]]});}
  if(path.endsWith('/assets/upload')){assert.equal(url.searchParams.get('base64'),'true');const form=await request.formData();assert.ok([...form].length>=3);return success({jwt:'complete-assets'});}
  if(path.endsWith('/scripts/family')){const form=await request.formData(),metadata=JSON.parse(await form.get('metadata').text());state.mainUploads.push(metadata);state.mainVersion=metadata.bindings.find(b=>b.name==='WIHM_VERSION').text;if(loseUpload){loseUpload=false;throw Error('Connection lost AFTER accepting publication');}return success({id:'family'});}
- if(path.endsWith('/scripts/family-updates')){const form=await request.formData();const metadata=JSON.parse(await form.get('metadata').text());state.updaterUploads.push(metadata);state.updaterVersion=metadata.bindings.find(b=>b.name==='WIHM_UPDATER_VERSION').text;if(loseSelfUpload&&state.updaterVersion!=='1.5.0'){loseSelfUpload=false;throw Error('Connection lost AFTER accepting updater publication');}return success({id:'family-updates'});}
+ if(path.endsWith('/scripts/family-updates')){const form=await request.formData();const metadata=JSON.parse(await form.get('metadata').text());state.updaterUploads.push(metadata);state.updaterVersion=metadata.bindings.find(b=>b.name==='WIHM_UPDATER_VERSION').text;if(loseSelfUpload&&state.updaterVersion!==currentVersion){loseSelfUpload=false;throw Error('Connection lost AFTER accepting updater publication');}return success({id:'family-updates'});}
  throw Error('Unexpected mocked Cloudflare path '+path);
 }
 async function control(path,body,auth=shared){const response=await manager.dispatchFetch('https://internal'+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+auth,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:response.status,data:await response.json()};}

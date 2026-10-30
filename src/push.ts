@@ -57,7 +57,7 @@ export async function sendSecurePush(env:Env,userId:string,thread:string,after='
 }
 // Small pages keep a large group's fan-out below the per-invocation fetch budget.
 // The room persists the returned cursor and resumes via its alarm.
-export async function sendPush(env: Env, message: Message, fetcher: typeof fetch = fetch, after = ''): Promise<string | null> {
+export async function sendPush(env: Env, message: Message, fetcher: typeof fetch = fetch, after = '', call?: { callId: string; expiresAt: number; video?: boolean }): Promise<string | null> {
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return null;
   const { results } = await env.DB.prepare(`SELECT ps.*,COALESCE(p.notification_preview,0) AS preview,c.title,c.type
     FROM push_subscriptions ps JOIN user_sessions s ON s.id = ps.session_id AND s.user_id = ps.user_id
@@ -71,9 +71,9 @@ export async function sendPush(env: Env, message: Message, fetcher: typeof fetch
     .bind(message.chatId,message.senderId,Date.now(),message.senderId,message.senderId,after).all<any>();
   for (let offset = 0; offset < results.length; offset += 8) {
     checkDeliveries(await Promise.allSettled(results.slice(offset,offset+8).map(async row=>deliver(env,row,{
-      title:row.preview?(row.type==='group'?row.title:message.senderName).slice(0,100):'پیام تازه در ابرانه',
-      body:row.preview?message.text.slice(0,160):'برای دیدن پیام، ابرانه را باز کنید.',chatId:message.chatId,messageId:message.id,
-    },3600,(await tokenHash(message.chatId)).slice(0,32),fetcher))));
+      title:call?'تماس ورودی در ابرانه':row.preview?(row.type==='group'?row.title:message.senderName).slice(0,100):'پیام تازه در ابرانه',
+      body:call?`برای پاسخ به تماس ${call.video?'تصویری':'صوتی'}، برنامه را باز کنید.`:row.preview?message.text.slice(0,160):'برای دیدن پیام، ابرانه را باز کنید.',chatId:message.chatId,...(call?{kind:'call',callId:call.callId,expiresAt:call.expiresAt}:{messageId:message.id}),
+    },call?Math.max(0,Math.ceil((call.expiresAt-Date.now())/1000)):3600,(await tokenHash(call?call.callId:message.chatId)).slice(0,32),fetcher))));
   }
   return results.length===24?String(results.at(-1).id):null;
 }

@@ -1,6 +1,8 @@
 import { Env } from './types.js';
-import { validId } from './access.js';
-import { InputError } from './http.js';
+import { validId, chatAccess, isBlocked } from './access.js';
+import { InputError, inputJson, jsonResponse } from './http.js';
+import { allowRequest } from './limits.js';
+import { serviceAdmin } from './management.js';
 
 export interface CallIdentity { chatId: string; userId: string; sessionId: string }
 export interface CallEvent {
@@ -8,15 +10,88 @@ export interface CallEvent {
   toUserId: string; toSessionId?: string; video?: boolean; expiresAt?: number; payload?: unknown;
 }
 type Delivery = (event: CallEvent) => Promise<void>;
+const directIce = [{ urls: 'stun:stun.l.google.com:19302' }];
+type TurnConfig = { keyId: string; token: string };
+async function turnCipher(env: Env) {
+  const bytes = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', bytes.encode(env.JWT_SECRET!), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: bytes.encode('WIHM calls v1'), info: bytes.encode('TURN configuration') }, key, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function turnConfiguration(env: Env): Promise<TurnConfig | null> {
+  const row = await env.DB.prepare("SELECT value FROM site_settings WHERE key='call_turn'").first<{ value: string }>();
+  if (!row) return null;
+  const { iv, cipher } = JSON.parse(row.value);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: Uint8Array.from(iv), additionalData: new TextEncoder().encode('call_turn') }, await turnCipher(env), Uint8Array.from(cipher))));
+}
+async function turnCredentials(config: TurnConfig) {
+  let response;
+  try { response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${config.keyId}/credentials/generate-ice-servers`, { method: 'POST', headers: { Authorization: 'Bearer ' + config.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 1200 }), signal: AbortSignal.timeout(8000), redirect: 'manual' }); }
+  catch (error) { console.error('TURN credential request failed:', error instanceof Error ? error.message : 'unknown'); throw new InputError('سرویس واسط تماس پاسخ نداد؛ دوباره تلاش کنید.', 502); }
+  if (!response.ok) throw new InputError('کلید یا مجوز سرویس TURN کلادفلر پذیرفته نشد.', 502);
+  const body: any = await response.json();
+  if (!Array.isArray(body.iceServers) || body.iceServers.length > 8) throw new InputError('پاسخ سرویس تماس معتبر نیست.', 502);
+  const iceServers = body.iceServers.map((server: any) => ({ urls: (Array.isArray(server.urls) ? server.urls : [server.urls]).filter((url: unknown) => typeof url === 'string' && /^(stun|turn|turns):[a-z0-9.-]+:\d{1,5}(\?transport=(tcp|udp))?$/.test(url) && !/:53(\?|$)/.test(url)), ...(typeof server.username === 'string' && typeof server.credential === 'string' ? { username: server.username, credential: server.credential } : {}) })).filter((server: any) => server.urls.length);
+  if (!iceServers.some((server: any) => server.urls.some((url: string) => /^turns?:/.test(url)) && server.username && server.credential)) throw new InputError('مسیر واسط تماس در پاسخ وجود ندارد.', 502);
+  return iceServers;
+}
 interface CallState {
   id: string; caller: string; callerSession: string; callee: string; calleeSession?: string;
   stage: string; video: boolean; expiresAt: number; callerIce: number; calleeIce: number;
 }
 const key = 'call-v1';
+export function callInbox(env: Env, userId: string, method = 'GET', event?: CallEvent) {
+  return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName('call-inbox:' + userId)).fetch('https://room/call-inbox', { method, ...(event ? { body: JSON.stringify(event) } : {}) });
+}
+
+export async function handleCallRequests(request: Request, env: Env, auth: { userId: string; sid: string }) {
+  const path = new URL(request.url).pathname;
+  if (path === '/api/service/calls') {
+    await serviceAdmin(env, auth.userId);
+    if (request.method === 'GET') { const config = await turnConfiguration(env); return jsonResponse({ configured: !!config, keyId: config?.keyId || '' }); }
+    if (!['POST', 'DELETE'].includes(request.method)) throw new InputError('روش درخواست معتبر نیست.', 405);
+    if (!await allowRequest(env, 'turn-settings', auth.userId, 10, 3600_000)) throw new InputError('تلاش‌های تنظیم تماس زیاد است؛ یک ساعت دیگر تلاش کنید.', 429);
+    if (request.method === 'DELETE') { await env.DB.prepare("DELETE FROM site_settings WHERE key='call_turn'").run(); return jsonResponse({ configured: false }); }
+    const body = await inputJson(request, 2048);
+    if (typeof body.keyId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(body.keyId) || typeof body.token !== 'string' || !/^[a-zA-Z0-9_.=-]{20,1024}$/.test(body.token)) throw new InputError('شناسهٔ TURN و توکن همان کلید را کامل وارد کنید.');
+    const config = { keyId: body.keyId, token: body.token }; await turnCredentials(config);
+    const iv = crypto.getRandomValues(new Uint8Array(12)), cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode('call_turn') }, await turnCipher(env), new TextEncoder().encode(JSON.stringify(config)));
+    await env.DB.prepare("INSERT INTO site_settings VALUES ('call_turn',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({ iv: [...iv], cipher: [...new Uint8Array(cipher)] })).run();
+    return jsonResponse({ configured: true });
+  }
+  if (path === '/api/calls/ice' && request.method === 'POST') {
+    const body = await inputJson(request, 2048);
+    if (!validId(body.chatId) || !validId(body.callId) || !await chatAccess(env, body.chatId, auth.userId) || await isBlocked(env, body.chatId, auth.userId)) throw new InputError('دسترسی تماس بسته است.', 403);
+    const active = await env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(body.chatId)).fetch('https://room/call-active', { method: 'POST', body: JSON.stringify({ ...auth, callId: body.callId }) });
+    if (!active.ok) throw new InputError('تماس فعال نیست یا متعلق به این دستگاه نیست.', 403);
+    const config = await turnConfiguration(env);
+    if (!config) return jsonResponse({ iceServers: directIce, relay: false });
+    if (!await allowRequest(env, 'turn-credentials', auth.userId, 20, 3600_000)) throw new InputError('تعداد تماس‌ها زیاد است؛ یک ساعت دیگر تلاش کنید.', 429);
+    return jsonResponse({ iceServers: await turnCredentials(config), relay: true });
+  }
+  if (path === '/api/calls/incoming' && request.method === 'GET') {
+    const response = await callInbox(env, auth.userId);
+    if (!response.ok) throw new InputError('بررسی تماس بیش از حد تکرار شده است؛ کمی صبر کنید.', 429);
+    const events = await response.json<CallEvent[]>(), permitted = [];
+    for (const event of events) if (event.toUserId === auth.userId && event.expiresAt! > Date.now()
+        && await chatAccess(env, event.chatId, auth.userId) && !await isBlocked(env, event.chatId, auth.userId)) permitted.push(event);
+    return jsonResponse(permitted);
+  }
+  if (path === '/api/calls/decline' && request.method === 'POST') {
+    const body = await inputJson(request, 2048);
+    if (!validId(body.chatId) || !validId(body.callId)) throw new InputError('شناسهٔ تماس معتبر نیست.');
+    if (!await chatAccess(env, body.chatId, auth.userId) || await isBlocked(env, body.chatId, auth.userId)) throw new InputError('دسترسی تماس بسته است.', 403);
+    return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(body.chatId)).fetch('https://room/call-decline', { method: 'POST', body: JSON.stringify({ chatId: body.chatId, userId: auth.userId, sessionId: auth.sid, callId: body.callId }) });
+  }
+  return null;
+}
 const readCall = (sql: SqlStorage): CallState | null => {
   const row = sql.exec('SELECT value FROM room_meta WHERE key=?', key).toArray()[0];
   return row ? JSON.parse(String(row.value)) : null;
 };
+export function activeCall(sql: SqlStorage, userId: string, sessionId: string, callId: string) {
+  const call = readCall(sql);
+  return !!call && call.id === callId && call.expiresAt > Date.now() && (call.caller === userId && call.callerSession === sessionId || call.callee === userId && (!call.calleeSession || call.calleeSession === sessionId));
+}
 function recipient(call: CallState, sender: CallIdentity) {
   return sender.userId === call.caller ? { toUserId: call.callee, toSessionId: call.calleeSession }
     : { toUserId: call.caller, toSessionId: call.callerSession };

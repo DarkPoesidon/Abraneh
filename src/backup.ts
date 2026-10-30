@@ -81,7 +81,7 @@ export async function publicRestore(request:Request,env:Env) {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM user_sessions'),env.DB.prepare('DELETE FROM session_security'),env.DB.prepare('DELETE FROM security_challenges'),env.DB.prepare('DELETE FROM push_subscriptions'),
       env.DB.prepare('INSERT INTO session_policy SELECT id,1 FROM users WHERE true ON CONFLICT(user_id) DO UPDATE SET legacy_disabled=1'),
-      env.DB.prepare("DELETE FROM site_settings WHERE key LIKE 'discovery_%' OR key LIKE 'federation_%' OR key LIKE 'secure_%' OR key IN ('update_push','server_origin')"),
+      env.DB.prepare("DELETE FROM site_settings WHERE key LIKE 'discovery_%' OR key LIKE 'federation_%' OR key LIKE 'secure_%' OR key IN ('update_push','server_origin','call_turn')"),
       env.DB.prepare("INSERT INTO site_settings(key,value) VALUES ('discovery_enabled','0'),('secure_enabled','0')"),
       env.DB.prepare('UPDATE secure_devices SET revoked_at=COALESCE(revoked_at,?)').bind(Date.now()),
       env.DB.prepare('DELETE FROM channel_outbox'),env.DB.prepare('DELETE FROM channel_webhooks'),env.DB.prepare('DELETE FROM channel_tokens'),env.DB.prepare('DELETE FROM security_recovery'),

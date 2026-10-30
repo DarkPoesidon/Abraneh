@@ -1,19 +1,32 @@
 (() => {
   window.WihmCalls = {
-    create({ getChat, getUser, send, mount, notify = () => {} }) {
+    create({ getChat, getUser, send, mount, activate = async () => {}, getIceServers = async () => [{ urls: 'stun:stun.l.google.com:19302' }], notify = () => {} }) {
       let current = null;
       const dialog = document.createElement('dialog');
-      dialog.className = 'modal-card'; dialog.setAttribute('aria-label', 'تماس خصوصی');
+      dialog.className = 'modal-card call-dialog'; dialog.setAttribute('aria-label', 'تماس خصوصی');
       const title = document.createElement('h3'), status = document.createElement('p'), privacy = document.createElement('p');
       status.setAttribute('role', 'status'); privacy.className = 'feature-hint';
-      privacy.textContent = 'تماس مستقیم است و نشانی اینترنتی شما ممکن است برای مخاطب و سرویس STUN گوگل آشکار شود. فقط با زدن پذیرش یا شروع تماس، میکروفون و برای تماس تصویری دوربین درخواست می‌شود. هر دو نفر باید همین گفتگوی خصوصی را باز نگه دارند. در بعضی شبکه‌ها تماس بدون TURN برقرار نمی‌شود.';
-      const local = document.createElement('video'), remote = document.createElement('video');
-      for (const video of [local, remote]) { video.autoplay = true; video.playsInline = true; video.controls = true; video.style.maxWidth = '100%'; }
-      local.muted = true; local.setAttribute('aria-label', 'تصویر خودتان'); remote.setAttribute('aria-label', 'صدا و تصویر مخاطب');
+      privacy.textContent = 'پس از پذیرش تماس، نشانی اینترنتی شما ممکن است برای مخاطب و سرویس اتصال STUN/TURN آشکار شود. صدا و تصویر از مسیر WebRTC رمزگذاری می‌شود؛ اثرانگشت مستقل هویت تماس در این نسخه وجود ندارد. دسترسی میکروفون و دوربین فقط با شروع یا پذیرش شما درخواست می‌شود. برای شبکه‌های محدود، مدیر باید واسط TURN را فعال کند.';
+      const local = document.createElement('video'), remote = document.createElement('video'), audio = document.createElement('audio');
+      local.className = 'call-self'; remote.className = 'call-remote';
+      const stage = document.createElement('div'), avatar = document.createElement('div'); stage.className = 'call-stage'; avatar.className = 'call-avatar'; avatar.setAttribute('aria-hidden', 'true');
+      stage.append(avatar, remote, local);
+      for (const media of [local, remote, audio]) { media.autoplay = true; media.playsInline = true; media.hidden = true; }
+      audio.setAttribute('aria-label', 'صدای مخاطب');
+      local.muted = remote.muted = true; local.setAttribute('aria-label', 'تصویر خودتان'); remote.setAttribute('aria-label', 'تصویر مخاطب');
       const accept = document.createElement('button'), decline = document.createElement('button'), end = document.createElement('button');
       for (const button of [accept, decline, end]) { button.type = 'button'; button.className = 'btn-primary'; }
-      accept.textContent = 'پذیرش و اجازهٔ میکروفون / دوربین'; decline.textContent = 'رد تماس'; end.textContent = 'پایان تماس';
-      dialog.append(title, status, privacy, remote, local, accept, decline, end); document.body.appendChild(dialog);
+      accept.textContent = 'پذیرش تماس'; accept.title = 'پذیرش تماس و اجازهٔ میکروفون یا دوربین'; decline.textContent = 'رد تماس'; end.textContent = 'پایان تماس';
+      const microphone = document.createElement('button'), camera = document.createElement('button'), speaker = document.createElement('button'), play = document.createElement('button');
+      for (const button of [microphone, camera, speaker, play]) { button.type = 'button'; button.className = 'quiet-button'; button.hidden = true; }
+      microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین'; play.textContent = 'پخش صدای مخاطب';
+      speaker.textContent = 'قطع صدای مخاطب'; speaker.className += ' call-speaker';
+      const actions = document.createElement('div'); actions.className = 'call-actions'; actions.append(microphone, camera, speaker, play);
+      microphone.className += ' call-microphone'; camera.className += ' call-camera';
+      end.className = decline.className = 'btn-primary call-end'; accept.className += ' call-accept';
+      const information = document.createElement('details'), summary = document.createElement('summary'); information.className = 'call-information'; summary.textContent = 'حریم خصوصی و محدودیت اتصال'; information.append(summary, privacy);
+      const decisions = document.createElement('div'); decisions.className = 'call-decisions'; decisions.append(accept, decline, end);
+      dialog.append(title, status, stage, audio, actions, decisions, information); document.body.appendChild(dialog);
       function emit(kind, payload) {
         if (!current) return;
         send({ action: 'call_signal', chatId: current.chatId, callId: current.id, kind,
@@ -24,30 +37,45 @@
         if (signal && previous) try { emit(previous.incoming && !previous.accepted ? 'decline' : 'end'); } catch {}
         current = null;
         if (previous) {
-          clearTimeout(previous.timer); clearTimeout(previous.connectTimer);
+          clearTimeout(previous.timer); clearTimeout(previous.connectTimer); clearInterval(previous.durationTimer);
           if (previous.peer) { previous.peer.onicecandidate = previous.peer.ontrack = previous.peer.onconnectionstatechange = null; previous.peer.close(); }
           previous.stream?.getTracks().forEach(track => track.stop());
         }
-        local.srcObject = remote.srcObject = null;
+        local.srcObject = remote.srcObject = audio.srcObject = null;
+        for (const node of [local, remote, audio, microphone, camera, speaker, play]) node.hidden = true;
         if (dialog.open) dialog.close();
         if (message) notify(message);
+      }
+      function failure(error) {
+        if (['NotAllowedError', 'SecurityError'].includes(error?.name)) return 'مجوز میکروفون یا دوربین رد شد؛ از مجوزهای سایت در مرورگر فعالش کنید.';
+        if (error?.name === 'NotFoundError') return 'میکروفون یا دوربین پیدا نشد؛ اتصال دستگاه را بررسی کنید.';
+        if (error?.name === 'NotReadableError') return 'میکروفون یا دوربین در اختیار برنامهٔ دیگری است یا قابل استفاده نیست.';
+        return error?.name === 'Error' ? error.message : 'برقراری تماس کامل نشد؛ مجوز میکروفون و دوربین و اتصال شبکه را بررسی کنید.';
       }
       function deadline(expiresAt) {
         clearTimeout(current.timer);
         current.timer = setTimeout(() => reset(true, 'زمان تماس پایان یافت.'), Math.max(0, Math.min(expiresAt - Date.now(), 15 * 60_000)));
       }
       function show(incoming) {
-        title.textContent = `${current.video ? 'تماس تصویری' : 'تماس صوتی'} · ${getChat()?.title || getChat()?.partnerName || 'گفتگوی خصوصی'}`;
+        title.textContent = `${current.video ? 'تماس تصویری' : 'تماس صوتی'} · ${getChat(current.chatId)?.title || getChat(current.chatId)?.partnerName || 'گفتگوی خصوصی'}`;
+        avatar.textContent = [...(getChat(current.chatId)?.title || getChat(current.chatId)?.partnerName || '؟')][0]; avatar.hidden = false;
         status.textContent = incoming ? 'تماس ورودی؛ تا پذیرش شما صدا و تصویر ارسال نمی‌شود.' : 'در انتظار پذیرش مخاطب…';
         accept.hidden = decline.hidden = !incoming; end.hidden = incoming; accept.disabled = false;
+        for (const node of [local, remote, audio, microphone, camera, speaker, play]) node.hidden = true;
+        audio.muted = false; speaker.textContent = 'قطع صدای مخاطب'; speaker.setAttribute('aria-pressed', 'false');
+        microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین';
+        microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
         if (!dialog.open) dialog.showModal();
       }
       async function prepare() {
         const call = current;
+        const iceServers = await getIceServers(call.chatId, call.id);
+        if (current !== call) return null;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.video });
         if (current !== call) { stream.getTracks().forEach(track => track.stop()); return null; }
         call.stream = stream; local.srcObject = stream; local.hidden = !call.video;
-        const peer = call.peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        microphone.hidden = false; camera.hidden = !call.video;
+        const peer = call.peer = new RTCPeerConnection({ iceServers });
         stream.getTracks().forEach(track => peer.addTrack(track, stream));
         peer.onicecandidate = event => {
           if (current !== call || !event.candidate) return;
@@ -57,12 +85,24 @@
         };
         peer.ontrack = event => {
           if (current !== call) return;
-          remote.srcObject = event.streams[0] || new MediaStream([event.track]);
-          remote.play().catch(() => { status.textContent = 'برای شنیدن صدا، پخش ویدئو را بزنید.'; });
+          const video = event.track.kind === 'video', media = video ? remote : audio;
+          if (video && !call.video) return;
+          media.hidden = !video;
+          // Separate sinks let muted video render without waiting for audio playback permission.
+          media.srcObject = new MediaStream([event.track]);
+          if (video) avatar.hidden = true; else speaker.hidden = false;
+          media.play().then(() => { if (current === call && !video) play.hidden = true; }).catch(error => { if (current === call && !video && error.name !== 'AbortError') { play.hidden = false; status.textContent = 'برای شنیدن صدا، «پخش صدای مخاطب» را بزنید.'; } });
         };
         peer.onconnectionstatechange = () => {
           if (current !== call) return;
-          if (peer.connectionState === 'connected') { clearTimeout(call.connectTimer); status.textContent = 'تماس برقرار است.'; }
+          if (peer.connectionState === 'connected') {
+            clearTimeout(call.connectTimer);
+            if (!call.connectedAt) {
+              call.connectedAt = Date.now();
+              const duration = () => { const seconds = Math.floor((Date.now() - call.connectedAt) / 1000); status.textContent = 'تماس برقرار است. · ' + Math.floor(seconds / 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }) + ':' + (seconds % 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }); };
+              duration(); call.durationTimer = setInterval(duration, 1000);
+            }
+          }
           if (peer.connectionState === 'failed') reset(true, 'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.');
         };
         call.connectTimer = setTimeout(() => { if (current === call && peer.connectionState !== 'connected') reset(true, 'تماس برقرار نشد؛ دسترسی شبکه و نیاز به TURN را بررسی کنید.'); }, 45_000);
@@ -90,12 +130,12 @@
         if (chat?.type !== 'dm' || !getUser() || !navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') { notify('تماس به مرورگر پشتیبانی‌شده، HTTPS و گفتگوی خصوصی نیاز دارد.'); return; }
         current = base(crypto.randomUUID(), chat.id, !!video, false); show(false); deadline(Date.now() + 45_000);
         // The caller explicitly confirms before any network address or media is shared.
-        if (!confirm(`تماس ${video ? 'تصویری با دوربین و میکروفون' : 'صوتی با میکروفون'} شروع شود؟ تماس مستقیم ممکن است نشانی اینترنتی شما را برای مخاطب و STUN گوگل آشکار کند.`)) { reset(false); return; }
+        if (!confirm(`تماس ${video ? 'تصویری با دوربین و میکروفون' : 'صوتی با میکروفون'} شروع شود؟ تماس ممکن است نشانی اینترنتی شما را برای مخاطب و سرویس STUN/TURN آشکار کند.`)) { reset(false); return; }
         try { emit('invite'); } catch { reset(false, 'ابتدا اتصال گفتگو به سرور را برقرار کنید.'); }
       }
       async function receive(data) {
         if (data.event === 'call_error') { if (current?.id === data.callId) reset(false, data.message); return; }
-        if (data.event !== 'call_signal' || data.chatId !== getChat()?.id || !getUser()) return;
+        if (data.event !== 'call_signal' || !getUser() || !getChat(data.chatId)) return;
         if (data.kind === 'claimed') { if (current?.id === data.callId && current.incoming && !current.accepted) reset(false, 'تماس در دستگاه دیگری پذیرفته شد.'); return; }
         if (data.from === getUser().id) return;
         if (data.kind === 'invite') {
@@ -117,26 +157,41 @@
             if (call.peer?.remoteDescription) await call.peer.addIceCandidate(data.payload);
             else if (call.remoteIce.length < 100) call.remoteIce.push(data.payload);
           }
-        } catch { if (current === call) reset(true, 'برقراری تماس کامل نشد؛ مجوز میکروفون و دوربین و اتصال شبکه را بررسی کنید.'); }
+        } catch (error) { if (current === call) reset(true, failure(error)); }
       }
       accept.onclick = async () => {
         if (!current || current.accepted) return;
         const call = current; call.accepted = true; accept.disabled = true;
         try {
+          await activate(call.chatId);
+          if (current !== call) return;
           if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') throw new Error('unsupported');
           if (!await prepare() || current !== call) return;
           accept.hidden = decline.hidden = true; end.hidden = false; status.textContent = 'در حال اتصال…';
           emit('accept'); deadline(Date.now() + 15 * 60_000);
-        } catch { if (current === call) reset(true, 'مجوز میکروفون یا دوربین داده نشد؛ تماس پایان یافت.'); }
+        } catch (error) { if (current === call) reset(true, failure(error)); }
       };
       decline.onclick = end.onclick = () => reset();
+      microphone.onclick = () => {
+        const tracks = current?.stream?.getAudioTracks() || []; if (!tracks.length) return;
+        const muted = tracks[0].enabled; tracks.forEach(track => { track.enabled = !muted; });
+        microphone.textContent = muted ? 'وصل میکروفون' : 'قطع میکروفون'; microphone.setAttribute('aria-pressed', String(muted));
+      };
+      camera.onclick = () => {
+        const tracks = current?.stream?.getVideoTracks() || []; if (!tracks.length) return;
+        const disabled = tracks[0].enabled; tracks.forEach(track => { track.enabled = !disabled; });
+        camera.textContent = disabled ? 'روشن کردن دوربین' : 'خاموش کردن دوربین'; camera.setAttribute('aria-pressed', String(disabled));
+      };
+      speaker.onclick = () => { audio.muted = !audio.muted; speaker.textContent = audio.muted ? 'وصل صدای مخاطب' : 'قطع صدای مخاطب'; speaker.setAttribute('aria-pressed', String(audio.muted)); };
+      play.onclick = () => { audio.play().then(() => { play.hidden = true; }).catch(() => { status.textContent = 'مرورگر پخش را مجاز نکرد؛ مجوز صدای سایت را بررسی کنید.'; }); };
       dialog.addEventListener('cancel', event => { event.preventDefault(); reset(); });
       window.addEventListener('pagehide', () => reset());
       if (mount) for (const [label, video] of [['تماس صوتی', false], ['تماس تصویری', true]]) {
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn'; button.textContent = label; button.title = label;
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn call-launch'; button.title = label; button.setAttribute('aria-label', label);
+        button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${video ? '<rect x="3" y="5" width="12" height="14" rx="3"/><path d="m15 10 6-4v12l-6-4"/>' : '<path d="M22 16.9v3a2 2 0 0 1-2.2 2A20 20 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.7L7.7 9.7a16 16 0 0 0 6.6 6.6l1.3-1.3a2 2 0 0 1 1.7-.6l3 .5a2 2 0 0 1 1.7 2z"/>'}</svg>`;
         button.addEventListener('click', () => start(video)); mount.appendChild(button);
       }
-      return { start, receive, reset, active: () => !!current };
+      return { start, receive, reset, active: () => !!current, ringingId: () => current?.incoming && !current.accepted ? current.id : null };
     },
   };
 })();

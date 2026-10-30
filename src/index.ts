@@ -1,4 +1,5 @@
 import { publicChannels, handleChannels, scheduledChannels } from './channels.js';
+import { handleCallRequests } from './calls.js';
 import { beginOperation, withOperation } from './maintenance.js';
 import { handleBackup, publicRestore } from './backup.js';
 import { Env, User, UserRow } from "./types.js";
@@ -209,6 +210,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
         if (!auth) {
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
+        const callResponse=await handleCallRequests(request,env,auth);if(callResponse)return callResponse;
         const backup=await handleBackup(request,env,auth);if(backup)return backup;
         const channels=await handleChannels(request,env,auth);if(channels)return channels;
         const security=await handleSecurity(request,env,auth);if(security)return security;

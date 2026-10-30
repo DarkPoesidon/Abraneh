@@ -79,17 +79,18 @@ test('disconnect from a different session cannot end a call', async t => {
   assert.equal(f.database.prepare('SELECT count(*) AS n FROM room_meta').get().n, 0);
 });
 
-function browser({ media } = {}) {
+function browser({ media, play } = {}) {
+  const peers = [];
   const nodes = [], packets = [], notices = [], timers = new Map(); let timer = 0, captures = 0, stopped = 0, closed = 0;
   const stream = { getTracks: () => [{ stop() { stopped++; } }] };
   function element(tag) {
     const node = { tag, children: [], style: {}, listeners: {}, hidden: false, open: false,
       append(...children) { this.children.push(...children); }, appendChild(child) { this.children.push(child); }, setAttribute() {},
-      addEventListener(type, fn) { this.listeners[type] = fn; }, showModal() { this.open = true; }, close() { this.open = false; }, play: async () => {},
+      addEventListener(type, fn) { this.listeners[type] = fn; }, showModal() { this.open = true; }, close() { this.open = false; }, play: play || (async () => {}),
     }; nodes.push(node); return node;
   }
   class Peer {
-    constructor(config) { assert.equal(config.iceServers[0].urls, 'stun:stun.l.google.com:19302'); }
+    constructor(config) { assert.equal(config.iceServers[0].urls, 'stun:stun.l.google.com:19302'); peers.push(this); }
     addTrack() {} close() { closed++; }
     async createOffer() { return { type: 'offer', sdp: 'v=0' }; }
     async createAnswer() { return { type: 'answer', sdp: 'v=0' }; }
@@ -99,13 +100,13 @@ function browser({ media } = {}) {
   }
   const sandbox = { window: { addEventListener() {} }, document: { createElement: element, body: element('body') },
     navigator: { mediaDevices: { async getUserMedia(constraints) { captures++; assert.equal(constraints.audio, true); return media ? media() : stream; } } },
-    RTCPeerConnection: Peer, crypto: { randomUUID: () => 'browser-call' }, Date, confirm: () => true,
-    setTimeout(fn) { timers.set(++timer, fn); return timer; }, clearTimeout(id) { timers.delete(id); },
+    RTCPeerConnection: Peer, MediaStream: class { constructor(tracks) { this.tracks = tracks; } getTracks() { return this.tracks; } }, crypto: { randomUUID: () => 'browser-call' }, Date, confirm: () => true,
+    setTimeout(fn) { timers.set(++timer, fn); return timer; }, clearTimeout(id) { timers.delete(id); }, clearInterval(id) { timers.delete(id); },
   };
   vm.runInNewContext(readFileSync('public/calls.js', 'utf8'), sandbox);
   const client = sandbox.window.WihmCalls.create({ getChat: () => ({ id: 'room', type: 'dm', title: 'Bob' }), getUser: () => ({ id: 'bob' }), send: data => packets.push(data), notify: text => notices.push(text) });
   const invite = { event: 'call_signal', kind: 'invite', chatId: 'room', callId: 'incoming', from: 'alice', video: true, expiresAt: Date.now() + 45_000 };
-  return { client, nodes, packets, notices, invite, stats: () => ({ captures, stopped, closed }), stream };
+  return { client, nodes, packets, notices, invite, stats: () => ({ captures, stopped, closed }), stream, peers };
 }
 
 test('incoming call requires acceptance; decline captures nothing and hangup stops every track', async () => {
@@ -114,7 +115,7 @@ test('incoming call requires acceptance; decline captures nothing and hangup sto
   f.nodes.find(node => node.textContent === 'رد تماس').onclick();
   assert.equal(f.packets.at(-1).kind, 'decline'); assert.equal(f.stats().captures, 0);
   await f.client.receive({ ...f.invite, callId: 'second' });
-  await f.nodes.find(node => node.textContent === 'پذیرش و اجازهٔ میکروفون / دوربین').onclick();
+  await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
   assert.equal(f.stats().captures, 1); assert.equal(f.packets.at(-1).kind, 'accept');
   f.client.reset();
   assert.equal(f.packets.at(-1).kind, 'end'); assert.equal(f.stats().stopped, 1); assert.equal(f.stats().closed, 1);
@@ -124,8 +125,26 @@ test('late permission result after logout cleanup cannot reopen microphone or pe
   let resolveMedia;
   const f = browser({ media: () => new Promise(resolve => { resolveMedia = resolve; }) });
   await f.client.receive(f.invite);
-  const permission = f.nodes.find(node => node.textContent === 'پذیرش و اجازهٔ میکروفون / دوربین').onclick();
-  f.client.reset(); resolveMedia(f.stream); await permission;
+  const permission = f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  await new Promise(setImmediate); f.client.reset(); resolveMedia(f.stream); await permission;
   assert.equal(f.stats().stopped, 1); assert.equal(f.client.active(), false);
   assert.ok(!f.packets.some(packet => packet.kind === 'accept'));
+});
+test('blocked autoplay provides an explicit playback button and successful retry clears it', async () => {
+  let blocked = true;
+  const f = browser({ play: async () => { if (blocked) { const error = Error('Autoplay blocked'); error.name = 'NotAllowedError'; throw error; } } });
+  await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  f.peers[0].ontrack({ track: { kind: 'audio' }, streams: [f.stream] }); await new Promise(setImmediate);
+  const button = f.nodes.find(node => node.textContent === 'پخش صدای مخاطب'); assert.equal(button.hidden, false);
+  blocked = false; button.onclick(); await new Promise(setImmediate); assert.equal(button.hidden, true);
+  f.client.reset(); assert.equal(f.stats().stopped, 1);
+});
+test('remote audio and video use independent sinks and voice calls do not display unrequested video', async () => {
+  const f = browser(); await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  const sound = { kind: 'audio' }, image = { kind: 'video' }, audio = f.nodes.find(node => node.tag === 'audio'), video = f.nodes.find(node => node.className === 'call-remote');
+  f.peers[0].ontrack({ track: sound }); const soundStream = audio.srcObject;
+  f.peers[0].ontrack({ track: image }); await new Promise(setImmediate);
+  assert.equal(audio.srcObject, soundStream); assert.equal(soundStream.getTracks()[0], sound); assert.equal(video.srcObject.getTracks()[0], image); assert.equal(video.muted, true);
+  f.client.reset(); await f.client.receive({ ...f.invite, video: false }); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  f.peers[1].ontrack({ track: image }); assert.equal(video.hidden, true); assert.equal(video.srcObject, null); f.client.reset();
 });
