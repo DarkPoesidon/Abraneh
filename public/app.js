@@ -598,6 +598,7 @@
       loadMessages(chatId, { catchUp: true });
       refreshLoadedMessages(chatId).catch(error=>{if(activeChat?.id===chatId)chatError.textContent=error.message;});
       flushOutbox();
+      calls?.connectionRestored();
 
       // Keepalive ping every 25 seconds
       wsPingInterval = setInterval(() => {
@@ -619,7 +620,8 @@
 
     socket.onclose = (event) => {
       if (ws !== socket) return;
-      calls?.reset(false);
+      // 4xxx closes mean access ended; anything else may be a brief drop that an accepted call survives.
+      if (event?.code >= 4000) calls?.reset(false); else calls?.connectionLost();
       ws = null;
       statusIndicatorDot.className = 'status-dot offline';
       statusText.textContent = 'در حال اتصال مجدد...';
@@ -1097,7 +1099,8 @@
     if (!str) return '';
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    // innerHTML leaves quotes as they are, and these values also go inside HTML attributes.
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // Daily-use tools share the authenticated session, outbox and message store.
@@ -1215,7 +1218,7 @@
     });
   }
   const callMount=document.querySelector('.chat-header');if(callMount&&window.WihmCalls)calls=window.WihmCalls.create({getChat:id=>id?chats.find(chat=>chat.id===id):activeChat,getUser:()=>currentUser,activate:activateCall,getIceServers:async(chatId,callId)=>(await post('/api/calls/ice',{chatId,callId})).iceServers,send:data=>{
-    if(data.kind==='decline'&&(activeChat?.id!==data.chatId||ws?.readyState!==WebSocket.OPEN)){post('/api/calls/decline',{chatId:data.chatId,callId:data.callId}).catch(error=>{chatError.textContent=error.message;});return;}
+    if((data.kind==='decline'||data.kind==='end')&&(activeChat?.id!==data.chatId||ws?.readyState!==WebSocket.OPEN)){post('/api/calls/'+data.kind,{chatId:data.chatId,callId:data.callId}).catch(error=>{chatError.textContent=error.message;});return;}
     if(!ws||ws.readyState!==WebSocket.OPEN||activeChat?.id!==data.chatId)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));
   },mount:callMount,notify:message=>chatError.textContent=message});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));

@@ -32,6 +32,14 @@ test('incoming calls reach a recipient without a room socket, remain private, re
   assert.deepEqual((await api('/api/calls/incoming', fixture.peer)).data, []);
   assert.equal((await api('/api/calls/ice', fixture.peer, { chatId, callId: 'incoming-one' })).status, 403);
 });
+test('hanging up over HTTP works without a socket and is bound to the participant', async () => {
+  caller.send(JSON.stringify({ action: 'call_signal', chatId, callId: 'http-end', kind: 'invite', video: false }));
+  await until(() => api('/api/calls/incoming', fixture.peer), result => result.data.length === 1);
+  assert.equal((await api('/api/calls/end')).status, 401);
+  assert.equal((await api('/api/calls/end', fixture.owner, { chatId, callId: 'wrong-call' })).status, 409);
+  assert.equal((await api('/api/calls/end', fixture.owner, { chatId, callId: 'http-end' })).status, 200);
+  assert.deepEqual((await api('/api/calls/incoming', fixture.peer)).data, []);
+});
 test('cancelled ringing disappears from the inbox and rejects unrelated TURN credential requests', async () => {
   caller.send(JSON.stringify({ action: 'call_signal', chatId, callId: 'incoming-two', kind: 'invite', video: true }));
   await until(() => api('/api/calls/incoming', fixture.peer), result => result.data.length === 1);
