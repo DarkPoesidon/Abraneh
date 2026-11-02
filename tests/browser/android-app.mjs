@@ -5,10 +5,9 @@ import assert from 'node:assert/strict';
 
 const fixture = await createNavigationFixture(), errors = [];
 const browser = await chromium.launch({ headless: true, ...(process.env.WIHM_CHROME_PATH ? { executablePath: process.env.WIHM_CHROME_PATH } : {}) });
-async function open(path = '/', { referer, permission, setup } = {}) {
+async function open(path = '/', { permission, setup } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 800 }, serviceWorkers: 'block', ...(permission ? { permissions: [permission] } : {}) });
-  // Browsers only set an android-app:// referrer when an app opens the page, so the test supplies it.
-  await context.addInitScript(({ account, referer }) => { localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); if (referer) Object.defineProperty(document, 'referrer', { value: referer }); }, { account: fixture.owner, referer });
+  await context.addInitScript(account => { localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); }, fixture.owner);
   await setup?.(context);
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); page.on('dialog', dialog => dialog.accept());
   await page.goto(fixture.origin + path); await page.locator('.chat-item').first().waitFor();
@@ -25,15 +24,8 @@ try {
   await page.context().close();
   console.log('ok: shared text');
 
-  // Server settings: the app link inside the app, the address on the plain web.
-  page = await open('/', { referer: 'android-app://com.wihm.messenger/' });
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('wihm_android_app')), '1', 'the app must be recognized from its referrer');
-  await page.context().close();
-  page = await open('/');
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('wihm_android_app')), null);
-  console.log('ok: app detection');
-
   // The notification prompt offers to enable push, and stays closed once dismissed.
+  page = await open('/');
   await page.locator('#notification-prompt').waitFor();
   await page.locator('.notification-later').click();
   await page.locator('#notification-prompt').waitFor({ state: 'detached' });

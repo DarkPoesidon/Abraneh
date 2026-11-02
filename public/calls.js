@@ -105,8 +105,13 @@
         microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین';
         microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
         if (!dialog.open) dialog.showModal();
-        if (incoming) startTone(TONES.incoming);
+        if (incoming && !window.wihmAppHidden) startTone(TONES.incoming);
       }
+      // The Android app rings natively while it is off screen, so the page must not ring as well.
+      window.addEventListener?.('wihm-app-visibility', () => {
+        if (!current?.incoming || current.accepted) return;
+        if (window.wihmAppHidden) stopTone(); else startTone(TONES.incoming);
+      });
       // Only the caller restarts ICE, so both sides can't send colliding offers.
       async function restartIce(call) {
         if (current !== call || call.incoming || !call.peer || call.restarts >= 3 || call.peer.signalingState !== 'stable') return;

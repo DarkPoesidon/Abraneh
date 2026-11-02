@@ -39,8 +39,9 @@ interface CallState {
   stage: string; video: boolean; expiresAt: number; callerIce: number; calleeIce: number;
 }
 const key = 'call-v1';
+export const userInbox = (env: Env, userId: string) => env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName('call-inbox:' + userId));
 export function callInbox(env: Env, userId: string, method = 'GET', event?: CallEvent) {
-  return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName('call-inbox:' + userId)).fetch('https://room/call-inbox', { method, ...(event ? { body: JSON.stringify(event) } : {}) });
+  return userInbox(env, userId).fetch('https://room/call-inbox', { method, ...(event ? { body: JSON.stringify(event) } : {}) });
 }
 
 export async function handleCallRequests(request: Request, env: Env, auth: { userId: string; sid: string }) {

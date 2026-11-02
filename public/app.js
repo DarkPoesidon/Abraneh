@@ -265,15 +265,8 @@
   }
 
   // The Android app opens this page with a referrer naming it, which later navigations lose.
-  function insideAndroidApp() {
-    try {
-      if (document.referrer.startsWith('android-app://com.wihm.messenger')) sessionStorage.setItem('wihm_android_app', '1');
-      return sessionStorage.getItem('wihm_android_app') === '1';
-    } catch { return false; }
-  }
   function openServerSettings() {
     if (window.Android?.openServerSettings) window.Android.openServerSettings();
-    else if (insideAndroidApp()) location.href = 'wihm://server-settings';
     else alert('نشانی سرور متصل فعلی: ' + location.origin);
   }
   // Text shared from another Android app waits here until the user picks a chat.
@@ -285,6 +278,8 @@
     history.replaceState(null, '', location.pathname + (params.size ? '?' + params : ''));
   }
   let pushRenewedFor = null;
+  // A WebView stays "visible" behind other apps, so the Android app reports this itself.
+  const pageHidden = () => document.visibilityState === 'hidden' || window.wihmAppHidden === true;
   // Push reaches a closed app or browser only once enabled, and permission prompts need a user gesture.
   function showNotificationPrompt() {
     if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator) || window.Android) return;
@@ -304,7 +299,7 @@
       return;
     }
     authOverlay.style.display = 'none';
-    insideAndroidApp(); readSharedText();
+    readSharedText();
     if (window.Android && window.Android.saveAuthToken) {
       window.Android.saveAuthToken(token, currentUser.id, location.origin);
     }
@@ -720,6 +715,7 @@
       if (activeChat) { refreshReceipts(activeChat.id); reportReceipt(activeChat.id); }
     }
   });
+  window.addEventListener('wihm-app-visibility', () => { if (!pageHidden() && token && activeChat) reportReceipt(activeChat.id); });
 
   function handleServerWsEvent(data) {
     if(data.event==='call_signal'||data.event==='call_error'){void calls?.receive(data);return;}
@@ -733,13 +729,14 @@
 
       // Notification trigger for incoming messages
       if (currentUser && msg.senderId !== currentUser.id) {
-        const isReadingChat = activeChat && activeChat.id === msg.chatId && document.visibilityState !== 'hidden';
+        const isReadingChat = activeChat && activeChat.id === msg.chatId && !pageHidden();
         if (!isReadingChat) {
           const targetChat = chats.find(c => c.id === msg.chatId);
           const chatTitle = (targetChat && targetChat.type === 'group' ? targetChat.title : msg.senderName) || 'پیام تازه در ابرانه';
           const preview = msg.text || 'یک پیام جدید دریافت شد';
           if (window.Android && window.Android.showNotification) {
-            window.Android.showNotification(chatTitle, preview, msg.chatId);
+            // Off screen the app's own service notifies, and it respects the message preview setting.
+            if (!window.wihmAppHidden) window.Android.showNotification(chatTitle, preview, msg.chatId);
           } else if ('Notification' in window && Notification.permission === 'granted') {
             try {
               new Notification(chatTitle, { body: preview, icon: '/icon.svg', tag: msg.chatId, dir: 'rtl' });
@@ -907,7 +904,7 @@
   }
   function nearBottom() { return messagesContainer.scrollHeight - messagesContainer.scrollTop - (messagesContainer.clientHeight || 0) <= 80; }
   function canReadChat(chatId) {
-    return activeChat?.id === chatId && openingChatId !== chatId && document.visibilityState !== 'hidden'
+    return activeChat?.id === chatId && openingChatId !== chatId && !pageHidden()
       && !(window.innerWidth <= 768 && !sidebar.classList.contains?.('hidden')) && nearBottom();
   }
   function covers(receipt, message, kind) {

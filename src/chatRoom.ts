@@ -14,6 +14,7 @@ interface WsAttachment {
   username: string;
   displayName: string;
   sessionId: string;
+  inbox?: boolean;
   typingAt?: number;
   typing?: boolean;
 }
@@ -102,12 +103,30 @@ export class ChatRoom extends DurableObject<Env> {
           const count = Number(this.ctx.storage.sql.exec("SELECT count(*) AS n FROM room_meta WHERE key LIKE 'incoming:%'").toArray()[0].n);
           if (count >= 32) return new Response(null, { status: 429 });
           this.ctx.storage.sql.exec('INSERT INTO room_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(event));
-        } else this.ctx.storage.sql.exec("DELETE FROM room_meta WHERE key=? AND json_extract(value,'$.callId')=?", key, event.callId);
+        } else {
+          this.ctx.storage.sql.exec("DELETE FROM room_meta WHERE key=? AND json_extract(value,'$.callId')=?", key, event.callId);
+          for (const socket of this.ctx.getWebSockets('inbox')) try { socket.send(JSON.stringify({ kind: 'call-end', callId: event.callId, chatId: event.chatId })); } catch {}
+        }
         return new Response(null, { status: 204 });
       }
       const count = this.ctx.storage.sql.exec('INSERT INTO send_limits VALUES (?,?,1) ON CONFLICT(user_id) DO UPDATE SET count=CASE WHEN window_start=excluded.window_start THEN count+1 ELSE 1 END,window_start=excluded.window_start RETURNING count', 'poll', Math.floor(Date.now()/60000)*60000).toArray()[0];
       if (Number(count.count) > 120) return Response.json({ error: 'Too many call checks' }, { status: 429 });
       return Response.json(this.ctx.storage.sql.exec("SELECT value FROM room_meta WHERE key LIKE 'incoming:%' LIMIT 32").toArray().map(row => JSON.parse(String(row.value))));
+    }
+    if (url.pathname === '/inbox-ws') {
+      const sessionId = url.searchParams.get('sessionId') || '', [client, server] = Object.values(new WebSocketPair());
+      // A dropped connection can stay half open here, so a reconnect takes over from it.
+      for (const socket of this.ctx.getWebSockets('inbox')) if ((socket.deserializeAttachment() as WsAttachment | null)?.sessionId === sessionId) try { socket.close(4000, 'Replaced'); } catch {}
+      server.serializeAttachment({ chatId: '', userId: url.searchParams.get('userId') || '', username: '', displayName: '', sessionId, inbox: true } satisfies WsAttachment);
+      // Answered without waking this object, so idle phones cost almost nothing.
+      this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+      this.ctx.acceptWebSocket(server, ['inbox']);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    if (url.pathname === '/inbox-send' && request.method === 'POST') {
+      const { sessionId, data } = await request.json<{ sessionId: string; data: unknown }>();
+      for (const socket of this.ctx.getWebSockets('inbox')) if ((socket.deserializeAttachment() as WsAttachment | null)?.sessionId === sessionId) try { socket.send(JSON.stringify(data)); } catch {}
+      return new Response(null, { status: 204 });
     }
     if ((url.pathname === '/call-decline' || url.pathname === '/call-end') && request.method === 'POST') {
       const sender = await request.json<CallIdentity & { callId: string }>();
@@ -226,6 +245,7 @@ export class ChatRoom extends DurableObject<Env> {
 
   async webSocketMessage(ws:WebSocket,message:string|ArrayBuffer){
     const sender=ws.deserializeAttachment() as WsAttachment|null;
+    if(sender?.inbox)return;
     if(!sender?.chatId||!sender.sessionId)return this.roomMessage(ws,message);
     try{await withOperation(this.env,()=>this.roomMessage(ws,message));}
     catch(error){let clientMsgId;try{clientMsgId=JSON.parse(String(message)).clientMsgId;}catch{}try{ws.send(JSON.stringify({event:'error',clientMsgId,retryable:true,message:error instanceof InputError?error.message:'ارتباط موقتاً قطع است؛ دوباره تلاش کنید.'}));}catch{}}
@@ -394,7 +414,7 @@ export class ChatRoom extends DurableObject<Env> {
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
     const closing=ws.deserializeAttachment() as WsAttachment|null;if(closing?.chatId)await closeCall(this.ctx.storage.sql,closing,event=>this.deliverCall(event));
     const sender = ws.deserializeAttachment() as WsAttachment | null;
-    if (sender) {
+    if (sender && !sender.inbox) {
       // Check if user has other open sockets in this room
       const userSockets = this.ctx.getWebSockets(sender.userId);
       if (userSockets.length <= 1) {
@@ -543,7 +563,8 @@ export class ChatRoom extends DurableObject<Env> {
       await callInbox(this.env,event.toUserId,'PUT',event);
       this.ctx.waitUntil((async()=>{
         let after='';
-        do { after=await sendPush(this.env,{id:event.callId,chatId:event.chatId,senderId:event.from,senderName:'',text:'',createdAt:Date.now()},fetch,after,{callId:event.callId,expiresAt:event.expiresAt!,video:event.video})||''; }
+        const caller=await this.env.DB.prepare('SELECT display_name AS name FROM users WHERE id=?').bind(event.from).first<{name:string}>();
+        do { after=await sendPush(this.env,{id:event.callId,chatId:event.chatId,senderId:event.from,senderName:caller?.name||'',text:'',createdAt:Date.now()},fetch,after,{callId:event.callId,expiresAt:event.expiresAt!,video:event.video})||''; }
         while(after&&event.expiresAt!>Date.now());
       })().catch(error=>console.warn('Incoming call notification failed:',error instanceof Error?error.message:'unknown')));
     }
