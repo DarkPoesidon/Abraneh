@@ -19,3 +19,22 @@ test('legacy sockets without a bound room fail closed before any database write 
   assert.equal(closed[0], 1008);
   assert.equal(writes, 0); assert.equal(broadcasts, 0);
 });
+
+test('call signals are handled in the order they arrive, however long their database checks take', async () => {
+  // On real Cloudflare D1 latency varies, so a candidate could overtake its offer and end the caller's side.
+  const handled = [], delays = [40, 0, 0];
+  const scope = { exports: {} };
+  vm.runInNewContext(code, { module: scope, exports: scope.exports, console, Date, JSON, setTimeout, require: path => {
+    if (path === './maintenance.js') return { withOperation: (env, work) => work() };
+    if (path === './access.js') return { SESSION_VERSION_SQL: '1', isBlocked: async () => false, chatAccess: () => new Promise(resolve => setTimeout(() => resolve(true), delays.shift())) };
+    if (path === './calls.js') return { handleCall: async (env, sql, sender, data) => { handled.push(data.kind); return true; } };
+    return {};
+  } });
+  const ctx = { storage: { sql: { exec() { return { toArray: () => [] }; } }, transactionSync(fn) { return fn(); } }, getWebSockets() { return []; } };
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => ({ id: 'session', displayName: 'A' }) }) }) } };
+  const room = new scope.exports.ChatRoom(ctx, env);
+  const socket = { deserializeAttachment: () => ({ chatId: 'chat', userId: 'user', sessionId: 'session' }), serializeAttachment() {}, send() {}, close() {} };
+  const frame = kind => JSON.stringify({ action: 'call_signal', chatId: 'chat', callId: 'call', kind });
+  await Promise.all(['offer', 'ice', 'ice'].map(kind => room.webSocketMessage(socket, frame(kind))));
+  assert.deepEqual(handled, ['offer', 'ice', 'ice']);
+});

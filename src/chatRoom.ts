@@ -28,6 +28,7 @@ export class ChatRoom extends DurableObject<Env> {
   private sqlInitialized = false;
   private syncing = false;
   private pushing = false;
+  private callSignals: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -244,6 +245,11 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws:WebSocket,message:string|ArrayBuffer){
+    // Each frame awaits D1 first, so without this queue a candidate can overtake the offer it follows.
+    if(typeof message==='string'&&message.includes('"call_signal"')){const turn=this.callSignals.then(()=>this.socketMessage(ws,message));this.callSignals=turn.catch(()=>{});return turn;}
+    return this.socketMessage(ws,message);
+  }
+  private async socketMessage(ws:WebSocket,message:string|ArrayBuffer){
     const sender=ws.deserializeAttachment() as WsAttachment|null;
     if(sender?.inbox)return;
     if(!sender?.chatId||!sender.sessionId)return this.roomMessage(ws,message);
@@ -280,7 +286,7 @@ export class ChatRoom extends DurableObject<Env> {
       }
     } catch { ws.close(1011, 'Session check unavailable'); return; }
 
-    if(data.action==='call_signal'){try{await handleCall(this.env,this.ctx.storage.sql,sender,data,event=>this.deliverCall(event));}catch(error){ws.send(JSON.stringify({event:'call_error',callId:data.callId,message:error instanceof InputError?error.message:'تماس انجام نشد.'}));}return;}
+    if(data.action==='call_signal'){try{await handleCall(this.env,this.ctx.storage.sql,sender,data,event=>this.deliverCall(event));}catch(error){ws.send(JSON.stringify({event:'call_error',callId:data.callId,kind:data.kind,message:error instanceof InputError?error.message:'تماس انجام نشد.'}));}return;}
     if (data.action === "ping") {
       ws.send(JSON.stringify({ event: "pong", timestamp: Date.now() }));
       return;
