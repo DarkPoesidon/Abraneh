@@ -76,11 +76,11 @@ export async function handleCallRequests(request: Request, env: Env, auth: { use
         && await chatAccess(env, event.chatId, auth.userId) && !await isBlocked(env, event.chatId, auth.userId)) permitted.push(event);
     return jsonResponse(permitted);
   }
-  if (path === '/api/calls/decline' && request.method === 'POST') {
+  if ((path === '/api/calls/decline' || path === '/api/calls/end') && request.method === 'POST') {
     const body = await inputJson(request, 2048);
     if (!validId(body.chatId) || !validId(body.callId)) throw new InputError('شناسهٔ تماس معتبر نیست.');
     if (!await chatAccess(env, body.chatId, auth.userId) || await isBlocked(env, body.chatId, auth.userId)) throw new InputError('دسترسی تماس بسته است.', 403);
-    return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(body.chatId)).fetch('https://room/call-decline', { method: 'POST', body: JSON.stringify({ chatId: body.chatId, userId: auth.userId, sessionId: auth.sid, callId: body.callId }) });
+    return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(body.chatId)).fetch(path.endsWith('/end') ? 'https://room/call-end' : 'https://room/call-decline', { method: 'POST', body: JSON.stringify({ chatId: body.chatId, userId: auth.userId, sessionId: auth.sid, callId: body.callId }) });
   }
   return null;
 }
@@ -117,8 +117,13 @@ export async function handleCall(env: Env, sql: SqlStorage, sender: CallIdentity
   let payload: unknown;
   if (data.kind === 'invite') {
     count('ring:', 4);
-    if (call) throw new InputError('در این گفتگو تماسی در جریان است.', 409);
     if (typeof data.video !== 'boolean') throw new InputError('نوع تماس معتبر نیست.');
+    if (call) {
+      // A client only invites when it has no call, so a call still held by this same session is dead.
+      const own = call.caller === sender.userId ? call.callerSession === sender.sessionId : call.callee === sender.userId && call.calleeSession === sender.sessionId;
+      if (!own || call.id === data.callId) throw new InputError('در این گفتگو تماسی در جریان است.', 409);
+      await deliver({ event: 'call_signal', chatId: sender.chatId, callId: call.id, kind: 'end', from: sender.userId, ...recipient(call, sender) });
+    }
     call = { id: data.callId, caller: sender.userId, callerSession: sender.sessionId,
       callee: members.find(member => member.user_id !== sender.userId)!.user_id,
       stage: 'ringing', video: data.video, expiresAt: now + 45_000, callerIce: 0, calleeIce: 0 };
@@ -158,6 +163,8 @@ export async function closeCall(sql: SqlStorage, sender: CallIdentity, deliver: 
   const call = readCall(sql);
   if (!call || !(call.caller === sender.userId && call.callerSession === sender.sessionId)
       && !(call.callee === sender.userId && call.calleeSession === sender.sessionId)) return;
+  // Accepted media flows peer to peer, so a brief socket loss must not hang up. expiresAt still bounds it.
+  if (call.stage !== 'ringing') return;
   sql.exec('DELETE FROM room_meta WHERE key=?', key);
   await deliver({ event: 'call_signal', chatId: sender.chatId, callId: call.id, kind: 'end', from: sender.userId, ...recipient(call, sender) });
 }

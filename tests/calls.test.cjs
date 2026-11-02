@@ -79,7 +79,28 @@ test('disconnect from a different session cannot end a call', async t => {
   assert.equal(f.database.prepare('SELECT count(*) AS n FROM room_meta').get().n, 0);
 });
 
-function browser({ media, play } = {}) {
+test('a dropped socket keeps an accepted call alive because media does not use it', async t => {
+  const f = fixture(t); await f.signal(alice, 'invite', { video: false }); await f.signal(bob, 'accept');
+  const delivered = f.events.length;
+  await closeCall(f.sql, alice, f.deliver);
+  assert.equal(f.events.length, delivered, 'the other side must not be told the call ended');
+  await f.signal(alice, 'offer', { payload: { type: 'offer', sdp: 'v=0' } });
+  await closeCall(f.sql, bob, f.deliver);
+  await f.signal(bob, 'answer', { payload: { type: 'answer', sdp: 'v=0' } });
+  await f.signal(alice, 'end');
+  assert.equal(f.database.prepare('SELECT count(*) AS n FROM room_meta').get().n, 0);
+});
+
+test('a participant whose call was lost can call again instead of waiting for it to expire', async t => {
+  const f = fixture(t); await f.signal(alice, 'invite', { video: false }); await f.signal(bob, 'accept');
+  await assert.rejects(f.signal({ ...alice, sessionId: 'other-device' }, 'invite', { callId: 'call-2', video: false }), /در جریان/);
+  await f.signal(alice, 'invite', { callId: 'call-2', video: false });
+  const [ended, invited] = f.events.slice(-2);
+  assert.equal(ended.kind, 'end'); assert.equal(ended.callId, 'call-1'); assert.equal(ended.toUserId, bob.userId);
+  assert.equal(invited.kind, 'invite'); assert.equal(invited.callId, 'call-2');
+});
+
+function browser({ media, play, getIceServers, send } = {}) {
   const peers = [];
   const nodes = [], packets = [], notices = [], timers = new Map(); let timer = 0, captures = 0, stopped = 0, closed = 0;
   const stream = { getTracks: () => [{ stop() { stopped++; } }] };
@@ -91,7 +112,7 @@ function browser({ media, play } = {}) {
   }
   class Peer {
     constructor(config) { assert.equal(config.iceServers[0].urls, 'stun:stun.l.google.com:19302'); peers.push(this); }
-    addTrack() {} close() { closed++; }
+    transceivers = []; addTrack() {} addTransceiver(kind, options) { this.transceivers.push({ kind, ...options }); } close() { closed++; }
     async createOffer() { return { type: 'offer', sdp: 'v=0' }; }
     async createAnswer() { return { type: 'answer', sdp: 'v=0' }; }
     async setLocalDescription(value) { this.localDescription = value; }
@@ -104,7 +125,7 @@ function browser({ media, play } = {}) {
     setTimeout(fn) { timers.set(++timer, fn); return timer; }, clearTimeout(id) { timers.delete(id); }, clearInterval(id) { timers.delete(id); },
   };
   vm.runInNewContext(readFileSync('public/calls.js', 'utf8'), sandbox);
-  const client = sandbox.window.WihmCalls.create({ getChat: () => ({ id: 'room', type: 'dm', title: 'Bob' }), getUser: () => ({ id: 'bob' }), send: data => packets.push(data), notify: text => notices.push(text) });
+  const client = sandbox.window.WihmCalls.create({ getChat: () => ({ id: 'room', type: 'dm', title: 'Bob' }), getUser: () => ({ id: 'bob' }), ...(getIceServers ? { getIceServers } : {}), send: send ? data => send(data, packets) : data => packets.push(data), notify: text => notices.push(text) });
   const invite = { event: 'call_signal', kind: 'invite', chatId: 'room', callId: 'incoming', from: 'alice', video: true, expiresAt: Date.now() + 45_000 };
   return { client, nodes, packets, notices, invite, stats: () => ({ captures, stopped, closed }), stream, peers };
 }
@@ -139,6 +160,50 @@ test('blocked autoplay provides an explicit playback button and successful retry
   blocked = false; button.onclick(); await new Promise(setImmediate); assert.equal(button.hidden, true);
   f.client.reset(); assert.equal(f.stats().stopped, 1);
 });
+test('a video call without a usable camera continues as audio and can still receive video', async () => {
+  const asked = [], stream = { getTracks: () => [{ stop() {} }] };
+  const f = browser({ media: () => { const video = asked.length === 0; asked.push(video); if (video) { const error = Error('none'); error.name = 'NotFoundError'; throw error; } return stream; } });
+  await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  assert.equal(f.packets.at(-1).kind, 'accept'); assert.equal(f.stats().captures, 2);
+  assert.equal(f.nodes.find(node => node.className?.includes('call-camera')).hidden, true);
+  assert.match(f.notices.at(-1), /دوربین/);
+  f.client.reset();
+});
+
+test('a voice call does not retry when the microphone is refused', async () => {
+  const f = browser({ media: () => { const error = Error('denied'); error.name = 'NotAllowedError'; throw error; } });
+  await f.client.receive({ ...f.invite, video: false }); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  assert.equal(f.stats().captures, 1); assert.equal(f.client.active(), false); assert.match(f.notices.at(-1), /مجوز/);
+});
+
+test('a TURN credential failure falls back to direct connection instead of ending the call', async () => {
+  const f = browser({ getIceServers: async () => { throw Error('TURN unavailable'); } });
+  await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  assert.equal(f.packets.at(-1).kind, 'accept'); assert.equal(f.peers.length, 1); assert.equal(f.client.active(), true);
+  f.client.reset();
+});
+
+test('a lost signaling socket keeps an accepted call and resends its ICE after reconnecting', async () => {
+  let online = true;
+  const f = browser({ send: (data, packets) => { if (!online) throw Error('offline'); packets.push(data); } });
+  await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  await f.client.receive({ event: 'call_signal', kind: 'offer', chatId: 'room', callId: 'incoming', from: 'alice', payload: { type: 'offer', sdp: 'v=0' } });
+  await new Promise(setImmediate);
+  online = false; f.client.connectionLost();
+  assert.equal(f.client.active(), true);
+  f.peers[0].onicecandidate({ candidate: { toJSON: () => ({ candidate: 'late' }) } });
+  assert.equal(f.client.active(), true, 'one unsent candidate must not end the call');
+  online = true; f.client.connectionRestored();
+  assert.deepEqual([f.packets.at(-1).kind, f.packets.at(-1).payload.candidate], ['ice', 'late']);
+  f.client.reset();
+});
+
+test('losing the socket before a call is accepted still clears the ringing call', async () => {
+  const f = browser(); await f.client.receive(f.invite);
+  f.client.connectionLost();
+  assert.equal(f.client.active(), false);
+});
+
 test('remote audio and video use independent sinks and voice calls do not display unrequested video', async () => {
   const f = browser(); await f.client.receive(f.invite); await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
   const sound = { kind: 'audio' }, image = { kind: 'video' }, audio = f.nodes.find(node => node.tag === 'audio'), video = f.nodes.find(node => node.className === 'call-remote');

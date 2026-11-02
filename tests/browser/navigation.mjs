@@ -104,8 +104,8 @@ try {
     await page.keyboard.press('Escape'); assert.equal(await page.locator('#main-menu').isVisible(), false); assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-main-menu');
     await page.locator('#btn-main-menu').click(); await page.mouse.click(width - 10, 2); assert.equal(await page.locator('#main-menu').isVisible(), false);
     await settings(page); await screenshot(page, `settings-${width}`);
-    await page.locator('#settings-admin').focus(); await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-close-feature');
-    await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'settings-admin');
+    await page.locator('#settings-server').focus(); await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-close-feature');
+    await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'settings-server');
     assert.ok((await page.locator('#btn-sessions').boundingBox()).height >= 44, 'devices touch target ' + width);
     assert.equal(Math.round(await page.locator('#btn-sessions > .ui-icon').first().evaluate(node => node.getBoundingClientRect().width)), 24);
     await page.locator('#btn-sessions').click(); await page.locator('#sessions-list .session-row').first().waitFor();

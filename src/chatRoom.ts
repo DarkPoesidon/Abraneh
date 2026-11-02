@@ -102,9 +102,9 @@ export class ChatRoom extends DurableObject<Env> {
       if (Number(count.count) > 120) return Response.json({ error: 'Too many call checks' }, { status: 429 });
       return Response.json(this.ctx.storage.sql.exec("SELECT value FROM room_meta WHERE key LIKE 'incoming:%' LIMIT 32").toArray().map(row => JSON.parse(String(row.value))));
     }
-    if (url.pathname === '/call-decline' && request.method === 'POST') {
+    if ((url.pathname === '/call-decline' || url.pathname === '/call-end') && request.method === 'POST') {
       const sender = await request.json<CallIdentity & { callId: string }>();
-      try { await handleCall(this.env, this.ctx.storage.sql, sender, { action: 'call_signal', chatId: sender.chatId, callId: sender.callId, kind: 'decline' }, event => this.deliverCall(event)); return Response.json({ ok: true }); }
+      try { await handleCall(this.env, this.ctx.storage.sql, sender, { action: 'call_signal', chatId: sender.chatId, callId: sender.callId, kind: url.pathname === '/call-end' ? 'end' : 'decline' }, event => this.deliverCall(event)); return Response.json({ ok: true }); }
       catch (error) { return Response.json({ error: error instanceof InputError ? error.message : 'رد تماس کامل نشد.' }, { status: error instanceof InputError ? error.status : 500 }); }
     }
 

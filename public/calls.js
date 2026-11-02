@@ -1,6 +1,7 @@
 (() => {
+  const directIce = [{ urls: 'stun:stun.l.google.com:19302' }];
   window.WihmCalls = {
-    create({ getChat, getUser, send, mount, activate = async () => {}, getIceServers = async () => [{ urls: 'stun:stun.l.google.com:19302' }], notify = () => {} }) {
+    create({ getChat, getUser, send, mount, activate = async () => {}, getIceServers = async () => directIce, notify = () => {} }) {
       let current = null;
       const dialog = document.createElement('dialog');
       dialog.className = 'modal-card call-dialog'; dialog.setAttribute('aria-label', 'تماس خصوصی');
@@ -67,21 +68,37 @@
         microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
         if (!dialog.open) dialog.showModal();
       }
+      async function capture(video) {
+        try { return { stream: await navigator.mediaDevices.getUserMedia({ audio: true, video }), hasVideo: video }; }
+        catch (error) {
+          if (!video) throw error;
+          return { stream: await navigator.mediaDevices.getUserMedia({ audio: true, video: false }), hasVideo: false };
+        }
+      }
+      // Candidates that can't be sent wait for the socket to reconnect; losing one must not end the call.
+      function flushIce(call) {
+        while (call.sentSdp && call.localIce.length) {
+          try { emit('ice', call.localIce[0]); call.localIce.shift(); } catch { return; }
+        }
+      }
       async function prepare() {
         const call = current;
-        const iceServers = await getIceServers(call.chatId, call.id);
+        // Without TURN credentials a direct connection may still work.
+        const iceServers = await getIceServers(call.chatId, call.id).catch(() => directIce);
         if (current !== call) return null;
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.video });
+        const { stream, hasVideo } = await capture(call.video);
         if (current !== call) { stream.getTracks().forEach(track => track.stop()); return null; }
-        call.stream = stream; local.srcObject = stream; local.hidden = !call.video;
-        microphone.hidden = false; camera.hidden = !call.video;
+        call.stream = stream; local.srcObject = stream; local.hidden = !hasVideo;
+        microphone.hidden = false; camera.hidden = !hasVideo;
+        if (call.video && !hasVideo) notify('دوربین در دسترس نیست؛ تماس بدون تصویر شما ادامه می‌یابد.');
         const peer = call.peer = new RTCPeerConnection({ iceServers });
         stream.getTracks().forEach(track => peer.addTrack(track, stream));
+        // An offer without a video section would stop the other side from sending theirs.
+        if (call.video && !hasVideo && !call.incoming) peer.addTransceiver('video', { direction: 'recvonly' });
         peer.onicecandidate = event => {
           if (current !== call || !event.candidate) return;
-          const candidate = event.candidate.toJSON();
-          if (call.sentSdp) { try { emit('ice', candidate); } catch { reset(false, 'ارتباط با سرور تماس قطع شد.'); } }
-          else if (call.localIce.length < 100) call.localIce.push(candidate);
+          if (call.localIce.length < 100) call.localIce.push(event.candidate.toJSON());
+          flushIce(call);
         };
         peer.ontrack = event => {
           if (current !== call) return;
@@ -113,7 +130,7 @@
         await peer.setLocalDescription(kind === 'offer' ? await peer.createOffer() : await peer.createAnswer());
         if (current !== call) return;
         emit(kind, { type: peer.localDescription.type, sdp: peer.localDescription.sdp }); call.sentSdp = true;
-        for (const ice of call.localIce.splice(0)) emit('ice', ice);
+        flushIce(call);
       }
       async function remoteDescription(payload) {
         const call = current;
@@ -191,7 +208,9 @@
         button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${video ? '<rect x="3" y="5" width="12" height="14" rx="3"/><path d="m15 10 6-4v12l-6-4"/>' : '<path d="M22 16.9v3a2 2 0 0 1-2.2 2A20 20 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.7L7.7 9.7a16 16 0 0 0 6.6 6.6l1.3-1.3a2 2 0 0 1 1.7-.6l3 .5a2 2 0 0 1 1.7 2z"/>'}</svg>`;
         button.addEventListener('click', () => start(video)); mount.appendChild(button);
       }
-      return { start, receive, reset, active: () => !!current, ringingId: () => current?.incoming && !current.accepted ? current.id : null };
+      return { start, receive, reset, active: () => !!current,
+        connectionLost: () => { if (current && !current.accepted) reset(false); },
+        connectionRestored: () => { if (current) flushIce(current); }, ringingId: () => current?.incoming && !current.accepted ? current.id : null };
     },
   };
 })();
