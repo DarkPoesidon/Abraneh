@@ -6,7 +6,9 @@ import { inputJson, jsonResponse } from './http.js';
 
 type Mode='notify'|'automatic'|'manual';
 interface Latest {version:string;digest:string;notes:string;}
-interface Job {version:string;digest:string;phase:'prepare'|'database'|'publish'|'verify'|'updater';state:'running'|'failed'|'done';attempt:number;updatedAt:number;error?:string;}
+interface Job {version:string;digest:string;phase:'prepare'|'database'|'publish'|'verify'|'updater';state:'running'|'failed'|'done';attempt:number;updatedAt:number;error?:string;verifyChecks?:number;republished?:boolean;}
+// Cloudflare can keep serving the old version for minutes after accepting an upload, and that is not a failure.
+const VERIFY_EVERY_MS=20_000,VERIFY_CHECKS=30,REPUBLISH_AFTER=15;
 const safeError=(error:any)=>/[\u0600-\u06ff]/.test(error?.message||'')?String(error.message).slice(0,400):'این مرحله کامل نشد؛ دوباره تلاش کنید. اطلاعات قبلی حذف نشده‌اند.';
 
 export default {
@@ -27,7 +29,7 @@ export class UpdateManager extends DurableObject<UpdaterEnv> {
   async queue(latest:Latest) {
     const job=await this.ctx.storage.get<Job>('job');
     if(job?.state==='running')throw new Error('به‌روزرسانی دیگری در حال اجراست.');
-    const next:Job=job?.state==='failed'&&job.version===latest.version&&job.digest===latest.digest?{...job,state:'running',attempt:0,error:undefined,updatedAt:Date.now()}:{version:latest.version,digest:latest.digest,phase:'prepare',state:'running',attempt:0,updatedAt:Date.now()};
+    const next:Job=job?.state==='failed'&&job.version===latest.version&&job.digest===latest.digest?{...job,state:'running',attempt:0,error:undefined,verifyChecks:0,updatedAt:Date.now()}:{version:latest.version,digest:latest.digest,phase:'prepare',state:'running',attempt:0,updatedAt:Date.now()};
     await this.ctx.storage.transaction(async txn=>{await txn.put('job',next);await txn.setAlarm(Date.now()+100);});
   }
   async fetch(request:Request) {
@@ -84,11 +86,20 @@ export class UpdateManager extends DurableObject<UpdaterEnv> {
       const api=new CloudApi(this.env);
       if(job.phase==='prepare'){await ownedMain(api);job.phase='database';}
       else if(job.phase==='database'){await ownedMain(api);await migrateBundle(api,bundle);job.phase='publish';}
-      else if(job.phase==='publish'){await publishMain(api,bundle);job.phase='verify';}
+      else if(job.phase==='publish'){await publishMain(api,bundle,job.republished);job.phase='verify';}
       else if(job.phase==='verify'){
-        const response=await this.env.MAIN.fetch('https://app.internal/api/health'),health=await response.json<any>();
-        if(!response.ok||health.app!=='wihm-cloudflare'||!health.database||health.version!==job.version)throw new Error('انتشار انجام شد اما بررسی سلامت نسخهٔ تازه هنوز کامل نیست؛ دوباره تلاش می‌شود.');
-        job.phase='updater';
+        const response=await this.env.MAIN.fetch('https://app.internal/api/health'),health=await response.json<any>().catch(()=>null);
+        if(response.ok&&health?.app==='wihm-cloudflare'&&health.database&&health.version===job.version)job.phase='updater';
+        else {
+          const stale=health?.app==='wihm-cloudflare'&&health.version!==job.version,message=stale?'نسخهٔ تازه منتشر شد و کلادفلر در حال فعال‌کردن آن است؛ معمولاً چند دقیقه طول می‌کشد.':'نسخهٔ تازه منتشر شد ولی پاسخ سلامت آن هنوز کامل نیست؛ دوباره بررسی می‌شود.';
+          job.verifyChecks=(job.verifyChecks||0)+1;
+          if(job.verifyChecks>=VERIFY_CHECKS){job.attempt=4;throw new Error(stale?'کلادفلر نسخهٔ تازه را فعال نکرد؛ «تلاش دوباره» را بزنید.':'نسخهٔ تازه منتشر شد ولی دیتابیس یا پاسخ سلامت آن کامل نیست؛ «تلاش دوباره» را بزنید.');}
+          // An upload Cloudflare accepted but never activated would otherwise wait here forever.
+          if(stale&&job.verifyChecks===REPUBLISH_AFTER&&!job.republished){job.republished=true;job.phase='publish';}
+          job.error=message;job.updatedAt=Date.now();
+          await this.ctx.storage.transaction(async txn=>{await txn.put('job',job);await txn.setAlarm(Date.now()+VERIFY_EVERY_MS);});
+          return;
+        }
       } else {await publishUpdater(api,bundle);job.state='done';}
       job.updatedAt=Date.now();job.attempt=0;delete job.error;
       await this.ctx.storage.transaction(async txn=>{await txn.put('job',job);if(job.state==='running')await txn.setAlarm(Date.now()+100);else await txn.deleteAlarm();});

@@ -232,7 +232,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(await chatAccess(env,invite.chat_id,userId),'دعوت منقضی، لغو یا مصرف شده است یا ظرفیت پر شده است.',403);
     return jsonResponse({chatId:invite.chat_id});
   }
-  const match=path.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/(details|preferences|group|invites|leave|search|messages\/([a-zA-Z0-9_-]+)\/(edit|delete|hide|reaction|save|pin))$/);
+  const match=path.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/(details|preferences|group|invites|leave|delete|search|messages\/([a-zA-Z0-9_-]+)\/(edit|delete|hide|reaction|save|pin))$/);
   if (!match) return null;
   const chatId=match[1],action=match[2],messageId=match[3],messageAction=match[4];
   const access=await requireChat(env,chatId,userId);
@@ -248,6 +248,16 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(['archived','muted','pinned'].some(key=>typeof body[key]==='boolean'),'تنظیم گفتگو معتبر نیست.');
     await env.DB.prepare('INSERT OR IGNORE INTO chat_preferences(chat_id,user_id) VALUES (?,?)').bind(chatId,userId).run();
     for (const key of ['archived','muted','pinned']) if (typeof body[key]==='boolean') await env.DB.prepare(`UPDATE chat_preferences SET ${key}=? WHERE chat_id=? AND user_id=?`).bind(body[key]?1:0,chatId,userId).run();
+    return jsonResponse({ok:true});
+  }
+  if (action==='delete' && method==='POST') {
+    check(access.type==='dm','حذف گفتگو برای گفتگوی خصوصی است؛ از گروه یا کانال خارج شوید.');
+    const body=await inputJson(request);
+    if (body.forEveryone===true) { await deleteChat(env,chatId); return jsonResponse({ok:true}); }
+    await env.DB.batch([
+      env.DB.prepare('INSERT OR IGNORE INTO message_hidden SELECT id,chat_id,? FROM messages WHERE chat_id=?').bind(userId,chatId),
+      env.DB.prepare('INSERT OR IGNORE INTO chat_deletions VALUES (?,?)').bind(chatId,userId),
+    ]);
     return jsonResponse({ok:true});
   }
   if (action==='leave' && method==='POST') {

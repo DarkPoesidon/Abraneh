@@ -70,8 +70,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('broadcast_channels','chat_moderation','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
-        const ready = row?.n === 58;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('broadcast_channels','chat_moderation','chat_deletions','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
+        const ready = row?.n === 59;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -348,6 +348,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
             LEFT JOIN chat_receipts r ON r.chat_id = c.id AND r.user_id = cm.user_id
             LEFT JOIN broadcast_channels bc ON bc.chat_id = c.id
             WHERE NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id = c.id)
+              AND NOT (EXISTS(SELECT 1 FROM chat_deletions cd WHERE cd.chat_id = c.id AND cd.user_id = cm.user_id)
+                AND NOT EXISTS(SELECT 1 FROM messages m WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id = m.id AND h.user_id = cm.user_id)))
             ORDER BY c.updated_at DESC
           `).bind(auth.userId, auth.userId).all<any>();
 
@@ -406,6 +408,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
             `).bind(auth.userId, targetUserId).first<{ id: string }>();
 
             if (existing) {
+              await env.DB.prepare('DELETE FROM chat_deletions WHERE chat_id = ? AND user_id = ?').bind(existing.id, auth.userId).run();
               return jsonResponse({ id: existing.id, isNew: false });
             }
 

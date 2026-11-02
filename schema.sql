@@ -243,3 +243,8 @@ CREATE TABLE IF NOT EXISTS chat_moderation (
   suspended_at INTEGER NOT NULL,
   reason TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS chat_deletions (
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (chat_id, user_id)
+);

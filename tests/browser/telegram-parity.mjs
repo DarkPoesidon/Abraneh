@@ -103,6 +103,16 @@ try {
   await owner.locator('#chat-toggle-0').click(); await owner.locator('.admin-card .error-text').waitFor({ state: 'detached' });
   console.log('ok: reports and moderation in the panel');
 
+  // Deleting a private chat from the list, for this side only.
+  await owner.reload(); await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').waitFor();
+  await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').click({ button: 'right' });
+  await owner.locator('#delete-for-everyone').waitFor(); await shot(owner, 'delete-chat');
+  await owner.locator('#delete-chat-form button[type=submit]').click();
+  await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').waitFor({ state: 'detached' });
+  await owner.reload(); await owner.locator('.chat-item').first().waitFor();
+  assert.equal(await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').count(), 0, 'it stays gone after a reload');
+  console.log('ok: delete a chat');
+
   // English
   const english = await open(fixture.peer, { width: 1200, height: 850 }, 'en');
   assert.equal(await english.evaluate(() => document.documentElement.dir), 'ltr');
