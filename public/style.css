@@ -1076,3 +1076,178 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .65); }
 .service-metrics div { border:1px solid var(--border-color);border-radius:12px;padding:12px;overflow-wrap:anywhere; }
 .service-metrics dt { font-size:.85rem;opacity:.75; }
 .service-metrics dd { margin:8px 0 0;font-size:1.3rem;font-weight:700; }
+
+/* Telegram-style layout: the proportions and patterns follow its web clients; colors are nudged where white text needs 4.5:1. */
+:root {
+  --bg-primary:#0f0f0f; --bg-secondary:#212121; --bg-card:#2c2c2c; --bg-input:#181818;
+  --accent-color:#7765d8; --accent-hover:#6a58cc; --accent-text:#a99df0;
+  --text-primary:#ffffff; --text-secondary:#aaaaaa; --text-muted:#8a8a8a;
+  --msg-sent:#6a5acb; --msg-received:#212121; --border-color:#303030;
+  --online-color:#0ac630; --danger-color:#ff6b6b; --meta-sent:#e6e1ff; --meta-received:#aaaaaa; --tick-read:#ffffff;
+  --chat-wallpaper:radial-gradient(circle at 15% 20%,rgb(119 101 216 / .10),transparent 45%),radial-gradient(circle at 85% 80%,rgb(32 140 160 / .10),transparent 45%),#0f0f0f;
+  --pill-bg:rgb(255 255 255 / .12); --pill-text:#fff;
+}
+[data-theme="light"] {
+  --bg-primary:#f4f4f5; --bg-secondary:#ffffff; --bg-card:#f1f1f2; --bg-input:#f4f4f5;
+  --accent-color:#1f78c1; --accent-hover:#1a69aa; --accent-text:#1a6fb5;
+  --text-primary:#000000; --text-secondary:#5f6368; --text-muted:#707579;
+  --msg-sent:#e3fcd0; --msg-received:#ffffff; --border-color:#dfe1e5;
+  --danger-color:#c62828; --meta-sent:#2f7d32; --meta-received:#6b7075; --tick-read:#2f7d32;
+  --chat-wallpaper:linear-gradient(135deg,#d7e6c6 0%,#b9d2a8 40%,#cfe0b6 70%,#bcd6b0 100%);
+  --pill-bg:rgb(0 0 0 / .42); --pill-text:#fff;
+}
+body { font-size:16px; }
+.sidebar { background:var(--bg-secondary); border-inline-end:1px solid var(--border-color); }
+.sidebar-header { height:56px; min-height:56px; padding:8px 12px; }
+.user-profile-badge .avatar { width:36px; height:36px; font-size:.95rem; }
+.user-handle { display:none; }
+.search-box { padding:0 12px 8px; }
+.search-box .search-input { height:42px; border-radius:21px; border:1px solid transparent; background:var(--bg-input); }
+.search-box .search-input:focus { border-color:var(--accent-color); background:var(--bg-secondary); }
+.chat-filters { padding:0 12px 4px; border-bottom:0; }
+.sidebar-caption { display:none; }
+.archive-button { margin-inline-start:auto; min-height:32px; padding:4px 10px; }
+.chats-list { padding:0 8px 80px; }
+/* The new-chat action floats over the list corner, as in Telegram. */
+.sidebar:not(.collapsed) .compose-button { position:absolute; inset-block-end:20px; inset-inline-end:20px; width:56px; height:56px; min-width:56px; min-height:56px; z-index:5; background:var(--accent-color); color:#fff; box-shadow:0 2px 8px rgb(0 0 0 / .35); }
+.sidebar:not(.collapsed) .compose-button:hover { background:var(--accent-hover); color:#fff; }
+.chat-item { min-height:72px; padding:9px; gap:10px; margin-bottom:0; border-radius:12px; align-items:center; }
+.chat-item .avatar { width:54px; height:54px; font-size:1.25rem; color:#fff; background:hsl(var(--avatar-hue,205) 55% 50%); }
+.chat-title { font-size:1rem; font-weight:500; line-height:1.4; }
+.chat-time { font-size:.75rem; color:var(--text-secondary); }
+.chat-last-msg { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.94rem; line-height:1.4; color:var(--text-secondary); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-item:hover { background:var(--bg-card); }
+.chat-item.active,.chat-item.active:hover { background:var(--accent-color); }
+.chat-item.active .chat-title,.chat-item.active .chat-time,.chat-item.active .chat-last-msg { color:#fff; }
+.unread-badge { flex:none; min-width:22px; height:22px; line-height:22px; padding:0 6px; margin:0; border-radius:11px; background:var(--accent-color); color:#fff; font-size:.8rem; font-weight:500; }
+.chat-item.active .unread-badge { background:#fff; color:var(--accent-color); }
+.chat-main,#active-chat-wrapper { background:var(--chat-wallpaper); position:relative; }
+.empty-chat-state { color:var(--pill-text); }
+.chat-header { height:56px; min-height:56px; padding:0 12px; gap:8px; background:var(--bg-secondary); border-bottom:0; box-shadow:0 1px 2px rgb(0 0 0 / .18); z-index:2; }
+.chat-header-info>.avatar,#chat-header-avatar { width:40px!important; height:40px!important; font-size:1rem!important; color:#fff; background:hsl(var(--avatar-hue,205) 55% 50%); display:flex; }
+.chat-header-title { font-size:1rem; font-weight:500; line-height:1.3; }
+.chat-status { font-size:.85rem; color:var(--text-secondary); }
+.status-dot { display:none; }
+.pinned-message { background:var(--bg-secondary); border-bottom:0; box-shadow:0 1px 2px rgb(0 0 0 / .12); min-height:44px; padding:8px 16px; border-inline-start:3px solid var(--accent-color); color:var(--text-primary); }
+.history-button { background:var(--pill-bg); color:var(--pill-text); border:0; border-radius:16px; }
+.messages-container { padding-block:12px 8px; padding-inline:max(16px,calc((100% - 728px)/2)); gap:2px; }
+.date-pill,.unread-divider { align-self:center; margin-block:10px 8px; padding:3px 10px; border-radius:12px; background:var(--pill-bg); color:var(--pill-text); font-size:.82rem; font-weight:500; border:0; }
+.unread-divider { align-self:stretch; text-align:center; border-radius:0; }
+.message-bubble { max-width:min(480px,calc(100% - 52px)); padding:6px 9px; border-radius:15px; font-size:1rem; line-height:1.4; box-shadow:0 1px 2px rgb(0 0 0 / .22); display:flow-root; overflow:visible; position:relative; }
+.message-bubble.group-first { margin-top:6px; }
+.message-bubble.sent { color:var(--text-primary); background-color:var(--msg-sent); border-start-start-radius:15px; border-end-start-radius:6px; border-end-end-radius:15px; }
+.message-bubble.sent:not(.group-first) { border-start-start-radius:6px; }
+.message-bubble.received { background-color:var(--msg-received); border-start-end-radius:15px; border-end-end-radius:6px; border-end-start-radius:15px; }
+.message-bubble.received:not(.group-first) { border-start-end-radius:6px; }
+/* The tail marks the last message of a group; the document is always RTL, so sent bubbles sit on the right. */
+.message-bubble.group-last:not(.media-video)::after { content:''; position:absolute; bottom:0; width:9px; height:14px; background:inherit; }
+.message-bubble.sent.group-last { border-end-start-radius:0; }
+.message-bubble.received.group-last { border-end-end-radius:0; }
+.message-bubble.sent.group-last::after { inset-inline-start:-8px; clip-path:polygon(0 0,100% 100%,0 100%); }
+.message-bubble.received.group-last::after { inset-inline-end:-8px; clip-path:polygon(100% 0,100% 100%,0 100%); }
+.message-sender { color:hsl(var(--avatar-hue,205) 70% 62%); font-size:.87rem; font-weight:500; margin-bottom:2px; }
+[data-theme="light"] .message-sender { color:hsl(var(--avatar-hue,205) 70% 36%); }
+.message-text { display:inline; white-space:pre-wrap; overflow-wrap:anywhere; unicode-bidi:plaintext; }
+/* Time and ticks sit on the last line of the text when they fit, otherwise on a line of their own. */
+.message-footer { float:inline-end; min-height:0; margin-block:5px -3px; margin-inline-start:12px; gap:3px; }
+.message-time { display:inline-flex; align-items:center; gap:3px; font-size:.75rem; opacity:1; color:var(--meta-received); white-space:nowrap; line-height:1.2; margin:0; }
+.message-bubble.sent .message-time { color:var(--meta-sent); }
+.message-status { display:inline-flex; margin:0; color:inherit; font-size:.72rem; }
+.message-status svg { width:17px; height:17px; }
+.message-status[data-state="read"] { color:var(--tick-read); }
+.message-status[data-state="failed"] { color:var(--danger-color); }
+/* Options stay reachable by keyboard and touch but leave the bubble clean, as right-click and long-press also open them. */
+.message-more { position:absolute; top:50%; translate:0 -50%; margin:0; opacity:0; width:36px; min-width:36px; height:36px; min-height:36px; border-radius:50%; background:var(--pill-bg); color:var(--pill-text); transition:opacity .12s ease; }
+.message-bubble.sent .message-more { inset-inline-end:-42px; }
+.message-bubble.received .message-more { inset-inline-start:-42px; }
+.message-bubble:hover .message-more,.message-more:focus-visible { opacity:1; }
+.message-more:hover { background:var(--pill-bg); }
+@media (hover:none) { .message-more { opacity:.75; width:44px; min-width:44px; height:44px; min-height:44px; } .message-bubble { max-width:calc(100% - 52px); } .message-bubble.sent .message-more { inset-inline-end:-48px; } .message-bubble.received .message-more { inset-inline-start:-48px; } }
+.reactions { clear:both; }
+.reaction-chip { background:var(--pill-bg); border:0; border-radius:14px; color:inherit; }
+.reaction-chip.selected { background:var(--accent-color); color:#fff; }
+.reply-quote { border-inline-start:3px solid var(--accent-text); background:rgb(127 127 127 / .14); border-radius:6px; margin-bottom:4px; padding:4px 8px; }
+.composer-context { width:min(100%,760px); align-self:center; background:var(--bg-secondary); border-top:0; border-inline-start:3px solid var(--accent-color); border-radius:12px 12px 0 0; }
+.chat-input-area { width:min(100%,760px); gap:8px; padding:6px 16px 14px; min-height:0; align-items:flex-end; }
+.message-input { min-height:54px; max-height:40dvh; border:0; border-radius:16px; padding:15px 16px; background:var(--bg-secondary); color:var(--text-primary); font-size:1rem; line-height:1.5; box-shadow:0 1px 2px rgb(0 0 0 / .22); }
+.send-btn { width:54px; height:54px; min-width:54px; background:var(--accent-color); box-shadow:0 1px 2px rgb(0 0 0 / .22); }
+.send-btn:hover { background:var(--accent-hover); }
+/* As in Telegram, one round action sits at the end: send while there is text, otherwise record. */
+.chat-input-area.can-record:not(.has-text) #btn-send-message { display:none; }
+.chat-input-area.has-text .media-record { display:none; }
+.media-record { width:54px; height:54px; min-width:54px; min-height:54px; background:var(--bg-secondary); color:var(--text-secondary); box-shadow:0 1px 2px rgb(0 0 0 / .22); }
+#btn-record-voice { background:var(--accent-color); color:#fff; }
+#btn-record-voice:hover { background:var(--accent-hover); color:#fff; }
+.media-recorder { padding:8px 12px; min-height:54px; border-radius:16px; background:var(--bg-secondary); box-shadow:0 1px 2px rgb(0 0 0 / .22); }
+.media-status { color:var(--text-primary); }
+.media-recorder[data-state="recording"] .media-status::before { content:''; display:inline-block; width:10px; height:10px; margin-inline-end:8px; border-radius:50%; background:#e53935; animation:recording-pulse 1s ease-in-out infinite; }
+@keyframes recording-pulse { 50% { opacity:.25; } }
+.media-preview { width:120px; height:120px; }
+.media-send { border-radius:22px; }
+.voice-note { display:flex; align-items:center; gap:10px; width:min(280px,62vw); margin-bottom:2px; }
+.media-play { flex:none; display:grid; place-items:center; width:48px; height:48px; min-height:48px; padding:0; border:0; border-radius:50%; background:var(--accent-color); color:#fff; cursor:pointer; }
+.media-play::before { content:''; width:0; height:0; margin-inline-end:-3px; border-block:9px solid transparent; border-inline-end:15px solid currentColor; }
+[data-state="playing"] > .media-play::before { width:14px; height:18px; margin:0; border:0; border-inline:4px solid currentColor; }
+[data-state="loading"] > .media-play::before { width:20px; height:20px; margin:0; border:2px solid currentColor; border-inline-end-color:transparent; border-radius:50%; animation:media-spin .8s linear infinite; }
+@keyframes media-spin { to { rotate:360deg; } }
+.media-play:disabled { opacity:1; cursor:progress; }
+.message-bubble.sent .voice-note .media-play { background:var(--meta-sent); color:var(--msg-sent); }
+[data-theme="light"] .message-bubble.sent .voice-note .media-play { background:var(--meta-sent); color:#fff; }
+.voice-track { position:relative; flex:1; min-width:0; height:28px; }
+.voice-bars { display:flex; align-items:center; gap:2px; height:100%; --progress:0; direction:ltr; }
+.voice-bars span { flex:1; min-width:1px; height:calc(var(--level,.12) * 100%); border-radius:2px; background:currentColor; opacity:.4; }
+.voice-bars { mask-image:linear-gradient(90deg,#000 calc(var(--progress) * 100%),rgb(0 0 0 / .55) calc(var(--progress) * 100%)); }
+.voice-seek { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; direction:ltr; }
+.voice-seek:disabled { cursor:default; }
+.voice-seek:focus-visible { opacity:.35; }
+.media-time { flex:none; font-size:.8rem; color:inherit; opacity:.85; min-width:34px; text-align:center; }
+.media-player[hidden],audio.media-player { display:none; }
+/* Video messages render as a round note with no bubble behind them. */
+.message-bubble.media-video { background:transparent; box-shadow:none; padding:0; }
+.video-note { position:relative; display:grid; place-items:center; width:min(240px,62vw); aspect-ratio:1; overflow:hidden; border-radius:50%; background:#000; }
+.video-note video.media-player { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:50%; cursor:pointer; }
+.video-note .media-play { position:relative; z-index:1; background:rgb(0 0 0 / .55); color:#fff; }
+.video-note[data-state="playing"] .media-play { opacity:0; }
+.video-note[data-state="playing"]:hover .media-play,.video-note .media-play:focus-visible { opacity:1; }
+.video-note .media-time { position:absolute; bottom:10%; z-index:1; padding:1px 8px; border-radius:10px; background:rgb(0 0 0 / .55); color:#fff; font-size:.75rem; pointer-events:none; }
+.message-bubble.media-video .message-footer { float:none; display:flex; justify-content:center; margin-block:4px 0; margin-inline:0; }
+.message-bubble.media-video .message-time { padding:1px 8px; border-radius:10px; background:var(--pill-bg); color:var(--pill-text); }
+.scroll-bottom { position:absolute; inset-block-end:92px; inset-inline-end:max(20px,calc((100% - 728px)/2)); z-index:3; display:grid; place-items:center; width:48px; height:48px; border:0; border-radius:50%; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer; box-shadow:0 1px 6px rgb(0 0 0 / .3); }
+.scroll-bottom:hover { color:var(--text-primary); }
+/* The call screen is one continuous surface with round labeled actions. */
+dialog.call-dialog { color:#f8fafc; background:linear-gradient(160deg,#2c6aa8 0%,#4b57c9 55%,#7a3f9d 100%); border:0; border-radius:20px; min-height:min(560px,calc(100dvh - 32px)); justify-content:space-between; box-shadow:0 12px 48px rgb(0 0 0 / .45); }
+dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
+.call-dialog h3 { color:#fff; font-size:1.35rem; font-weight:500; }
+.call-dialog > [role="status"] { color:rgb(255 255 255 / .85); }
+.call-stage { flex:1; min-height:160px; background:transparent; }
+.call-stage:has(.call-remote:not([hidden])) { background:#000; }
+.call-avatar { width:128px; height:128px; font-size:3.25rem; background:rgb(255 255 255 / .18); color:#fff; }
+.call-actions { gap:12px; }
+.call-actions .quiet-button { min-width:84px; padding:0; border:0; background:transparent; color:#fff; font-size:.78rem; line-height:1.3; }
+.call-actions .quiet-button:hover { background:transparent; }
+.call-microphone::before,.call-camera::before,.call-speaker::before { box-sizing:content-box; width:24px; height:24px; padding:15px; background:currentColor; mask-origin:content-box; mask-clip:content-box; }
+.call-actions .quiet-button { position:relative; }
+.call-actions .quiet-button::after { content:''; position:absolute; top:0; inset-inline-start:50%; translate:50% 0; width:54px; height:54px; border-radius:50%; background:rgb(255 255 255 / .18); z-index:-1; }
+.call-actions { isolation:isolate; }
+.call-actions [aria-pressed="true"] { background:transparent; border:0; }
+.call-actions [aria-pressed="true"]::after { background:#fff; opacity:.55; }
+.call-decisions { gap:28px; }
+.call-decisions button { position:relative; display:flex; flex-direction:column; align-items:center; gap:8px; width:auto; min-width:84px; min-height:0; margin:0; padding:0; border:0; border-radius:0; background:transparent!important; color:#fff; font-size:.8rem; font-weight:400; }
+.call-decisions button::before { content:''; width:60px; height:60px; border-radius:50%; background:var(--call-color) center/28px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.9v3a2 2 0 0 1-2.2 2A20 20 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.7L7.7 9.7a16 16 0 0 0 6.6 6.6l1.3-1.3a2 2 0 0 1 1.7-.6l3 .5a2 2 0 0 1 1.7 2z'/%3E%3C/svg%3E"); }
+.call-dialog .call-accept { --call-color:#2e9e4f; }
+.call-dialog .call-end { --call-color:#d9363e; }
+.call-dialog .call-end::before { rotate:135deg; }
+.call-accept:not(:disabled)::before { animation:call-pulse 1.4s ease-in-out infinite; }
+@keyframes call-pulse { 50% { box-shadow:0 0 0 12px rgb(46 158 79 / .25); } }
+.call-information { border-top-color:rgb(255 255 255 / .25); }
+.call-information summary,.call-information p { color:rgb(255 255 255 / .85); }
+.call-launch { color:var(--text-secondary); }
+@media (max-width:768px) {
+  .sidebar-header { height:56px; min-height:56px; padding:8px 12px; }
+  .chat-header { height:56px; min-height:56px; padding:0 4px; gap:2px; }
+  .chat-input-area { padding:6px 8px max(10px,env(safe-area-inset-bottom)); gap:6px; }
+  .messages-container { padding:8px 10px; }
+  .scroll-bottom { inset-inline-end:14px; inset-block-end:84px; }
+  .chats-list { padding-inline:4px; }
+}
+@media (max-width:600px) { .chat-header-info>.avatar { display:flex; } .message-input,.media-record,.send-btn { min-height:48px; } .media-record,.send-btn { width:48px; height:48px; min-width:48px; } .message-input { padding:12px 14px; } .message-more { width:44px; min-width:44px; height:44px; min-height:44px; } }
