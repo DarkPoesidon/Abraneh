@@ -15,6 +15,7 @@ interface WsAttachment {
   displayName: string;
   sessionId: string;
   inbox?: boolean;
+  quiet?: boolean;
   typingAt?: number;
   typing?: boolean;
 }
@@ -150,12 +151,14 @@ export class ChatRoom extends DurableObject<Env> {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
-      const attachment: WsAttachment = { chatId, userId, username, displayName, sessionId };
+      const quiet = url.searchParams.get('quiet') === '1';
+      const attachment: WsAttachment = { chatId, userId, username, displayName, sessionId, ...(quiet ? { quiet } : {}) };
       server.serializeAttachment(attachment);
 
       const protocol = request.headers.get('Sec-WebSocket-Protocol')?.split(',').map(value => value.trim()).includes('wihm.v1') ? 'wihm.v1' : null;
       this.ctx.acceptWebSocket(server, [userId]);
-      for (const socket of await this.authorizedSockets()) {
+      // A channel must not reveal who else is subscribed.
+      if (!quiet) for (const socket of await this.authorizedSockets()) {
         const online = socket.deserializeAttachment() as WsAttachment | null;
         if (socket !== server && online?.userId) {
           server.send(JSON.stringify({ event: 'presence', userId: online.userId, status: 'online' }));
@@ -163,7 +166,7 @@ export class ChatRoom extends DurableObject<Env> {
       }
 
       // Broadcast user online event to others
-      await this.broadcast(
+      if (!quiet) await this.broadcast(
         { event: "presence", userId, status: "online" },
         server
       );
@@ -198,6 +201,16 @@ export class ChatRoom extends DurableObject<Env> {
       return new Response(null,{status:204});
     }
     if (url.pathname === '/refresh-access') { await this.authorizedSockets(); return new Response(null,{status:204}); }
+    if (url.pathname === '/wipe-room' && request.method === 'POST') {
+      for (const socket of this.ctx.getWebSockets()) try { socket.close(4003, 'Chat deleted'); } catch {}
+      await this.ctx.storage.deleteAlarm(); await this.ctx.storage.deleteAll();
+      this.sqlInitialized = false;
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname === '/moderation-delete' && request.method === 'POST') {
+      try { return Response.json({ message: await this.applyMessageAction({ ...await request.json<any>(), action: 'delete' }, true) }); }
+      catch (error) { if (error instanceof InputError) return Response.json({ error: error.message }, { status: error.status }); throw error; }
+    }
     if (url.pathname === '/message-action' && request.method==='POST') {
       try { return Response.json({message:await this.applyMessageAction(await request.json<any>())}); }
       catch (error) { if(error instanceof InputError) return Response.json({error:error.message},{status:error.status}); throw error; }
@@ -281,9 +294,13 @@ export class ChatRoom extends DurableObject<Env> {
         .bind(sender.sessionId, sender.userId, Date.now()).first<{id:string;displayName:string}>();
       if (!authorized) { ws.send(JSON.stringify({ event: 'session_revoked' })); ws.close(4001, 'Session expired or revoked'); return; }
       sender.displayName=authorized.displayName;ws.serializeAttachment(sender);
-      if (!await chatAccess(this.env,sender.chatId,sender.userId)||await isBlocked(this.env,sender.chatId,sender.userId)) {
+      const access=await chatAccess(this.env,sender.chatId,sender.userId);
+      if (!access||await isBlocked(this.env,sender.chatId,sender.userId)) {
         ws.send(JSON.stringify({event:'chat_access_revoked',chatId:sender.chatId})); ws.close(4003,'Chat access changed'); return;
       }
+      // Channel subscribers only read, and nobody's typing is shown to them.
+      if (access.isChannel&&data.action==='typing') return;
+      if (access.isChannel&&data.action==='send_message'&&!manager(access.role)) { ws.send(JSON.stringify({event:'error',clientMsgId:data.clientMsgId,retryable:false,message:'در کانال فقط مدیران می‌توانند پست بگذارند.'})); return; }
     } catch { ws.close(1011, 'Session check unavailable'); return; }
 
     if(data.action==='call_signal'){try{await handleCall(this.env,this.ctx.storage.sql,sender,data,event=>this.deliverCall(event));}catch(error){ws.send(JSON.stringify({event:'call_error',callId:data.callId,kind:data.kind,message:error instanceof InputError?error.message:'تماس انجام نشد.'}));}return;}
@@ -409,7 +426,7 @@ export class ChatRoom extends DurableObject<Env> {
     if (!this.withinSendLimit(userId)) return refuse('تعداد پیام‌ها زیاد است؛ یک دقیقه صبر کنید و دوباره تلاش کنید.', 429);
     const bytes = new Uint8Array(await request.arrayBuffer());
     const used = Number(this.ctx.storage.sql.exec('SELECT COALESCE(SUM(size),0) AS n FROM message_media').toArray()[0].n);
-    if (used + bytes.byteLength > ROOM_MEDIA_BYTES) return refuse('فضای پیام‌های صوتی و تصویری این گفتگو پر است؛ پیام‌های قدیمی را حذف کنید.', 413);
+    if (used + bytes.byteLength > ROOM_MEDIA_BYTES) return refuse('فضای فایل‌های این گفتگو پر است؛ فایل‌های قدیمی را حذف کنید.', 413);
     const replyToId = query.get('replyToId') || null;
     if (replyToId && !await this.materialize(replyToId, chatId)) return refuse('پیام مورد پاسخ پیدا نشد.', 400);
     const messageId = this.storeMessage({ chatId, userId, displayName: query.get('displayName') || 'کاربر' }, query.get('text') || '', clientMsgId, replyToId, { kind: query.get('kind')!, mime: query.get('mime')!, durationMs: Number(query.get('durationMs')), bytes });
@@ -464,17 +481,20 @@ export class ChatRoom extends DurableObject<Env> {
     return this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',id).toArray()[0];
   }
 
-  private async applyMessageAction(data: any): Promise<Message> {
-    if(!validId(data.messageId)||!validId(data.chatId)||!validId(data.actor)||!validId(data.sessionId)) throw new InputError('درخواست پیام معتبر نیست.');
-    const access=await chatAccess(this.env,data.chatId,data.actor);
-    const session=await this.env.DB.prepare(`SELECT s.id FROM user_sessions s WHERE s.id=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL}`).bind(data.sessionId,data.actor,Date.now()).first();
-    if(!access||!session) throw new InputError('دسترسی شما به گفتگو پایان یافته است.',403);
-    if(data.action!=='delete'&&await isBlocked(this.env,data.chatId,data.actor)) throw new InputError('این گفتگوی خصوصی مسدود است.',403);
+  // `moderator` is set only by the internal moderation route, never from a request body.
+  private async applyMessageAction(data: any, moderator = false): Promise<Message> {
+    if(!validId(data.messageId)||!validId(data.chatId)||(!moderator&&(!validId(data.actor)||!validId(data.sessionId)))) throw new InputError('درخواست پیام معتبر نیست.');
+    const access=moderator?null:await chatAccess(this.env,data.chatId,data.actor);
+    if(!moderator) {
+      const session=await this.env.DB.prepare(`SELECT s.id FROM user_sessions s WHERE s.id=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL}`).bind(data.sessionId,data.actor,Date.now()).first();
+      if(!access||!session) throw new InputError('دسترسی شما به گفتگو پایان یافته است.',403);
+      if(data.action!=='delete'&&await isBlocked(this.env,data.chatId,data.actor)) throw new InputError('این گفتگوی خصوصی مسدود است.',403);
+    }
     const row=await this.materialize(data.messageId,data.chatId); if(!row) throw new InputError('پیام پیدا نشد.',404);
     const details=this.ctx.storage.sql.exec('SELECT * FROM message_details WHERE message_id=?',row.id).toArray()[0];
     if(data.action==='edit' && (row.sender_id!==data.actor||details?.deleted_at)) throw new InputError('فقط پیام خودتان را پیش از حذف می‌توانید ویرایش کنید.',403);
     if(data.action==='edit' && this.ctx.storage.sql.exec('SELECT 1 FROM message_media WHERE message_id=?',row.id).toArray().length) throw new InputError('پیام صوتی و تصویری قابل ویرایش نیست.');
-    if(data.action==='delete' && row.sender_id!==data.actor && !(access.type==='group'&&manager(access.role))) throw new InputError('اجازهٔ حذف این پیام برای همه را ندارید.',403);
+    if(!moderator&&data.action==='delete' && row.sender_id!==data.actor && !(access!.type==='group'&&manager(access!.role))) throw new InputError('اجازهٔ حذف این پیام برای همه را ندارید.',403);
     if(data.action==='edit' && (typeof data.text!=='string'||!data.text.trim()||data.text.trim().length>10000)) throw new InputError('متن پیام بین ۱ تا ۱۰٬۰۰۰ کاراکتر است.');
     if(data.action==='reaction' && (details?.deleted_at||!['','👍','❤️','😂','😮','😢','🙏'].includes(data.emoji))) throw new InputError('واکنش معتبر نیست یا پیام حذف شده است.');
     this.ctx.storage.transactionSync(()=>{
@@ -550,7 +570,7 @@ export class ChatRoom extends DurableObject<Env> {
     const membership=new Set<string>();
     const roomIds=[...new Set(sockets.map(socket=>(socket.deserializeAttachment() as WsAttachment|null)?.chatId).filter((id):id is string=>!!id))];
     for(const chatId of roomIds) {
-      const {results}=await this.env.DB.prepare(`SELECT cm.user_id FROM chat_members cm JOIN chats c ON c.id=cm.chat_id WHERE cm.chat_id=? AND (c.type!='dm' OR NOT EXISTS(SELECT 1 FROM blocked_users b JOIN chat_members other ON other.chat_id=cm.chat_id AND other.user_id!=cm.user_id WHERE (b.blocker_id=cm.user_id AND b.blocked_id=other.user_id) OR (b.blocker_id=other.user_id AND b.blocked_id=cm.user_id)))`).bind(chatId).all<{user_id:string}>();
+      const {results}=await this.env.DB.prepare(`SELECT cm.user_id FROM chat_members cm JOIN chats c ON c.id=cm.chat_id WHERE cm.chat_id=? AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id=c.id) AND (c.type!='dm' OR NOT EXISTS(SELECT 1 FROM blocked_users b JOIN chat_members other ON other.chat_id=cm.chat_id AND other.user_id!=cm.user_id WHERE (b.blocker_id=cm.user_id AND b.blocked_id=other.user_id) OR (b.blocker_id=other.user_id AND b.blocked_id=cm.user_id)))`).bind(chatId).all<{user_id:string}>();
       for(const row of results) membership.add(chatId+':'+row.user_id);
     }
     const permitted:WebSocket[]=[];

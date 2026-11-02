@@ -32,7 +32,11 @@
       for (const button of [microphone, camera, speaker, play]) { button.type = 'button'; button.className = 'quiet-button'; button.hidden = true; }
       microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین'; play.textContent = 'پخش صدای مخاطب';
       speaker.textContent = 'قطع صدای مخاطب'; speaker.className += ' call-speaker';
-      const actions = document.createElement('div'); actions.className = 'call-actions'; actions.append(microphone, camera, speaker, play);
+      // Only the Android app can choose between the earpiece and the loudspeaker; a web page can't.
+      const route = document.createElement('button'); route.type = 'button'; route.className = 'quiet-button call-speaker'; route.hidden = true; route.textContent = 'بلندگو'; route.setAttribute('aria-pressed', 'false');
+      const canRoute = () => typeof window.Android?.setCallAudio === 'function';
+      const setRoute = value => { try { if (canRoute()) window.Android.setCallAudio(value); } catch {} };
+      const actions = document.createElement('div'); actions.className = 'call-actions'; actions.append(microphone, camera, speaker, ...(canRoute() ? [route] : []), play);
       microphone.className += ' call-microphone'; camera.className += ' call-camera';
       end.className = decline.className = 'btn-primary call-end'; accept.className += ' call-accept';
       const information = document.createElement('details'), summary = document.createElement('summary'); information.className = 'call-information'; summary.textContent = 'حریم خصوصی و محدودیت اتصال'; information.append(summary, privacy);
@@ -81,7 +85,8 @@
           previous.stream?.getTracks().forEach(track => track.stop());
         }
         local.srcObject = remote.srcObject = audio.srcObject = null;
-        for (const node of [local, remote, audio, microphone, camera, speaker, play]) node.hidden = true;
+        if (previous?.route) setRoute('off');
+        for (const node of [local, remote, audio, microphone, camera, speaker, route, play]) node.hidden = true;
         if (dialog.open) dialog.close();
         if (message) notify(message);
       }
@@ -100,7 +105,7 @@
         avatar.textContent = [...(getChat(current.chatId)?.title || getChat(current.chatId)?.partnerName || '؟')][0]; avatar.hidden = false;
         status.textContent = incoming ? 'تماس ورودی؛ تا پذیرش شما صدا و تصویر ارسال نمی‌شود.' : 'در انتظار پذیرش مخاطب…';
         accept.hidden = decline.hidden = !incoming; end.hidden = incoming; accept.disabled = false;
-        for (const node of [local, remote, audio, microphone, camera, speaker, play]) node.hidden = true;
+        for (const node of [local, remote, audio, microphone, camera, speaker, route, play]) node.hidden = true;
         audio.muted = false; speaker.textContent = 'قطع صدای مخاطب'; speaker.setAttribute('aria-pressed', 'false');
         microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین';
         microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
@@ -140,6 +145,8 @@
         if (current !== call) { stream.getTracks().forEach(track => track.stop()); return null; }
         call.stream = stream; local.srcObject = stream; local.hidden = !hasVideo;
         microphone.hidden = false; camera.hidden = !hasVideo;
+        // As in other messengers, a voice call starts at the ear and a video call on the loudspeaker.
+        if (canRoute()) { call.route = call.video ? 'speaker' : 'earpiece'; setRoute(call.route); route.hidden = false; route.setAttribute('aria-pressed', String(call.route === 'speaker')); }
         if (call.video && !hasVideo) notify('دوربین در دسترس نیست؛ تماس بدون تصویر شما ادامه می‌یابد.');
         const peer = call.peer = new RTCPeerConnection({ iceServers });
         stream.getTracks().forEach(track => peer.addTrack(track, stream));
@@ -157,7 +164,8 @@
           media.hidden = !video;
           // Separate sinks let muted video render without waiting for audio playback permission.
           media.srcObject = new MediaStream([event.track]);
-          if (video) avatar.hidden = true; else speaker.hidden = false;
+          if (video) avatar.hidden = true; else speaker.hidden = canRoute();
+          if (call.route) setRoute(call.route); // The browser engine picks a route when audio starts, so this has to follow it.
           media.play().then(() => { if (current === call && !video) play.hidden = true; }).catch(error => { if (current === call && !video && error.name !== 'AbortError') { play.hidden = false; status.textContent = 'برای شنیدن صدا، «پخش صدای مخاطب» را بزنید.'; } });
         };
         peer.onconnectionstatechange = () => {
@@ -165,7 +173,7 @@
           if (peer.connectionState === 'connected') {
             clearTimeout(call.connectTimer); clearTimeout(call.restartTimer); clearTimeout(call.failTimer); call.restartTimer = call.failTimer = null; call.restarts = 0;
             if (!call.connectedAt) {
-              call.connectedAt = Date.now(); playNotes(TONES.connect);
+              call.connectedAt = Date.now(); playNotes(TONES.connect); if (call.route) setRoute(call.route);
               const duration = () => { const seconds = Math.floor((Date.now() - call.connectedAt) / 1000); status.textContent = 'تماس برقرار است. · ' + Math.floor(seconds / 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }) + ':' + (seconds % 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }); };
               duration(); call.durationTimer = setInterval(duration, 1000);
             }
@@ -255,6 +263,7 @@
         const disabled = tracks[0].enabled; tracks.forEach(track => { track.enabled = !disabled; });
         camera.textContent = disabled ? 'روشن کردن دوربین' : 'خاموش کردن دوربین'; camera.setAttribute('aria-pressed', String(disabled));
       };
+      route.onclick = () => { if (!current?.route) return; current.route = current.route === 'speaker' ? 'earpiece' : 'speaker'; setRoute(current.route); route.setAttribute('aria-pressed', String(current.route === 'speaker')); };
       speaker.onclick = () => { audio.muted = !audio.muted; speaker.textContent = audio.muted ? 'وصل صدای مخاطب' : 'قطع صدای مخاطب'; speaker.setAttribute('aria-pressed', String(audio.muted)); };
       play.onclick = () => { audio.play().then(() => { play.hidden = true; }).catch(() => { status.textContent = 'مرورگر پخش را مجاز نکرد؛ مجوز صدای سایت را بررسی کنید.'; }); };
       dialog.addEventListener('cancel', event => { event.preventDefault(); reset(); });

@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-messenger",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "installer:build": "node scripts/build-installer.mjs",
@@ -23,6 +23,6 @@
   "dependencies": {
     "@block65/webcrypto-web-push": "2.0.0",
     "@simplewebauthn/server": "14.0.3",
-    "ts-mls": "1.6.4"
+    "ts-mls": "1.7.0"
   }
 }

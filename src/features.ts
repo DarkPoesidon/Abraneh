@@ -1,7 +1,7 @@
 import { enforceSecondFactor } from './security.js';
 import { Env, JwtPayload, Message } from './types.js';
 import { InputError, inputJson, jsonResponse } from './http.js';
-import { chatAccess, isBlocked, manager, validId, tokenHash, inviteToken, normalizePersian, refreshRoom } from './access.js';
+import { chatAccess, deleteChat, isBlocked, manager, validId, tokenHash, inviteToken, normalizePersian, refreshRoom } from './access.js';
 import { allowRequest } from './limits.js';
 import { hashPassword, verifyPassword, generateSalt } from './auth.js';
 import { revokeSessions } from './sessions.js';
@@ -105,6 +105,27 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     ]);
     return jsonResponse({ ok:true });
   }
+  if (path === '/api/profile/username' && method === 'POST') {
+    const body = await inputJson(request), username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+    check(/^[a-z0-9_]{3,20}$/.test(username),'نام کاربری باید ۳ تا ۲۰ حرف انگلیسی، عدد یا _ باشد.');
+    check(await allowRequest(env,'username-change',userId,5,3600_000),'تغییر نام کاربری زیاد است؛ یک ساعت دیگر تلاش کنید.',429);
+    check(!await env.DB.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').bind(username,userId).first(),'این نام کاربری قبلاً گرفته شده است.',409);
+    try { await env.DB.prepare('UPDATE users SET username = ? WHERE id = ?').bind(username,userId).run(); }
+    catch { throw new InputError('این نام کاربری قبلاً گرفته شده است.',409); }
+    return jsonResponse({ username });
+  }
+  if (path === '/api/public-channels' && method === 'GET') {
+    const query = (url.searchParams.get('q') || '').trim().toLowerCase().replace(/^@/,''); check(query.length <= 100,'عبارت جستجو طولانی است.');
+    const { results } = await env.DB.prepare(`SELECT c.id,c.title,bc.handle,bc.description,(SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id) AS members,EXISTS(SELECT 1 FROM chat_members m WHERE m.chat_id=c.id AND m.user_id=?) AS joined FROM broadcast_channels bc JOIN chats c ON c.id=bc.chat_id WHERE bc.visibility='public' AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id=c.id) AND (?='' OR instr(lower(c.title),?)>0 OR instr(lower(bc.handle),?)>0) ORDER BY members DESC,c.id LIMIT 30`).bind(userId,query,query,query).all();
+    return jsonResponse(results);
+  }
+  const publicJoin = path.match(/^\/api\/public-channels\/([a-zA-Z0-9_-]+)\/join$/);
+  if (publicJoin && method === 'POST') {
+    check(await allowRequest(env,'join',userId,30,3600_000),'تلاش‌های عضویت زیاد است؛ بعداً تلاش کنید.',429);
+    await env.DB.prepare(`INSERT OR IGNORE INTO chat_members(chat_id,user_id,joined_at) SELECT bc.chat_id,?,? FROM broadcast_channels bc WHERE bc.chat_id=? AND bc.visibility='public' AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id=bc.chat_id) AND (SELECT count(*) FROM chat_members WHERE chat_id=bc.chat_id)<10000`).bind(userId,Date.now(),publicJoin[1]).run();
+    check(await chatAccess(env,publicJoin[1],userId),'این کانال پیدا نشد یا ظرفیت آن پر است.',404);
+    return jsonResponse({ chatId: publicJoin[1] });
+  }
   if (path === '/api/profile/password' && method === 'POST') {
     const body = await inputJson(request);
     check(typeof body.currentPassword==='string' && typeof body.newPassword==='string' && body.newPassword.length>=8 && body.newPassword.length<=1024,'رمز تازه باید ۸ تا ۱۰۲۴ کاراکتر باشد.');
@@ -144,7 +165,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
   }
   if (path === '/api/service/reports') {
     await requireAdmin(env,userId);
-    if (method==='GET') return jsonResponse((await env.DB.prepare("SELECT r.*,u.username AS reporter,t.username AS target FROM abuse_reports r JOIN users u ON u.id=r.reporter_id JOIN users t ON t.id=r.target_user_id ORDER BY created_at DESC LIMIT 100").all()).results);
+    if (method==='GET') return jsonResponse((await env.DB.prepare("SELECT r.*,u.username AS reporter,t.username AS target,c.title AS chatTitle,c.type AS chatType,bc.chat_id IS NOT NULL AS isChannel,st.disabled_at AS targetDisabledAt FROM abuse_reports r JOIN users u ON u.id=r.reporter_id JOIN users t ON t.id=r.target_user_id LEFT JOIN chats c ON c.id=r.chat_id LEFT JOIN broadcast_channels bc ON bc.chat_id=r.chat_id LEFT JOIN service_user_state st ON st.user_id=r.target_user_id ORDER BY r.status='open' DESC,r.created_at DESC LIMIT 100").all()).results);
     if (method==='PATCH') { const body=await inputJson(request); check(validId(body.id) && ['open','resolved'].includes(body.status),'وضعیت گزارش معتبر نیست.'); await env.DB.prepare('UPDATE abuse_reports SET status=? WHERE id=?').bind(body.status,body.id).run(); return jsonResponse({ok:true}); }
   }
   if (path === '/api/blocks') {
@@ -203,12 +224,12 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(invite,'دعوت معتبر نیست.',404);
     if (!await chatAccess(env,invite.chat_id,userId)) {
       await env.DB.batch([
-        env.DB.prepare(`INSERT OR IGNORE INTO group_redemptions SELECT token_hash,?,?,? FROM group_invites WHERE token_hash=? AND revoked_at IS NULL AND expires_at>? AND uses<use_limit AND (SELECT count(*) FROM chat_members WHERE chat_id=group_invites.chat_id)<100`).bind(userId,now,grantId,hash,now),
+        env.DB.prepare(`INSERT OR IGNORE INTO group_redemptions SELECT token_hash,?,?,? FROM group_invites WHERE token_hash=? AND revoked_at IS NULL AND expires_at>? AND uses<use_limit AND (SELECT count(*) FROM chat_members WHERE chat_id=group_invites.chat_id)<(CASE WHEN EXISTS(SELECT 1 FROM broadcast_channels WHERE chat_id=group_invites.chat_id) THEN 10000 ELSE 100 END)`).bind(userId,now,grantId,hash,now),
         env.DB.prepare('UPDATE group_invites SET uses=(SELECT count(*) FROM group_redemptions WHERE token_hash=?) WHERE token_hash=?').bind(hash,hash),
         env.DB.prepare('INSERT OR IGNORE INTO chat_members(chat_id,user_id,joined_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM group_redemptions r JOIN group_invites i ON i.token_hash=r.token_hash WHERE r.token_hash=? AND r.user_id=? AND r.grant_id=? AND i.revoked_at IS NULL AND i.expires_at>?)').bind(invite.chat_id,userId,now,hash,userId,grantId,now),
       ]);
     }
-    check(await chatAccess(env,invite.chat_id,userId),'دعوت منقضی، لغو یا مصرف شده است یا گروه پر است.',403);
+    check(await chatAccess(env,invite.chat_id,userId),'دعوت منقضی، لغو یا مصرف شده است یا ظرفیت پر شده است.',403);
     return jsonResponse({chatId:invite.chat_id});
   }
   const match=path.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/(details|preferences|group|invites|leave|search|messages\/([a-zA-Z0-9_-]+)\/(edit|delete|hide|reaction|save|pin))$/);
@@ -216,10 +237,11 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
   const chatId=match[1],action=match[2],messageId=match[3],messageAction=match[4];
   const access=await requireChat(env,chatId,userId);
   if (action==='details' && method==='GET') {
-    const {results:members}=await env.DB.prepare(`SELECT u.id,u.username,u.display_name AS displayName,p.avatar,p.about,COALESCE(g.role,'member') AS role FROM chat_members cm JOIN users u ON u.id=cm.user_id LEFT JOIN user_profiles p ON p.user_id=u.id LEFT JOIN group_roles g ON g.chat_id=cm.chat_id AND g.user_id=u.id WHERE cm.chat_id=? ORDER BY cm.rowid`).bind(chatId).all();
+    const {results:members}=await env.DB.prepare(`SELECT u.id,u.username,u.display_name AS displayName,p.avatar,p.about,COALESCE(g.role,'member') AS role FROM chat_members cm JOIN users u ON u.id=cm.user_id LEFT JOIN user_profiles p ON p.user_id=u.id LEFT JOIN group_roles g ON g.chat_id=cm.chat_id AND g.user_id=u.id WHERE cm.chat_id=? AND (? OR g.role IN ('owner','admin')) ORDER BY cm.rowid LIMIT 500`).bind(chatId,!access.isChannel||manager(access.role)?1:0).all();
+    const memberCount=(await env.DB.prepare('SELECT count(*) AS n FROM chat_members WHERE chat_id=?').bind(chatId).first<{n:number}>())?.n||0;
     const {results:hidden}=await env.DB.prepare('SELECT message_id FROM message_hidden WHERE chat_id=? AND user_id=?').bind(chatId,userId).all<{message_id:string}>();
     const pin=await env.DB.prepare('SELECT message_id FROM chat_pins WHERE chat_id=?').bind(chatId).first<{message_id:string}>();
-    return jsonResponse({...access,members,hidden:hidden.map(row=>row.message_id),pinnedMessageId:pin?.message_id||null,blocked:await isBlocked(env,chatId,userId)});
+    return jsonResponse({...access,isChannel:!!access.isChannel,memberCount,members,hidden:hidden.map(row=>row.message_id),pinnedMessageId:pin?.message_id||null,blocked:await isBlocked(env,chatId,userId)});
   }
   if (action==='preferences' && method==='PATCH') {
     const body=await inputJson(request);
@@ -239,7 +261,19 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
   if (action==='group' && method==='PATCH') {
     check(access.type==='group' && manager(access.role),'این تغییر فقط برای مالک یا مدیر گروه است.',403);
     const body=await inputJson(request);
-    if (body.action==='rename') { check(typeof body.title==='string'&&body.title.trim().length>0&&body.title.trim().length<=100,'نام گروه بین ۱ تا ۱۰۰ کاراکتر است.'); const changed=await env.DB.prepare("UPDATE chats SET title=? WHERE id=? AND EXISTS(SELECT 1 FROM group_roles WHERE chat_id=? AND user_id=? AND role IN ('owner','admin'))").bind(body.title.trim(),chatId,chatId,userId).run(); check(changed.meta.changes,'مجوز مدیریت تغییر کرده است.',403); }
+    if (body.action==='channel') {
+      check(access.isChannel,'این تغییر فقط برای کانال است.');
+      const visibility=body.visibility==='public'?'public':'private',handle=visibility==='public'?String(body.handle||'').trim().toLowerCase():null,description=String(body.description||'').trim();
+      check(visibility==='private'||/^[a-z][a-z0-9_]{4,31}$/.test(handle!),'نشانی کانال عمومی باید با حرف انگلیسی شروع شود و ۵ تا ۳۲ حرف، عدد یا _ باشد.');
+      check(description.length<=255,'توضیح کانال حداکثر ۲۵۵ کاراکتر است.');
+      check(!handle||!await env.DB.prepare('SELECT 1 FROM broadcast_channels WHERE handle=? AND chat_id!=?').bind(handle,chatId).first(),'این نشانی کانال قبلاً گرفته شده است.',409);
+      await env.DB.prepare('UPDATE broadcast_channels SET visibility=?,handle=?,description=? WHERE chat_id=?').bind(visibility,handle,description,chatId).run();
+    }
+    else if (body.action==='delete') {
+      check(access.role==='owner','فقط مالک می‌تواند آن را حذف کند.',403);
+      await deleteChat(env,chatId); return jsonResponse({ok:true});
+    }
+    else if (body.action==='rename') { check(typeof body.title==='string'&&body.title.trim().length>0&&body.title.trim().length<=100,'نام باید بین ۱ تا ۱۰۰ کاراکتر باشد.'); const changed=await env.DB.prepare("UPDATE chats SET title=? WHERE id=? AND EXISTS(SELECT 1 FROM group_roles WHERE chat_id=? AND user_id=? AND role IN ('owner','admin'))").bind(body.title.trim(),chatId,chatId,userId).run(); check(changed.meta.changes,'مجوز مدیریت تغییر کرده است.',403); }
     else {
       check(validId(body.userId)&&body.userId!==userId,'عضو معتبر را انتخاب کنید.');
       const target=await requireChat(env,chatId,body.userId);

@@ -118,6 +118,13 @@ try {
   await page.locator('.call-accept').waitFor({ timeout: 15000 });
   await page.locator('.call-accept').click();
   await bothStayUp(page, 'app to browser'); shot('call-b');
+  // A voice call starts at the ear, and the speaker button moves it.
+  assert.equal(await app.evaluate(`[...document.querySelectorAll('.call-actions button')].find(b=>b.textContent==='بلندگو')?.getAttribute('aria-pressed')`), 'false');
+  const routed = () => shell('dumpsys audio').includes('MODE_IN_COMMUNICATION') || /mode.*IN_COMMUNICATION/i.test(shell('dumpsys audio'));
+  assert.ok(routed(), 'the app must hold the communication audio mode in a call');
+  await app.evaluate(`[...document.querySelectorAll('.call-actions button')].find(b=>b.textContent==='بلندگو').click();true`);
+  assert.equal(await app.evaluate(`[...document.querySelectorAll('.call-actions button')].find(b=>b.textContent==='بلندگو').getAttribute('aria-pressed')`), 'true');
+  note('ok: earpiece and speaker switch');
   await hangUpFromBrowser(page); await sleep(16000);
 
   note('--- browser calls, closed app answers from its notification');
@@ -127,6 +134,19 @@ try {
   await sleep(1500);
   shell('input tap 672 450'); // The Answer button of the heads-up notification on this 1080x2340 device.
   await bothStayUp(page, 'browser to the app in the background'); shot('call-c');
+  await hangUpFromBrowser(page); await sleep(1000);
+  assert.ok(!/communicationDevice|MODE_IN_COMMUNICATION/.test((shell('dumpsys audio').match(/mode \(internal\)[^\n]*/) || [''])[0]), 'the audio mode must return to normal after the call');
+
+  note('--- a file saves to Downloads');
+  const chat = await fixture.mf.dispatchFetch(fixture.origin + '/api/chats/' + chatId + '/media?kind=file&mime=text/plain&durationMs=0&name=note.txt', { method: 'POST', headers: { Authorization: 'Bearer ' + fixture.owner.token, 'Content-Type': 'text/plain' }, body: 'hello' });
+  assert.equal(chat.status, 201);
+  shell(`am start -W -n ${PACKAGE}/.MainActivity`); await sleep(1500);
+  await until(() => app.evaluate(`!!document.querySelector('.file-note')`), 20000, 'the file card');
+  shell('rm -f /sdcard/Download/note.txt');
+  await app.evaluate(`document.querySelector('.file-note').click();true`);
+  await until(() => shell('cat /sdcard/Download/note.txt 2>/dev/null').includes('hello'), 15000, 'the saved file');
+  note('ok: file saved');
+  shell('am force-stop com.google.android.documentsui; input keyevent KEYCODE_HOME');
   note('\nPassed.');
 } catch (error) {
   note('FAILED: ' + error.message);

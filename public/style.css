@@ -1254,3 +1254,40 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
   .chats-list { padding-inline:4px; }
 }
 @media (max-width:600px) { .chat-header-info>.avatar { display:flex; } .message-input,.media-record,.send-btn { min-height:48px; } .media-record,.send-btn { width:48px; height:48px; min-width:48px; } .message-input { padding:12px 14px; } .message-more { width:44px; min-width:44px; height:44px; min-height:44px; } }
+
+/* Files and images */
+.media-picker { display:none; }
+.media-attach { width:44px; height:44px; flex-shrink:0; align-self:flex-end; margin-block-end:5px; color:var(--text-secondary); }
+.chat-input-area[hidden], .channel-footer[hidden] { display:none; }
+.file-note { display:flex; align-items:center; gap:12px; width:min(280px,66vw); padding:0; border:0; background:none; color:inherit; font:inherit; text-align:start; cursor:pointer; }
+.file-icon { flex-shrink:0; width:46px; height:46px; border-radius:50%; background:var(--accent-color); position:relative; }
+.file-icon::before { content:''; position:absolute; inset:11px; background:#fff; -webkit-mask:center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12M7 11l5 5 5-5M5 21h14'/%3E%3C/svg%3E"); mask:center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12M7 11l5 5 5-5M5 21h14'/%3E%3C/svg%3E"); }
+.file-note[data-state="loading"] .file-icon { opacity:.6; }
+.file-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.file-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.file-size { font-size:.8rem; opacity:.75; }
+.image-note { display:block; padding:0; border:0; background:var(--bg-card,#0002); border-radius:12px; overflow:hidden; cursor:zoom-in; min-width:120px; min-height:90px; }
+.image-note img { display:block; max-width:min(320px,66vw); max-height:360px; object-fit:contain; }
+.image-note[data-state="failed"] { cursor:default; opacity:.5; }
+.image-viewer { max-width:100vw; max-height:100dvh; width:100vw; height:100dvh; margin:0; padding:16px; border:0; background:rgb(0 0 0 / .92); }
+.image-viewer[open] { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
+.image-viewer img { max-width:100%; max-height:calc(100dvh - 90px); object-fit:contain; }
+/* Channels */
+.channel-mark { display:inline-block; width:1em; height:1em; margin-inline-end:4px; vertical-align:-.12em; }
+.channel-footer { display:flex; justify-content:center; padding:10px 16px 14px; }
+.channel-footer .quiet-button { width:min(100%,420px); }
+.message-views { opacity:.85; margin-inline-end:4px; }
+.chat-header:not(.is-dm) .call-launch { display:none; }
+/* Admin panel */
+.admin-menu { display:grid; gap:8px; margin-block-start:12px; }
+.admin-menu .quiet-button { display:flex; justify-content:space-between; align-items:center; text-align:start; }
+.admin-card-title { font-weight:600; margin:0 0 4px; }
+.admin-card.is-done { opacity:.65; }
+#btn-menu-admin .unread-badge { margin-inline-start:auto; }
+
+/* English */
+:root[dir="ltr"] body { direction:ltr; }
+.language-picker { display:flex; flex-direction:column; gap:6px; }
+#auth-language-row { margin-block-start:14px; }
+:root[dir="ltr"] .message-time { text-align:right; }
+:root[dir="ltr"] .ui-icon:has(use[href="#i-back"]) { transform:scaleX(-1); }
