@@ -1,7 +1,7 @@
 import { enforceSecondFactor } from './security.js';
 import { Env, JwtPayload, Message } from './types.js';
 import { InputError, inputJson, jsonResponse } from './http.js';
-import { chatAccess, deleteChat, isBlocked, manager, validId, tokenHash, inviteToken, normalizePersian, refreshRoom } from './access.js';
+import { chatAccess, deleteChat, validAvatar, isBlocked, manager, validId, tokenHash, inviteToken, normalizePersian, refreshRoom } from './access.js';
 import { allowRequest } from './limits.js';
 import { hashPassword, verifyPassword, generateSalt } from './auth.js';
 import { revokeSessions } from './sessions.js';
@@ -95,8 +95,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(typeof body.about==='string' && body.about.length<=300,'دربارهٔ من حداکثر ۳۰۰ کاراکتر است.');
     check(['dark','light','system'].includes(body.theme) && ['small','normal','large'].includes(body.fontSize),'تنظیم ظاهر معتبر نیست.');
     const avatar = body.avatar || '';
-    check(typeof avatar==='string' && avatar.length<=48_000 && (!avatar || /^data:image\/(png|webp);base64,[A-Za-z0-9+/]+=*$/.test(avatar)),'تصویر پروفایل معتبر نیست یا خیلی بزرگ است.');
-    if (avatar) { let bytes='';try {bytes=atob(avatar.split(',')[1]);}catch {throw new InputError('تصویر پروفایل معتبر نیست.');} check(bytes.startsWith('\x89PNG\r\n\x1a\n') || (bytes.startsWith('RIFF') && bytes.slice(8,12)==='WEBP'),'فقط تصویر PNG یا WebP پذیرفته می‌شود.'); }
+    check(validAvatar(avatar),'تصویر پروفایل معتبر نیست یا خیلی بزرگ است.');
     await env.DB.batch([
       env.DB.prepare('UPDATE users SET display_name = ? WHERE id = ?').bind(body.displayName.trim(),userId),
       env.DB.prepare(`INSERT INTO user_profiles(user_id,about,avatar,theme,font_size,notifications,notification_preview) VALUES (?,?,?,?,?,?,?)
@@ -116,7 +115,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
   }
   if (path === '/api/public-channels' && method === 'GET') {
     const query = (url.searchParams.get('q') || '').trim().toLowerCase().replace(/^@/,''); check(query.length <= 100,'عبارت جستجو طولانی است.');
-    const { results } = await env.DB.prepare(`SELECT c.id,c.title,bc.handle,bc.description,(SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id) AS members,EXISTS(SELECT 1 FROM chat_members m WHERE m.chat_id=c.id AND m.user_id=?) AS joined FROM broadcast_channels bc JOIN chats c ON c.id=bc.chat_id WHERE bc.visibility='public' AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id=c.id) AND (?='' OR instr(lower(c.title),?)>0 OR instr(lower(bc.handle),?)>0) ORDER BY members DESC,c.id LIMIT 30`).bind(userId,query,query,query).all();
+    const { results } = await env.DB.prepare(`SELECT c.id,c.title,bc.handle,bc.description,photo.avatar,(SELECT count(*) FROM chat_members m WHERE m.chat_id=c.id) AS members,EXISTS(SELECT 1 FROM chat_members m WHERE m.chat_id=c.id AND m.user_id=?) AS joined FROM broadcast_channels bc JOIN chats c ON c.id=bc.chat_id LEFT JOIN chat_photos photo ON photo.chat_id=c.id WHERE bc.visibility='public' AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id=c.id) AND (?='' OR instr(lower(c.title),?)>0 OR instr(lower(bc.handle),?)>0) ORDER BY members DESC,c.id LIMIT 30`).bind(userId,query,query,query).all();
     return jsonResponse(results);
   }
   const publicJoin = path.match(/^\/api\/public-channels\/([a-zA-Z0-9_-]+)\/join$/);
@@ -241,7 +240,8 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     const memberCount=(await env.DB.prepare('SELECT count(*) AS n FROM chat_members WHERE chat_id=?').bind(chatId).first<{n:number}>())?.n||0;
     const {results:hidden}=await env.DB.prepare('SELECT message_id FROM message_hidden WHERE chat_id=? AND user_id=?').bind(chatId,userId).all<{message_id:string}>();
     const pin=await env.DB.prepare('SELECT message_id FROM chat_pins WHERE chat_id=?').bind(chatId).first<{message_id:string}>();
-    return jsonResponse({...access,isChannel:!!access.isChannel,memberCount,members,hidden:hidden.map(row=>row.message_id),pinnedMessageId:pin?.message_id||null,blocked:await isBlocked(env,chatId,userId)});
+    const photo=access.type==='group'?await env.DB.prepare('SELECT avatar FROM chat_photos WHERE chat_id=?').bind(chatId).first<{avatar:string}>():null;
+    return jsonResponse({...access,isChannel:!!access.isChannel,avatar:photo?.avatar||'',memberCount,members,hidden:hidden.map(row=>row.message_id),pinnedMessageId:pin?.message_id||null,blocked:await isBlocked(env,chatId,userId)});
   }
   if (action==='preferences' && method==='PATCH') {
     const body=await inputJson(request);
@@ -271,13 +271,21 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
   if (action==='group' && method==='PATCH') {
     check(access.type==='group' && manager(access.role),'این تغییر فقط برای مالک یا مدیر گروه است.',403);
     const body=await inputJson(request);
-    if (body.action==='channel') {
+    if (body.action==='photo') {
+      const avatar=body.avatar||'';check(validAvatar(avatar),'تصویر معتبر نیست یا خیلی بزرگ است.');
+      await (avatar?env.DB.prepare('INSERT INTO chat_photos VALUES (?,?) ON CONFLICT(chat_id) DO UPDATE SET avatar=excluded.avatar').bind(chatId,avatar):env.DB.prepare('DELETE FROM chat_photos WHERE chat_id=?').bind(chatId)).run();
+    }
+    else if (body.action==='channel') {
       check(access.isChannel,'این تغییر فقط برای کانال است.');
       const visibility=body.visibility==='public'?'public':'private',handle=visibility==='public'?String(body.handle||'').trim().toLowerCase():null,description=String(body.description||'').trim();
       check(visibility==='private'||/^[a-z][a-z0-9_]{4,31}$/.test(handle!),'نشانی کانال عمومی باید با حرف انگلیسی شروع شود و ۵ تا ۳۲ حرف، عدد یا _ باشد.');
       check(description.length<=255,'توضیح کانال حداکثر ۲۵۵ کاراکتر است.');
       check(!handle||!await env.DB.prepare('SELECT 1 FROM broadcast_channels WHERE handle=? AND chat_id!=?').bind(handle,chatId).first(),'این نشانی کانال قبلاً گرفته شده است.',409);
-      await env.DB.prepare('UPDATE broadcast_channels SET visibility=?,handle=?,description=? WHERE chat_id=?').bind(visibility,handle,description,chatId).run();
+      const avatar=body.avatar||'';check(validAvatar(avatar),'تصویر کانال معتبر نیست یا خیلی بزرگ است.');
+      await env.DB.batch([
+        env.DB.prepare('UPDATE broadcast_channels SET visibility=?,handle=?,description=? WHERE chat_id=?').bind(visibility,handle,description,chatId),
+        avatar?env.DB.prepare('INSERT INTO chat_photos VALUES (?,?) ON CONFLICT(chat_id) DO UPDATE SET avatar=excluded.avatar').bind(chatId,avatar):env.DB.prepare('DELETE FROM chat_photos WHERE chat_id=?').bind(chatId),
+      ]);
     }
     else if (body.action==='delete') {
       check(access.role==='owner','فقط مالک می‌تواند آن را حذف کند.',403);

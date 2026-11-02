@@ -3,7 +3,17 @@
 (() => {
   const KEY = 'wihm_language';
   let language = 'fa';
-  try { if (localStorage.getItem(KEY) === 'en') language = 'en'; } catch { /* Private mode keeps the default. */ }
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved === 'en' || saved === 'fa') language = saved;
+    // A new device starts in its own language, so nobody has to read Persian to find the switch.
+    // Someone already signed in stays in Persian, which is what they have been using.
+    else if (!localStorage.getItem('cf_msg_token')) {
+      const device = navigator.languages?.length ? [...navigator.languages] : [navigator.language || ''];
+      language = device.some(tag => /^(fa|prs|pes)\b/i.test(tag)) ? 'fa' : 'en';
+      localStorage.setItem(KEY, language);
+    }
+  } catch { /* Private mode keeps the default. */ }
   window.WihmI18n = { language, set(value) { try { localStorage.setItem(KEY, value); } catch {} location.reload(); } };
   if (language !== 'en') return;
 
@@ -662,7 +672,7 @@
     'روش درخواست معتبر نیست.': 'The request method is invalid.',
     'روش معتبر نیست.': 'The method is invalid.',
     'روش API معتبر نیست.': 'The API method is invalid.',
-    'روشن': 'Light',
+    'روشن': 'On',
     'روشن کردن دوربین': 'Turn camera on',
     'روشن‌کردن اعلان': 'Unmute',
     'رویداد در صف': 'queued events',
@@ -1161,6 +1171,50 @@
     'بدون عضویت': 'Not a member',
     'تأیید': 'Confirm',
     'شروع': 'Start',
+    'تصویر معتبر نیست یا خیلی بزرگ است.': 'The image is invalid or too large.',
+    'عکس ذخیره شد.': 'Photo saved.',
+    'سرورهای دیگر': 'Other servers',
+    'کانال‌های عمومی سرورهای دیگر را می‌توانید پیدا کنید، بخوانید و دنبال کنید. این کانال‌ها در فهرست گفتگوها و اعلان‌ها نمی‌آیند.': 'You can find, read and follow public channels on other servers. They do not appear in your chat list or notifications.',
+    'جستجو در آن سرور': 'Search that server',
+    'دنبال می‌کنید': 'Following',
+    'دنبال کردن': 'Follow',
+    'لغو دنبال کردن': 'Unfollow',
+    'نشانی کانال معتبر نیست.': 'The channel address is invalid.',
+    'سرور مقصد باید به نسخهٔ ۱.۷.۲ یا جدیدتر به‌روز شود.': 'The destination server must update to version 1.7.2 or newer.',
+    'سرور مقصد به نشانی دیگری هدایت می‌کند؛ نشانی اصلی HTTPS را از صاحب سرور بگیرید.': 'The destination server redirects elsewhere; get its main HTTPS address from its owner.',
+    'دسترسی عمومی به سرور مقصد بسته است؛ محدودیت‌های شبکه یا Cloudflare Access را با صاحب سرور بررسی کنید.': 'Public access to the destination server is closed; check network limits or Cloudflare Access with its owner.',
+    'کانال خصوصی': 'Private channel',
+    'کانال عمومی': 'Public channel',
+    'فقط با لینک دعوت می‌توان به کانال خصوصی پیوست.': 'Private channels can only be joined with an invite link.',
+    'کانال عمومی در جستجو پیدا می‌شود و همه می‌توانند عضو شوند.': 'Public channels can be found in search, and anyone can join.',
+    'لینک عمومی': 'Public link',
+    'لینک': 'Link',
+    '۵ تا ۳۲ حرف انگلیسی، عدد یا _ و شروع با حرف. دیگران با این لینک کانال را پیدا می‌کنند.': '5 to 32 English letters, digits or _, starting with a letter. People find the channel with this link.',
+    'می‌توانید توضیح کوتاهی برای کانال بنویسید.': 'You can give your channel a short description.',
+    'بعدی': 'Next',
+    'افزودن عکس': 'Add photo',
+    'پیام همگانی…': 'Broadcast…',
+    'کانال ساخته شد': 'Channel created',
+    'لینک عمومی کانال:': 'The channel\'s public link:',
+    'لینک دعوت کانال؛ یک هفته اعتبار دارد و از اطلاعات کانال می‌توانید لینک تازه بسازید:': 'The channel\'s invite link. It lasts a week, and you can make a new one from the channel info:',
+    'افزودن مشترک': 'Add subscribers',
+    'پایان': 'Done',
+    'اطلاعات کانال': 'Channel info',
+    'خاموش': 'Off',
+    'ویرایش کانال': 'Edit channel',
+    'نام، عکس، توضیح و نوع کانال': 'Name, photo, description and type',
+    'گزارش کانال': 'Report channel',
+    'حذف کانال': 'Delete channel',
+    'خروج از کانال': 'Leave channel',
+    'از کانال خارج می‌شوید؟': 'Leave this channel?',
+    'این کانال و همهٔ پست‌ها و فایل‌هایش برای همیشه حذف شود؟': 'Delete this channel and all its posts and files forever?',
+    'برداشتن مدیریت': 'Remove admin',
+    'از کانال حذف شود؟': 'be removed from the channel?',
+    'مدیری نیست.': 'No admins.',
+    'هنوز مشترکی نیست؛ لینک کانال را بفرستید.': 'No subscribers yet; share the channel link.',
+    'تصویر کانال معتبر نیست یا خیلی بزرگ است.': 'The channel photo is invalid or too large.',
+    'تصویر پروفایل معتبر نیست یا خیلی بزرگ است.': 'The profile photo is invalid or too large.',
+    'منتقل شود؟': 'be transferred?',
     'نسخهٔ تازه منتشر شد و کلادفلر در حال فعال‌کردن آن است؛ معمولاً چند دقیقه طول می‌کشد.': 'The new version is published and Cloudflare is activating it; this usually takes a few minutes.',
     'نسخهٔ تازه منتشر شد ولی پاسخ سلامت آن هنوز کامل نیست؛ دوباره بررسی می‌شود.': 'The new version is published but its health check is not complete yet; checking again.',
     'کلادفلر نسخهٔ تازه را فعال نکرد؛ «تلاش دوباره» را بزنید.': 'Cloudflare did not activate the new version; choose "Try again".',

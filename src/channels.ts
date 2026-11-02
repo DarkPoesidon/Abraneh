@@ -85,6 +85,25 @@ export async function publicChannels(request:Request,env:Env):Promise<Response|n
 export async function handleChannels(request:Request,env:Env,auth:JwtPayload):Promise<Response|null> {
   const url=new URL(request.url),path=url.pathname;
   if(path!=='/api/channels'&&!path.startsWith('/api/channels/'))return null;
+  // The first version of channels lived apart from chats. Each one moves over once, posts included.
+  // The old rows stay, so nothing is lost if this needs to run again.
+  if(path==='/api/channels/migrate'&&request.method==='POST') {
+    const {results:old}=await env.DB.prepare('SELECT c.* FROM channels c WHERE (c.owner_id=? OR EXISTS(SELECT 1 FROM channel_members m WHERE m.channel_id=c.id AND m.user_id=?)) AND NOT EXISTS(SELECT 1 FROM chats WHERE chats.id=c.id) ORDER BY c.id LIMIT 5').bind(auth.userId,auth.userId).all<any>();
+    for(const row of old) {
+      const {results:rows}=await env.DB.prepare('SELECT p.id,p.author_id AS author,u.display_name AS name,p.text,p.created_at AS createdAt FROM channel_posts p JOIN users u ON u.id=p.author_id WHERE p.channel_id=? AND p.deleted_at=0 ORDER BY p.created_at').bind(row.id).all();
+      await env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(row.id)).fetch('https://internal/import-posts',{method:'POST',body:JSON.stringify({chatId:row.id,posts:rows})});
+      const now=Date.now(),handle=row.visibility==='public'?'ch_'+row.id.replace(/[^a-z0-9]/gi,'').slice(0,12).toLowerCase():null;
+      await env.DB.batch([
+        env.DB.prepare("INSERT OR IGNORE INTO chats (id,type,title,created_at,updated_at) VALUES (?,'group',?,?,?)").bind(row.id,row.title,row.created_at,now),
+        env.DB.prepare('INSERT OR IGNORE INTO broadcast_channels VALUES (?,?,?,?)').bind(row.id,row.visibility,handle,''),
+        env.DB.prepare('INSERT OR IGNORE INTO chat_members(chat_id,user_id,joined_at) VALUES (?,?,?)').bind(row.id,row.owner_id,row.created_at),
+        env.DB.prepare('INSERT OR IGNORE INTO chat_members(chat_id,user_id,joined_at) SELECT channel_id,user_id,? FROM channel_members WHERE channel_id=?').bind(now,row.id),
+        env.DB.prepare("INSERT OR IGNORE INTO group_roles VALUES (?,?,'owner')").bind(row.id,row.owner_id),
+        env.DB.prepare("INSERT OR IGNORE INTO group_roles SELECT channel_id,user_id,'admin' FROM channel_members WHERE channel_id=? AND role='admin' AND user_id!=?").bind(row.id,row.owner_id),
+      ]);
+    }
+    return jsonResponse({migrated:old.length});
+  }
   if(path==='/api/channels') {
     if(request.method==='GET') {
       const after=url.searchParams.get('after')||'';check(!after||validId(after),'نشانگر معتبر نیست.');

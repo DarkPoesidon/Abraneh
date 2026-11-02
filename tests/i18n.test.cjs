@@ -29,15 +29,16 @@ test('the English dictionary covers the interface', () => {
     if (Object.hasOwn(EN, piece)) continue;
     if (FA.test(piece.replace(words, ''))) missing.add(piece);
   }
-  const known = new Set(['،', '؟', 'از', 'در', 'این', 'ک', 'ی', 'ی پیدا نشد.', '«', '»', 'Language / زبان', 'فارسی']);
+  const known = new Set(['،', '؟', 'از', 'در', 'این', 'ک', 'ی', 'ی پیدا نشد.', '«', '»', 'Language / زبان', 'فارسی', 'فارسی / English']);
   const left = [...missing].filter(piece => !known.has(piece));
   assert.deepEqual(left, [], left.length + ' strings have no English');
 });
 test('no translation still contains Persian', () => {
   assert.deepEqual(Object.entries(EN).filter(([, value]) => FA.test(value)).map(([key]) => key), []);
 });
-test('Persian is the default, and choosing English makes the page left to right', () => {
+test('signed-in people stay in Persian, and choosing English makes the page left to right', () => {
   assert.match(source, /let language = 'fa';/);
+  assert.match(source, /navigator\.languages/, 'a new device follows its own language');
   assert.match(source, /root\.dir = 'ltr'/);
   assert.match(readFileSync('public/index.html', 'utf8'), /<script src="\/i18n\.js"><\/script>[\s\S]*<\/head>/, 'it must run before the page is drawn');
 });

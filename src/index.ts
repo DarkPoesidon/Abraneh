@@ -12,7 +12,7 @@ import { allowRequest } from './limits.js';
 import { APP_VERSION } from './version.js';
 import { listReceipts, saveReceipt } from './receipts.js';
 import { corsResponse, jsonResponse, errorResponse, InputError, inputJson } from './http.js';
-import { chatAccess, MEMBER_LIMIT_SQL, isBlocked } from './access.js';
+import { chatAccess, MEMBER_LIMIT_SQL, validAvatar, isBlocked } from './access.js';
 import { handleFeatures, registrationMode, registrationGate, enrichMessages, enrichChats } from './features.js';
 import { handleUpdates, scheduledUpdates } from './updates.js';
 import { handleTelegram, telegramWebhook, scheduledTelegram } from './telegram.js';
@@ -70,8 +70,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('broadcast_channels','chat_moderation','chat_deletions','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
-        const ready = row?.n === 59;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('broadcast_channels','chat_moderation','chat_deletions','chat_photos','remote_channel_follows','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
+        const ready = row?.n === 61;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -340,13 +340,14 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
                 AND NOT EXISTS(SELECT 1 FROM message_details d WHERE d.message_id=m.id AND d.deleted_at>0) AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))
                 ORDER BY m.created_at,m.id LIMIT 1) AS firstUnreadId,
               COALESCE(r.read_at,0) AS readAt, COALESCE(r.read_id,'') AS readId,
-              bc.visibility AS channelVisibility, bc.handle AS channelHandle
+              bc.visibility AS channelVisibility, bc.handle AS channelHandle, photo.avatar AS channelAvatar
             FROM chats c
             JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = ?
             LEFT JOIN chat_members pm ON c.id = pm.chat_id AND pm.user_id != ? AND c.type = 'dm'
             LEFT JOIN users u ON pm.user_id = u.id
             LEFT JOIN chat_receipts r ON r.chat_id = c.id AND r.user_id = cm.user_id
             LEFT JOIN broadcast_channels bc ON bc.chat_id = c.id
+            LEFT JOIN chat_photos photo ON photo.chat_id = c.id
             WHERE NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id = c.id)
               AND NOT (EXISTS(SELECT 1 FROM chat_deletions cd WHERE cd.chat_id = c.id AND cd.user_id = cm.user_id)
                 AND NOT EXISTS(SELECT 1 FROM messages m WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id = m.id AND h.user_id = cm.user_id)))
@@ -365,6 +366,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
               isChannel: !!row.channelVisibility,
               visibility: row.channelVisibility || undefined,
               handle: row.channelHandle || undefined,
+              avatar: row.channelAvatar || undefined,
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
               unreadCount: row.unreadCount,
@@ -433,6 +435,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
             const members = channel && !body.memberIds?.length ? [] : await validatedMembers(body.memberIds, env, auth.userId);
             if (!members) return errorResponse('حداقل یک عضو معتبر انتخاب کنید (حداکثر ۹۹ نفر).');
             const settings = channel ? channelSettings(body) : null;
+            const photo = channel ? body.avatar || '' : '';
+            if (!validAvatar(photo)) return errorResponse('تصویر کانال معتبر نیست یا خیلی بزرگ است.');
             if (settings?.handle && await env.DB.prepare('SELECT 1 FROM broadcast_channels WHERE handle = ?').bind(settings.handle).first()) return errorResponse('این نشانی کانال قبلاً گرفته شده است.', 409);
             const chatId = crypto.randomUUID();
 
@@ -442,6 +446,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
               env.DB.prepare('INSERT INTO chat_members(chat_id,user_id,joined_at) SELECT ?,value,? FROM json_each(?)').bind(chatId,now,JSON.stringify(members)),
               env.DB.prepare("INSERT INTO group_roles VALUES (?,?,'owner')").bind(chatId,auth.userId),
               ...(settings ? [env.DB.prepare('INSERT INTO broadcast_channels VALUES (?,?,?,?)').bind(chatId,settings.visibility,settings.handle,settings.description)] : []),
+              ...(photo ? [env.DB.prepare('INSERT INTO chat_photos VALUES (?,?)').bind(chatId,photo)] : []),
             ]);
 
             return jsonResponse({ id: chatId, isNew: true }, 201);

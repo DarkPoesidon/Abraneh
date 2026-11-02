@@ -158,3 +158,62 @@ test('groups are left or deleted, not deleted through the private chat route', a
   assert.equal((await call(fixture.peer, `/api/chats/${id}/delete`, 'POST', { forEveryone: true })).status, 400);
   assert.ok((await ok(fixture.owner, `/api/chats/${id}/details`)).members.length === 2);
 });
+
+test('a channel from the first version moves into the chat list once, with its posts and people', async () => {
+  const db = await fixture.mf.getD1Database('DB'), now = Date.now();
+  await db.batch([
+    db.prepare("INSERT INTO channels VALUES ('legacy-one',?,'مانترا','public','hash',?)").bind(fixture.owner.user.id, now - 5000),
+    db.prepare("INSERT INTO channel_members VALUES ('legacy-one',?,'subscriber')").bind(fixture.peer.user.id),
+    db.prepare("INSERT INTO channel_posts(id,channel_id,author_id,text,created_at,updated_at) VALUES ('legacy-post','legacy-one',?,'پست قدیمی',?,?)").bind(fixture.owner.user.id, now - 4000, now - 4000),
+    db.prepare("INSERT INTO channel_posts(id,channel_id,author_id,text,created_at,updated_at,deleted_at) VALUES ('legacy-gone','legacy-one',?,'',?,?,?)").bind(fixture.owner.user.id, now - 3000, now - 3000, now - 3000),
+  ]);
+  assert.deepEqual(await ok(fixture.peer, '/api/channels/migrate', 'POST', {}), { migrated: 1 });
+  assert.deepEqual(await ok(fixture.owner, '/api/channels/migrate', 'POST', {}), { migrated: 0 }, 'it moves only once');
+  const owner = (await ok(fixture.owner, '/api/chats')).find(row => row.id === 'legacy-one');
+  assert.equal(owner.isChannel, true); assert.equal(owner.role, 'owner'); assert.equal(owner.title, 'مانترا'); assert.ok(owner.handle);
+  assert.deepEqual((await ok(fixture.peer, '/api/chats/legacy-one/messages')).map(row => [row.id, row.text]), [['legacy-post', 'پست قدیمی']]);
+  assert.equal((await ok(fixture.peer, '/api/chats/legacy-one/details')).role, 'member');
+});
+test('a channel keeps a validated photo', async () => {
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString('base64');
+  assert.equal((await call(fixture.owner, '/api/chats', 'POST', { type: 'channel', title: 'بد', visibility: 'private', avatar: 'data:image/svg+xml;base64,PHN2Zz4=' })).status, 400);
+  const id = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'channel', title: 'عکس', visibility: 'private', avatar: png })).id;
+  assert.equal((await ok(fixture.owner, '/api/chats')).find(row => row.id === id).avatar, png);
+  assert.equal((await ok(fixture.owner, `/api/chats/${id}/details`)).avatar, png);
+  await ok(fixture.owner, `/api/chats/${id}/group`, 'PATCH', { action: 'channel', visibility: 'private', description: '', avatar: '' });
+  assert.equal((await ok(fixture.owner, `/api/chats/${id}/details`)).avatar, '');
+});
+
+test('a group can have a photo set by its managers only', async () => {
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString('base64');
+  const id = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'group', title: 'با عکس', memberIds: [fixture.peer.user.id] })).id;
+  assert.equal((await call(fixture.peer, `/api/chats/${id}/group`, 'PATCH', { action: 'photo', avatar: png })).status, 403);
+  assert.equal((await call(fixture.owner, `/api/chats/${id}/group`, 'PATCH', { action: 'photo', avatar: 'data:text/html;base64,AA==' })).status, 400);
+  await ok(fixture.owner, `/api/chats/${id}/group`, 'PATCH', { action: 'photo', avatar: png });
+  assert.equal((await ok(fixture.peer, '/api/chats')).find(row => row.id === id).avatar, png);
+  assert.equal((await ok(fixture.peer, `/api/chats/${id}/details`)).avatar, png);
+  await ok(fixture.owner, `/api/chats/${id}/group`, 'PATCH', { action: 'photo', avatar: '' });
+  assert.equal((await ok(fixture.peer, `/api/chats/${id}/details`)).avatar, '');
+});
+test('another server can read public channels, and only public ones', async () => {
+  const pub = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'channel', title: 'سراسری', visibility: 'public', handle: 'world_news' })).id;
+  const hidden = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'channel', title: 'پنهان', visibility: 'private' })).id;
+  const owner = await socket(fixture.owner, pub);
+  owner.ws.send(JSON.stringify({ action: 'send_message', chatId: pub, text: 'خبر عمومی', clientMsgId: 'pub-1' }));
+  const anonymous = path => fixture.mf.dispatchFetch(fixture.origin + path);
+  await until(async () => (await (await anonymous('/api/discovery/channels/world_news/posts')).json()).posts?.length === 1, 'the public post');
+  const list = await (await anonymous('/api/discovery/channels?q=world')).json();
+  assert.deepEqual(list.channels.map(row => [row.handle, row.title]), [['world_news', 'سراسری']]);
+  assert.ok(!JSON.stringify(await (await anonymous('/api/discovery/channels')).json()).includes('پنهان'), 'a private channel stays hidden');
+  assert.notEqual((await anonymous('/api/discovery/channels/' + hidden + '/posts')).status, 200);
+  assert.equal((await (await anonymous('/.well-known/wihm')).json()).capabilities.channels, true);
+  await ok(fixture.owner, '/api/service/chats', 'PATCH', { chatId: pub, action: 'suspend', reason: '' });
+  assert.equal((await anonymous('/api/discovery/channels/world_news/posts')).status, 404, 'a suspended channel stays closed to other servers');
+  await ok(fixture.owner, '/api/service/chats', 'PATCH', { chatId: pub, action: 'restore', reason: '' });
+  const db = await fixture.mf.getD1Database('DB');
+  await db.prepare("INSERT INTO site_settings VALUES ('discovery_enabled','0') ON CONFLICT(key) DO UPDATE SET value='0'").run();
+  assert.equal((await anonymous('/api/discovery/channels')).status, 404, 'the admin can close it');
+  await db.prepare("DELETE FROM site_settings WHERE key='discovery_enabled'").run();
+  assert.deepEqual(await ok(fixture.owner, '/api/network/channels/follows'), []);
+  assert.equal((await call(fixture.owner, '/api/network/channels/search', 'POST', { server: 'localhost', q: '' })).status, 400, 'local addresses are refused');
+});
