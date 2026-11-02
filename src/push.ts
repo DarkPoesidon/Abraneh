@@ -2,6 +2,7 @@ import { encryptNotification, vapidHeaders } from '@block65/webcrypto-web-push';
 import { Env, Message } from './types.js';
 import { SESSION_VERSION_SQL, tokenHash } from './access.js';
 import { InputError } from './http.js';
+import { userInbox } from './calls.js';
 
 export function validPushEndpoint(endpoint: unknown): endpoint is string {
   if (typeof endpoint !== 'string' || endpoint.length > 2048) return false;
@@ -17,7 +18,21 @@ export function validatePush(input: any) {
   const decode=(key:string)=>atob(key.replace(/-/g,'+').replace(/_/g,'/'));
   if(decode(input.keys.p256dh).length!==65||decode(input.keys.p256dh).charCodeAt(0)!==4||decode(input.keys.auth).length!==16) throw new InputError('کلید اشتراک اعلان معتبر نیست.');
 }
+// The Android app holds its own socket to its user's inbox, so it depends on no browser or Google service.
+export const NATIVE_ENDPOINT='wihm-native:';
+export async function registerNativeDevice(env:Env,userId:string,sid:string) {
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO push_subscriptions VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').bind(await tokenHash(NATIVE_ENDPOINT+sid),userId,sid,NATIVE_ENDPOINT+sid,'','',Date.now()),
+    env.DB.prepare('INSERT INTO user_profiles(user_id,notifications) VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET notifications=1').bind(userId),
+  ]);
+}
 async function deliver(env:Env,row:any,data:any,ttl:number,topic:string,fetcher:typeof fetch) {
+  if(row.endpoint.startsWith(NATIVE_ENDPOINT)){
+    const response=await userInbox(env,row.user_id).fetch('https://room/inbox-send',{method:'POST',body:JSON.stringify({sessionId:row.session_id,data})});
+    if(!response.ok)throw new InputError('ارسال اعلان به برنامه کامل نشد.',502);
+    return true;
+  }
+  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return false;
   if(!validPushEndpoint(row.endpoint))throw new InputError('اشتراک اعلان معتبر نیست؛ دوباره اعلان این دستگاه را فعال کنید.',409);
   const subscription={endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}};
   const {headers}=await vapidHeaders(subscription,{subject:'https://github.com/DarkPoesidon/WIHM-Cloudflare',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
@@ -42,7 +57,6 @@ export async function sendTestPush(env:Env,userId:string,sid:string) {
   return {accepted:true,message:'سرویس مرورگر اعلان را پذیرفت؛ اگر نمایش داده نشد، اعلان سیستم‌عامل، حالت مزاحم نشوید و دسترسی شبکه به سرویس اعلان را بررسی کنید.'};
 }
 export async function sendUpdatePush(env:Env,version:string,after='',fetcher:typeof fetch=fetch):Promise<string|null> {
-  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return null;
   const {results}=await env.DB.prepare(`SELECT ps.* FROM push_subscriptions ps JOIN service_admins a ON a.slot=1 AND a.user_id=ps.user_id
     JOIN user_sessions s ON s.id=ps.session_id AND s.user_id=ps.user_id JOIN user_profiles p ON p.user_id=ps.user_id AND p.notifications=1
     WHERE s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL} AND ps.id>? ORDER BY ps.id LIMIT 24`).bind(Date.now(),after).all<any>();
@@ -50,7 +64,6 @@ export async function sendUpdatePush(env:Env,version:string,after='',fetcher:typ
   return results.length===24?String(results.at(-1).id):null;
 }
 export async function sendSecurePush(env:Env,userId:string,thread:string,after='',fetcher:typeof fetch=fetch):Promise<string|null>{
-  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return null;
   const {results}=await env.DB.prepare(`SELECT ps.* FROM push_subscriptions ps JOIN user_sessions s ON s.id=ps.session_id AND s.user_id=ps.user_id JOIN user_profiles p ON p.user_id=ps.user_id AND p.notifications=1 WHERE ps.user_id=? AND s.revoked_at IS NULL AND s.expires_at>? AND ${SESSION_VERSION_SQL} AND NOT EXISTS(SELECT 1 FROM service_user_state us WHERE us.user_id=ps.user_id AND us.disabled_at IS NOT NULL) AND ps.id>? ORDER BY ps.id LIMIT 24`).bind(userId,Date.now(),after).all<any>();
   const topic=(await tokenHash(thread)).slice(0,32);
   checkDeliveries(await Promise.allSettled(results.map(row=>deliver(env,row,{title:'پیام امن تازه در ابرانه',body:'برای مشاهده و تأیید دستگاه مخاطب، برنامه را باز کنید.',kind:'secure',chatId:thread},3600,topic,fetcher))));
@@ -59,7 +72,6 @@ export async function sendSecurePush(env:Env,userId:string,thread:string,after='
 // Small pages keep a large group's fan-out below the per-invocation fetch budget.
 // The room persists the returned cursor and resumes via its alarm.
 export async function sendPush(env: Env, message: Message, fetcher: typeof fetch = fetch, after = '', call?: { callId: string; expiresAt: number; video?: boolean }): Promise<string | null> {
-  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return null;
   const { results } = await env.DB.prepare(`SELECT ps.*,COALESCE(p.notification_preview,0) AS preview,c.title,c.type
     FROM push_subscriptions ps JOIN user_sessions s ON s.id = ps.session_id AND s.user_id = ps.user_id
     JOIN chat_members cm ON cm.user_id = ps.user_id AND cm.chat_id = ? JOIN chats c ON c.id = cm.chat_id
@@ -73,7 +85,7 @@ export async function sendPush(env: Env, message: Message, fetcher: typeof fetch
   for (let offset = 0; offset < results.length; offset += 8) {
     checkDeliveries(await Promise.allSettled(results.slice(offset,offset+8).map(async row=>deliver(env,row,{
       title:call?'تماس ورودی در ابرانه':row.preview?(row.type==='group'?row.title:message.senderName).slice(0,100):'پیام تازه در ابرانه',
-      body:call?`برای پاسخ به تماس ${call.video?'تصویری':'صوتی'}، برنامه را باز کنید.`:row.preview?message.text.slice(0,160):'برای دیدن پیام، ابرانه را باز کنید.',chatId:message.chatId,...(call?{kind:'call',callId:call.callId,expiresAt:call.expiresAt}:{messageId:message.id}),
+      body:call?`برای پاسخ به تماس ${call.video?'تصویری':'صوتی'}، برنامه را باز کنید.`:row.preview?message.text.slice(0,160):'برای دیدن پیام، ابرانه را باز کنید.',chatId:message.chatId,...(call?{kind:'call',callId:call.callId,expiresAt:call.expiresAt,...(row.endpoint.startsWith(NATIVE_ENDPOINT)?{caller:message.senderName,video:!!call.video}:{})}:{messageId:message.id}),
     },call?Math.max(0,Math.ceil((call.expiresAt-Date.now())/1000)):3600,(await tokenHash(call?call.callId:message.chatId)).slice(0,32),fetcher))));
   }
   return results.length===24?String(results.at(-1).id):null;

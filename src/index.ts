@@ -1,5 +1,6 @@
 import { publicChannels, handleChannels, scheduledChannels } from './channels.js';
-import { handleCallRequests } from './calls.js';
+import { handleCallRequests, userInbox } from './calls.js';
+import { registerNativeDevice } from './push.js';
 import { handleMedia } from './media.js';
 import { beginOperation, withOperation } from './maintenance.js';
 import { handleBackup, publicRestore } from './backup.js';
@@ -31,12 +32,6 @@ async function validatedMembers(value: unknown, env: Env, self: string): Promise
 
 // Authenticate request via Bearer token or ?token=
 const authenticate = requestIdentity;
-// Chrome checks this before showing the Android app full screen without a URL bar. The fingerprint is
-// of the app's public signing certificate, so it holds no secret.
-const ANDROID_ASSET_LINKS = [{
-  relation: ['delegate_permission/common.handle_all_urls'],
-  target: { namespace: 'android_app', package_name: 'com.wihm.messenger', sha256_cert_fingerprints: ['04:B3:31:40:AF:1D:FC:33:36:63:F1:9A:C5:66:2B:9E:F2:A3:14:7B:11:05:FB:24:31:16:FF:6A:24:3A:2C:99'] },
-}];
 
 export default {
   async scheduled(_controller:ScheduledController,env:Env,ctx:ExecutionContext) {
@@ -64,7 +59,6 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
 
     const discoveryPublic=await publicDiscovery(request,env);if(discoveryPublic)return discoveryPublic;
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
-    if(url.pathname==='/.well-known/assetlinks.json'&&request.method==='GET')return jsonResponse(ANDROID_ASSET_LINKS);
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
         const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
@@ -73,6 +67,16 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
       }
+    }
+
+    if (url.pathname === '/api/ws/inbox') {
+      if (request.headers.get('Upgrade') !== 'websocket') return errorResponse('Expected WebSocket upgrade', 426);
+      const auth = await authenticate(request, env);
+      if (!auth) return errorResponse('احراز هویت انجام نشد یا توکن نامعتبر است.', 401);
+      await registerNativeDevice(env, auth.userId, auth.sid);
+      const inboxUrl = new URL('https://room.internal/inbox-ws');
+      inboxUrl.searchParams.set('userId', auth.userId); inboxUrl.searchParams.set('sessionId', auth.sid);
+      return userInbox(env, auth.userId).fetch(new Request(inboxUrl.toString(), request));
     }
 
     // ==========================================
