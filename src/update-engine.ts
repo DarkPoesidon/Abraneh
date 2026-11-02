@@ -46,12 +46,12 @@ export async function uploadBundleAssets(api:CloudApi,bundle:UpdateBundle) {
   for(const bucket of session.buckets){if(!Array.isArray(bucket))throw new Error('فهرست بارگذاری معتبر نیست.');const form=new FormData();for(const hash of bucket){const file=files.get(hash);if(!file)throw new Error('فهرست فایل‌های بسته معتبر نیست.');form.append(hash,new Blob([encode64(file.bytes)],{type:file.type}),hash);}const result=await api.request(root+'/assets/upload?base64=true','POST',form,session.jwt);if(result?.jwt)completion=result.jwt;}
   if(!completion)throw new Error('بارگذاری فایل‌ها کامل نشد.');return completion;
 }
-export async function publishMain(api:CloudApi,bundle:UpdateBundle) {
+export async function publishMain(api:CloudApi,bundle:UpdateBundle,force=false) {
   const settings=await ownedMain(api);
   const installed=settings.bindings.find((b:any)=>b.name==='WIHM_VERSION')?.text;
   if(validVersion(installed)&&newer(installed,bundle.version))throw new Error('سرور از این بسته جدیدتر است؛ بازگشت ناخواسته به نسخهٔ قدیمی انجام نشد.');
   // An accepted upload followed by a lost response is safe to resume.
-  if(settings.bindings.find((b:any)=>b.name==='WIHM_VERSION')?.text===bundle.version)return;
+  if(!force&&settings.bindings.find((b:any)=>b.name==='WIHM_VERSION')?.text===bundle.version)return;
   const jwt=await uploadBundleAssets(api,bundle),form=new FormData();
   form.append('metadata',new Blob([JSON.stringify({main_module:'worker.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings:retainedBindings(settings,bundle.version),assets:{jwt,config:{html_handling:'auto-trailing-slash',not_found_handling:'none'}}})],{type:'application/json'}));
   form.append('worker.mjs',new Blob([decode64(bundle.files['worker.mjs'])],{type:'application/javascript+module'}),'worker.mjs');

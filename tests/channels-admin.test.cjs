@@ -124,3 +124,37 @@ test('an owner can delete their own group, and a member cannot', async () => {
   await ok(fixture.owner, `/api/chats/${id}/group`, 'PATCH', { action: 'delete' });
   assert.equal((await call(fixture.owner, `/api/chats/${id}/details`)).status, 403);
 });
+
+test('a private chat can be deleted for one side, or for both', async () => {
+  const third = await (await fixture.mf.dispatchFetch(fixture.origin + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'third_user', password: 'a-long-password', displayName: 'سوم' }) })).json();
+  const chat = (await ok(fixture.owner, '/api/chats', 'POST', { targetUserId: third.user.id })).id;
+  const owner = await socket(fixture.owner, chat);
+  owner.ws.send(JSON.stringify({ action: 'send_message', chatId: chat, text: 'پیام اول', clientMsgId: 'del-1' }));
+  await until(async () => (await ok(third, `/api/chats/${chat}/messages`)).length === 1 && (await ok(third, '/api/chats')).some(row => row.id === chat && row.lastMessage), 'the first message');
+
+  await ok(third, `/api/chats/${chat}/delete`, 'POST', { forEveryone: false });
+  assert.ok(!(await ok(third, '/api/chats')).some(row => row.id === chat), 'it leaves the list of the side that deleted it');
+  assert.equal((await ok(third, `/api/chats/${chat}/messages`)).length, 0, 'and its history');
+  assert.equal((await ok(fixture.owner, `/api/chats/${chat}/messages`)).length, 1, 'the other side keeps theirs');
+
+  owner.ws.send(JSON.stringify({ action: 'send_message', chatId: chat, text: 'پیام دوم', clientMsgId: 'del-2' }));
+  const back = await until(async () => (await ok(third, '/api/chats')).find(row => row.id === chat), 'a new message to bring it back');
+  assert.equal(back.lastMessage.text, 'پیام دوم');
+  assert.deepEqual((await ok(third, `/api/chats/${chat}/messages`)).map(row => row.text), ['پیام دوم']);
+
+  await ok(third, `/api/chats/${chat}/delete`, 'POST', { forEveryone: false });
+  assert.equal((await ok(third, '/api/chats', 'POST', { targetUserId: fixture.owner.user.id })).id, chat, 'starting it again finds the same chat');
+  assert.ok((await ok(third, '/api/chats')).some(row => row.id === chat), 'and lists it again');
+
+  await ok(third, `/api/chats/${chat}/delete`, 'POST', { forEveryone: true });
+  assert.ok(!(await ok(fixture.owner, '/api/chats')).some(row => row.id === chat), 'deleting for both removes it from the other side');
+  assert.equal((await call(fixture.owner, `/api/chats/${chat}/messages`)).status, 403);
+  const again = (await ok(fixture.owner, '/api/chats', 'POST', { targetUserId: third.user.id })).id;
+  assert.equal(again, chat, 'the pair can talk again');
+  assert.deepEqual(await ok(fixture.owner, `/api/chats/${chat}/messages`), [], 'with nothing left of the old chat');
+});
+test('groups are left or deleted, not deleted through the private chat route', async () => {
+  const id = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'group', title: 'گروه', memberIds: [fixture.peer.user.id] })).id;
+  assert.equal((await call(fixture.peer, `/api/chats/${id}/delete`, 'POST', { forEveryone: true })).status, 400);
+  assert.ok((await ok(fixture.owner, `/api/chats/${id}/details`)).members.length === 2);
+});
