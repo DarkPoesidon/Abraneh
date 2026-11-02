@@ -182,13 +182,38 @@ test('the caller can re-offer on a live call to restart ICE, but the callee and 
   assert.equal(f.events.at(-1).kind, 'answer');
 });
 
-test('an incoming call rings until it is answered or ended', async () => {
-  const f = browser(); let oscillators = 0, closed = 0;
-  const f2 = browser({ audioContext: class { currentTime = 0; destination = {}; createGain() { return { gain: {}, connect() {} }; } createOscillator() { oscillators++; return { frequency: {}, connect() {}, start() {}, stop() {} }; } close() { closed++; return Promise.resolve(); } } });
-  await f2.client.receive(f2.invite); assert.equal(oscillators, 1); assert.equal(closed, 0);
-  await f2.nodes.find(node => node.textContent === 'پذیرش تماس').onclick(); assert.equal(closed, 1);
-  await f2.client.receive({ ...f2.invite, callId: 'second' }).catch(() => {}); f2.client.reset();
+function toneRecorder() {
+  const played = [], stopped = [];
+  const audioContext = class {
+    currentTime = 0; destination = {};
+    createGain() { return { gain: { setValueAtTime() {}, linearRampToValueAtTime() {} }, connect() {} }; }
+    createOscillator() { const oscillator = { frequency: {}, connect() {}, start() { played.push(oscillator.frequency.value); }, stop(when) { if (when === undefined) stopped.push(oscillator.frequency.value); } }; return oscillator; }
+  };
+  return { audioContext, played, stopped };
+}
+
+test('the person called hears a melody that stops on answering', async () => {
+  const tones = toneRecorder(), f = browser({ audioContext: tones.audioContext });
+  await f.client.receive(f.invite);
+  assert.deepEqual(tones.played.slice(0, 3), [659, 880, 1047], 'incoming tone must be the melody');
+  assert.ok(!tones.played.includes(425), 'the callee must not hear the caller beep');
+  await f.nodes.find(node => node.textContent === 'پذیرش تماس').onclick();
+  assert.ok(tones.stopped.length > 0, 'answering must silence the ring');
+  f.client.reset();
   await f.client.receive(f.invite); assert.equal(f.client.active(), true); f.client.reset();
+});
+
+test('the caller hears a plain beep, then the end or busy tone', async () => {
+  const tones = toneRecorder(), f = browser({ audioContext: tones.audioContext });
+  await f.client.start(false);
+  assert.deepEqual(tones.played, [425], 'the caller must hear only the beep while waiting');
+  await f.client.receive({ event: 'call_signal', kind: 'decline', chatId: 'room', callId: 'browser-call', from: 'alice' });
+  assert.deepEqual(tones.played.slice(1), [480, 480, 480], 'a declined call plays the busy tone');
+  assert.equal(f.client.active(), false);
+
+  const hungUp = toneRecorder(), g = browser({ audioContext: hungUp.audioContext });
+  await g.client.start(false); g.client.reset();
+  assert.deepEqual(hungUp.played, [425, 660, 440], 'cancelling plays the end tone');
 });
 
 test('a voice call does not retry when the microphone is refused', async () => {

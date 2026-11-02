@@ -31,10 +31,24 @@ try {
 
   // Voice: reaches the other side live and really plays.
   await record(a, 'voice'); await sendRecording(a);
-  const voice = b.locator('.media-play').last(); await voice.waitFor({ timeout: 10000 }); assert.match(await voice.innerText(), /پیام صوتی/);
+  const voice = b.locator('.media-play').last(); await voice.waitFor({ timeout: 10000 }); assert.match(await voice.getAttribute('aria-label'), /پیام صوتی/);
   await voice.click();
   await b.waitForFunction(() => { const player = document.querySelector('audio.media-player'); return player && !player.paused && player.currentTime > 0; }, {}, { timeout: 15000 });
   console.log('ok: voice message plays on the other side');
+
+  // The player controls itself: its button pauses and resumes, and the seek bar works by keyboard.
+  await b.locator('.voice-note[data-state="playing"] .media-play').click();
+  await b.waitForFunction(() => document.querySelector('audio.media-player').paused);
+  await b.locator('.voice-note .media-play').last().click();
+  await b.waitForFunction(() => { const player = document.querySelector('audio.media-player'); return !player.paused || player.ended; });
+  assert.equal(await b.locator('.voice-seek').last().isEnabled(), true);
+  console.log('ok: voice player pause and resume');
+
+  // With text typed, the round action sends; with none, it records.
+  assert.equal(await a.locator('#btn-send-message').isVisible(), false); assert.equal(await a.locator('#btn-record-voice').isVisible(), true);
+  await a.locator('#message-input').fill('متن'); assert.equal(await a.locator('#btn-send-message').isVisible(), true); assert.equal(await a.locator('#btn-record-voice').isVisible(), false);
+  await a.locator('#message-input').fill(''); assert.equal(await a.locator('#btn-record-voice').isVisible(), true);
+  console.log('ok: composer swaps send and record');
 
   // Playback survives the message list being rebuilt by a new message.
   await a.locator('#message-input').fill('متن تازه'); await a.locator('#btn-send-message').click();
@@ -48,7 +62,7 @@ try {
   // Video: the preview shows while recording, and the other side sees frames.
   await record(b, 'video', 2000);
   assert.equal(await b.locator('.media-preview').isVisible(), true); await sendRecording(b);
-  const video = a.locator('.media-play').last(); await video.waitFor({ timeout: 10000 }); assert.match(await video.innerText(), /پیام تصویری/);
+  const video = a.locator('.media-play').last(); await video.waitFor({ timeout: 10000 }); assert.match(await video.getAttribute('aria-label'), /پیام تصویری/);
   await video.click();
   await a.waitForFunction(() => { const player = document.querySelector('video.media-player'); return player && player.videoWidth > 0 && player.readyState >= 2; }, {}, { timeout: 15000 });
   console.log('ok: video message plays on the other side');

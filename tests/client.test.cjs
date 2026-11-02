@@ -55,6 +55,7 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
     async poll() { for (const interval of [...intervals.values()]) if (interval.delay === 5000) await interval.fn(); await settle(); },
   };
 }
+const bubbles = app => app.el('messages-container').children.filter(child => String(child.className).includes('message-bubble'));
 
 test('late history never overwrites the active room, and live messages survive snapshot delivery', async () => {
   const pending = new Map();
@@ -70,7 +71,7 @@ test('late history never overwrites the active room, and live messages survive s
   pending.get('/api/chats/b/messages?limit=50')(reply([message('b1', 'History B')])); await reopening;
   assert.match(app.texts(), /History B/); assert.match(app.texts(), /Live message/);
   app.sockets.at(-1).onmessage({ data: JSON.stringify({ event: 'new_message', message: { ...message('live', 'Live message', 2), chatId: 'b' } }) });
-  assert.equal(app.el('messages-container').children.length, 2);
+  assert.equal(bubbles(app).length, 2);
 });
 
 test('socket reconnects with backoff, catches up history, and old callbacks cannot affect a new room', async () => {
@@ -114,7 +115,7 @@ test('older pages merge without duplicates and stop at the end', async () => {
   await settle(); await app.open(0);
   assert.equal(app.el('btn-load-older').hidden, false);
   app.click('btn-load-older'); await settle();
-  assert.equal(app.el('messages-container').children.length, 60);
+  assert.equal(bubbles(app).length, 60);
   assert.equal(app.el('btn-load-older').hidden, true);
   assert.ok(app.calls.some(call => call.path.endsWith('before=100%3Am010')));
 });
@@ -179,7 +180,7 @@ test('offline outbox survives a reload and a server acknowledgement replaces the
   const confirmed = { id: 'server-message', chatId: 'a', senderId: 'self', senderName: 'Self', text: sent.text, createdAt: Date.now(), clientMsgId: sent.clientMsgId };
   socket.onmessage({ data: JSON.stringify({ event: 'new_message', message: confirmed }) });
   socket.onmessage({ data: JSON.stringify({ event: 'new_message', message: confirmed }) });
-  assert.equal(restored.el('messages-container').children.length, 1);
+  assert.equal(bubbles(restored).length, 1);
   assert.match(restored.texts(), /ارسال شد/);
   assert.deepEqual(JSON.parse(restored.storage.get('cf_msg_outbox_self')), []);
 });

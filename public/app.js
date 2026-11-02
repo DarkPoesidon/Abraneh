@@ -391,6 +391,7 @@
     typingBar.textContent = '';
     chatError.textContent = '';
     messageInput.value = '';
+    syncComposer();
     btnFirstUnread.hidden = !chat.firstUnreadId;
     btnAddMembers.style.display = chat.type === 'group' && ['owner','admin'].includes(chat.role) ? 'inline-flex' : 'none';
 
@@ -403,6 +404,7 @@
     activeChatWrapper.style.display = 'flex';
     activeChatTitle.textContent = chat.title;
     chatHeaderAvatar.innerHTML = avatarHtml(chat.avatar,chat.title);
+    chatHeaderAvatar.style.setProperty?.('--avatar-hue',avatarHue(chat.id));
     statusIndicatorDot.className = 'status-dot';
     statusText.textContent = 'در حال اتصال...';
 
@@ -518,23 +520,43 @@
       return;
     }
 
-    msgList.filter(msg => !hiddenMessages.get(msg.chatId)?.has(msg.id)).forEach((msg) => {
+    const visible = msgList.filter(msg => !hiddenMessages.get(msg.chatId)?.has(msg.id));
+    // Consecutive messages from one person read as a group, broken by a new day or a long pause.
+    const sameGroup = (a, b) => !!a && !!b && a.senderId === b.senderId && dayKey(a.createdAt) === dayKey(b.createdAt) && Math.abs(b.createdAt - a.createdAt) < 300_000;
+    visible.forEach((msg, index) => {
+      const previous = visible[index - 1];
+      if (dayKey(previous?.createdAt) !== dayKey(msg.createdAt)) { const pill = document.createElement('div'); pill.className = 'date-pill'; pill.textContent = dayLabel(msg.createdAt); messagesContainer.appendChild(pill); }
       if (activeChat?.firstUnreadId === msg.id) { const divider = document.createElement('div'); divider.className = 'unread-divider'; divider.textContent = 'پیام‌های نخوانده'; messagesContainer.appendChild(divider); }
-      appendMessageToUI(msg, !previousIds.has('message-' + msg.id));
+      appendMessageToUI(msg, !previousIds.has('message-' + msg.id), { first: !sameGroup(previous, msg), last: !sameGroup(msg, visible[index + 1]) });
     });
     if (!keepPosition || atBottom) scrollToBottom(); else messagesContainer.scrollTop = top;
   }
 
-  function appendMessageToUI(msg, animate = true) {
+  function dayKey(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`; }
+  function dayLabel(timestamp) {
+    const key = dayKey(timestamp);
+    if (key === dayKey(Date.now())) return 'امروز';
+    if (key === dayKey(Date.now() - 86400_000)) return 'دیروز';
+    return new Date(timestamp).toLocaleDateString('fa-IR', { day: 'numeric', month: 'long', year: new Date(timestamp).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  }
+  function clockTime(timestamp) { return new Date(timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }); }
+  function statusMarkup(msg) {
+    const text = messageStatus(msg), state = msg.failed ? 'failed' : msg.pending ? 'pending' : text.startsWith('خوانده') ? 'read' : text.startsWith('تحویل') ? 'delivered' : 'sent';
+    const check = 'M3 12.5 8 17.5 18 6.5', second = 'M9.5 15.5 11 17.5 21 6.5';
+    const mark = state === 'failed' ? '' : state === 'pending' ? '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>' : `<path d="${check}"/>${state === 'sent' ? '' : `<path d="${second}"/>`}`;
+    return `<span class="message-status" data-state="${state}" title="${escapeHtml(text)}">${mark ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${mark}</svg><span class="visually-hidden">${escapeHtml(text)}</span>` : escapeHtml(text)}</span>`;
+  }
+
+  function appendMessageToUI(msg, animate = true, { first = true, last = true } = {}) {
     const isSent = msg.senderId === currentUser.id;
     const bubble = document.createElement('div');
-    bubble.className = `message-bubble ${isSent ? 'sent' : 'received'}${msg.pending ? ' pending' : ''}${msg.failed ? ' failed' : ''}`;
+    bubble.className = `message-bubble ${isSent ? 'sent' : 'received'}${first ? ' group-first' : ''}${last ? ' group-last' : ''}${msg.pending ? ' pending' : ''}${msg.failed ? ' failed' : ''}`;
     bubble.id = 'message-' + msg.id;
     if (!animate) bubble.style.animation = 'none';
 
     let senderHtml = '';
-    if (!isSent && activeChat?.type === 'group') {
-      senderHtml = `<div class="message-sender">${escapeHtml(msg.senderName || 'کاربر')}</div>`;
+    if (!isSent && first && activeChat?.type === 'group') {
+      senderHtml = `<div class="message-sender" style="--avatar-hue:${avatarHue(msg.senderId)}">${escapeHtml(msg.senderName || 'کاربر')}</div>`;
     }
 
     bubble.innerHTML = `
@@ -542,7 +564,7 @@
       ${msg.replyTo && !msg.deletedAt ? `<button class="reply-quote" type="button" data-reply="${escapeHtml(msg.replyTo.id)}"><strong>${escapeHtml(msg.replyTo.senderName)}</strong><span>${escapeHtml(msg.replyTo.deleted ? 'پیام حذف شده' : msg.replyTo.text.slice(0,180))}</span></button>` : ''}
       <div class="message-text${msg.deletedAt ? ' deleted-message' : ''}">${msg.deletedAt ? 'این پیام حذف شده است' : escapeHtml(msg.text)}</div>
       ${!msg.deletedAt && msg.reactions?.length ? `<div class="reactions">${msg.reactions.map(r=>`<button type="button" class="reaction-chip ${r.users.includes(currentUser.id)?'selected':''}" data-emoji="${escapeHtml(r.emoji)}" aria-label="واکنش ${escapeHtml(r.emoji)}">${escapeHtml(r.emoji)} ${r.users.length.toLocaleString('fa-IR')}</button>`).join('')}</div>` : ''}
-      <div class="message-footer"><div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div></div>
+      <div class="message-footer"><div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${clockTime(msg.createdAt)}${isSent ? statusMarkup(msg) : ''}</div></div>
     `;
     media?.enhance(bubble,msg);
     if (!msg.pending) addMessageControls(bubble,msg);
@@ -759,6 +781,7 @@
     chatError.textContent = '';
     messageInput.value = '';
     messageInput.style.height = 'auto';
+    syncComposer();
 
     // Broadcast typing stop
     sendTypingStatus(false);
@@ -1358,12 +1381,18 @@
     await saveProfile({notifications:true}); await post('/api/push',subscription.toJSON());
     byId('notification-state').textContent='اعلان این دستگاه فعال شد. یک پیام از حساب دیگر برای آزمایش بفرستید.';
   }
+  function syncComposer() { messageInput.closest?.('.chat-input-area')?.classList.toggle('has-text',!!messageInput.value.trim()); }
   function cancelComposer() { composerContext=null; byId('composer-context').hidden=true; btnSendMessage.disabled=false; btnSendMessage.title='ارسال'; }
-  byId('btn-cancel-context').addEventListener('click',()=>{if(composerContext?.mode==='edit') messageInput.value='';cancelComposer();messageInput.focus?.();});
-  function setComposer(mode,msg) { if(messageInput.value.trim()&&!confirm('متن فعلی کادر کنار گذاشته شود؟')) return; composerContext={mode,message:msg}; byId('composer-label').textContent=`${mode==='edit'?'ویرایش پیام':'پاسخ به '+msg.senderName}: ${msg.text.slice(0,120)}`;byId('composer-context').hidden=false;messageInput.value=mode==='edit'?msg.text:'';btnSendMessage.title=mode==='edit'?'ذخیرهٔ ویرایش':'ارسال';closeFeature();messageInput.focus?.(); }
+  byId('btn-cancel-context').addEventListener('click',()=>{if(composerContext?.mode==='edit') messageInput.value='';cancelComposer();syncComposer();messageInput.focus?.();});
+  messageInput.addEventListener('input',syncComposer);
+  // The round button jumps back to the newest message once the reader has scrolled away from it.
+  const scrollDown=document.createElement('button');scrollDown.id='btn-scroll-bottom';scrollDown.type='button';scrollDown.className='scroll-bottom';scrollDown.hidden=true;scrollDown.title='رفتن به آخرین پیام';scrollDown.setAttribute('aria-label',scrollDown.title);scrollDown.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+  scrollDown.addEventListener('click',()=>{messagesContainer.scrollTop=messagesContainer.scrollHeight;});messagesContainer.after?.(scrollDown);
+  messagesContainer.addEventListener('scroll',()=>{scrollDown.hidden=nearBottom();},{passive:true});
+  function setComposer(mode,msg) { if(messageInput.value.trim()&&!confirm('متن فعلی کادر کنار گذاشته شود؟')) return; composerContext={mode,message:msg}; byId('composer-label').textContent=`${mode==='edit'?'ویرایش پیام':'پاسخ به '+msg.senderName}: ${msg.text.slice(0,120)}`;byId('composer-context').hidden=false;messageInput.value=mode==='edit'?msg.text:'';syncComposer();btnSendMessage.title=mode==='edit'?'ذخیرهٔ ویرایش':'ارسال';closeFeature();messageInput.focus?.(); }
   async function commitEdit(text) {
     const context=composerContext,chatId=activeChat.id; btnSendMessage.disabled=true;
-    try { const result=await post(`/api/chats/${chatId}/messages/${context.message.id}/edit`,{text});acceptMutation(result.message); if(composerContext===context) {cancelComposer();messageInput.value='';} }
+    try { const result=await post(`/api/chats/${chatId}/messages/${context.message.id}/edit`,{text});acceptMutation(result.message); if(composerContext===context) {cancelComposer();messageInput.value='';syncComposer();} }
     catch(error) {chatError.textContent=error.message;}
     finally {btnSendMessage.disabled=false;}
   }
@@ -1377,7 +1406,8 @@
     renderFilteredChats();
   }
   function addMessageControls(bubble,msg) {
-    const button=document.createElement('button');button.type='button';button.className='message-more';button.innerHTML=uiIcon('more');button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));(bubble.querySelector?.('.message-footer')||bubble).appendChild(button);
+    const button=document.createElement('button');button.type='button';button.className='message-more';button.innerHTML=uiIcon('more');button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));bubble.appendChild(button);
+    bubble.addEventListener?.('contextmenu',event=>{if(window.getSelection?.()?.toString()||event.target.closest?.('a,input,audio,video'))return;event.preventDefault();messageActions(msg);});
     bubble.querySelector?.('.reply-quote')?.addEventListener('click',()=>jumpToMessage(msg.chatId,msg.replyTo.id).catch(error=>{chatError.textContent=error.message;}));
     bubble.querySelectorAll?.('[data-emoji]').forEach(button=>button.addEventListener('click',()=>react(msg,button.dataset.emoji).catch(error=>{chatError.textContent=error.message;})));
   }

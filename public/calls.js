@@ -1,5 +1,15 @@
 (() => {
   const directIce = [{ urls: 'stun:stun.l.google.com:19302' }];
+  // Each note is [frequency in Hz, start in seconds, length in seconds].
+  const TONES = {
+    // The person calling hears a plain repeating beep while the other side rings.
+    ringback: { notes: [[425, 0, 1.2]], every: 4000 },
+    // The person being called hears a melody, so the two sides can't be confused.
+    incoming: { notes: [[659, 0, 0.16], [880, 0.18, 0.16], [1047, 0.36, 0.28], [659, 0.9, 0.16], [880, 1.08, 0.16], [1047, 1.26, 0.28]], every: 3400, vibrate: [300, 200, 300] },
+    connect: [[520, 0, 0.12], [780, 0.14, 0.18]],
+    end: [[660, 0, 0.14], [440, 0.16, 0.22]],
+    busy: [[480, 0, 0.25], [480, 0.5, 0.25], [480, 1, 0.25]],
+  };
   window.WihmCalls = {
     create({ getChat, getUser, send, mount, activate = async () => {}, getIceServers = async () => directIce, notify = () => {} }) {
       let current = null;
@@ -28,22 +38,32 @@
       const information = document.createElement('details'), summary = document.createElement('summary'); information.className = 'call-information'; summary.textContent = 'حریم خصوصی و محدودیت اتصال'; information.append(summary, privacy);
       const decisions = document.createElement('div'); decisions.className = 'call-decisions'; decisions.append(accept, decline, end);
       dialog.append(title, status, stage, audio, actions, decisions, information); document.body.appendChild(dialog);
-      let ringStop = null;
-      // Browsers may keep this silent until the page has had a user gesture; the dialog and vibration still show.
-      function startRing() {
-        if (ringStop) return;
-        const Context = window.AudioContext || window.webkitAudioContext, sound = Context ? new Context() : null;
-        const ring = () => {
-          navigator.vibrate?.([400, 200, 400]);
-          if (!sound) return;
-          sound.resume?.()?.catch?.(() => {});
-          const oscillator = sound.createOscillator(), gain = sound.createGain();
-          oscillator.frequency.value = 480; gain.gain.value = 0.08;
-          oscillator.connect(gain); gain.connect(sound.destination);
-          oscillator.start(); oscillator.stop(sound.currentTime + 1);
-        };
-        ring(); const timer = setInterval(ring, 3000);
-        ringStop = () => { clearInterval(timer); navigator.vibrate?.(0); sound?.close?.()?.catch?.(() => {}); ringStop = null; };
+      let toneContext = null, toneTimer = null, sounding = [];
+      // Browsers may keep the incoming tone silent until the page has had a user gesture; the dialog and vibration still show.
+      function playNotes(notes) {
+        const Context = window.AudioContext || window.webkitAudioContext; if (!Context) return;
+        toneContext ||= new Context(); toneContext.resume?.()?.catch?.(() => {});
+        const now = toneContext.currentTime;
+        for (const [frequency, at, length] of notes) {
+          const oscillator = toneContext.createOscillator(), gain = toneContext.createGain(), start = now + at, stop = start + length;
+          oscillator.frequency.value = frequency;
+          // Short ramps stop the clicks a tone makes when it starts or stops abruptly.
+          gain.gain.setValueAtTime(0, start); gain.gain.linearRampToValueAtTime(0.08, start + 0.02);
+          gain.gain.setValueAtTime(0.08, stop - 0.03); gain.gain.linearRampToValueAtTime(0, stop);
+          oscillator.connect(gain); gain.connect(toneContext.destination);
+          oscillator.start(start); oscillator.stop(stop); sounding.push(oscillator);
+        }
+      }
+      function stopTone() {
+        if (!toneTimer) return;
+        clearInterval(toneTimer); toneTimer = null; navigator.vibrate?.(0);
+        for (const oscillator of sounding) try { oscillator.stop(); } catch {}
+        sounding = [];
+      }
+      function startTone({ notes, every, vibrate }) {
+        stopTone();
+        const beat = () => { if (vibrate) navigator.vibrate?.(vibrate); playNotes(notes); };
+        beat(); toneTimer = setInterval(beat, every);
       }
       function emit(kind, payload) {
         if (!current) return;
@@ -53,8 +73,9 @@
       function reset(signal = true, message = '') {
         const previous = current;
         if (signal && previous) try { emit(previous.incoming && !previous.accepted ? 'decline' : 'end'); } catch {}
-        current = null; ringStop?.();
+        current = null; stopTone();
         if (previous) {
+          if (previous.declined) playNotes(TONES.busy); else if (previous.accepted || previous.invited) playNotes(TONES.end);
           clearTimeout(previous.timer); clearTimeout(previous.connectTimer); clearTimeout(previous.restartTimer); clearTimeout(previous.failTimer); clearInterval(previous.durationTimer);
           if (previous.peer) { previous.peer.onicecandidate = previous.peer.ontrack = previous.peer.onconnectionstatechange = null; previous.peer.close(); }
           previous.stream?.getTracks().forEach(track => track.stop());
@@ -84,7 +105,7 @@
         microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین';
         microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
         if (!dialog.open) dialog.showModal();
-        if (incoming) startRing();
+        if (incoming) startTone(TONES.incoming);
       }
       // Only the caller restarts ICE, so both sides can't send colliding offers.
       async function restartIce(call) {
@@ -139,7 +160,7 @@
           if (peer.connectionState === 'connected') {
             clearTimeout(call.connectTimer); clearTimeout(call.restartTimer); clearTimeout(call.failTimer); call.restartTimer = call.failTimer = null; call.restarts = 0;
             if (!call.connectedAt) {
-              call.connectedAt = Date.now();
+              call.connectedAt = Date.now(); playNotes(TONES.connect);
               const duration = () => { const seconds = Math.floor((Date.now() - call.connectedAt) / 1000); status.textContent = 'تماس برقرار است. · ' + Math.floor(seconds / 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }) + ':' + (seconds % 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }); };
               duration(); call.durationTimer = setInterval(duration, 1000);
             }
@@ -177,7 +198,7 @@
         current = base(crypto.randomUUID(), chat.id, !!video, false); show(false); deadline(Date.now() + 45_000);
         // The caller explicitly confirms before any network address or media is shared.
         if (!confirm(`تماس ${video ? 'تصویری با دوربین و میکروفون' : 'صوتی با میکروفون'} شروع شود؟ تماس ممکن است نشانی اینترنتی شما را برای مخاطب و سرویس STUN/TURN آشکار کند.`)) { reset(false); return; }
-        try { emit('invite'); } catch { reset(false, 'ابتدا اتصال گفتگو به سرور را برقرار کنید.'); }
+        try { emit('invite'); current.invited = true; startTone(TONES.ringback); } catch { reset(false, 'ابتدا اتصال گفتگو به سرور را برقرار کنید.'); }
       }
       async function receive(data) {
         if (data.event === 'call_error') { if (current?.id === data.callId) reset(false, data.message); return; }
@@ -191,9 +212,9 @@
         if (!current || current.id !== data.callId) return;
         const call = current;
         try {
-          if (data.kind === 'end' || data.kind === 'decline') { reset(false, data.kind === 'decline' ? 'تماس رد شد.' : 'تماس پایان یافت.'); return; }
+          if (data.kind === 'end' || data.kind === 'decline') { call.declined = data.kind === 'decline'; reset(false, data.kind === 'decline' ? 'تماس رد شد.' : 'تماس پایان یافت.'); return; }
           if (data.kind === 'accept' && !call.incoming && !call.accepted) {
-            call.accepted = true; deadline(data.expiresAt); status.textContent = 'در حال اتصال…';
+            stopTone(); call.accepted = true; deadline(data.expiresAt); status.textContent = 'در حال اتصال…';
             if (await prepare() && current === call) await description('offer');
           } else if (data.kind === 'offer' && call.incoming && call.accepted && call.peer) {
             await remoteDescription(data.payload);
@@ -207,7 +228,7 @@
       }
       accept.onclick = async () => {
         if (!current || current.accepted) return;
-        const call = current; call.accepted = true; accept.disabled = true; ringStop?.();
+        const call = current; call.accepted = true; accept.disabled = true; stopTone();
         try {
           await activate(call.chatId);
           if (current !== call) return;
