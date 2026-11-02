@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' wss:; object-src 'none'; base-uri 'none'; form-action 'self'">
-  <meta name="wihm-version" content="1.6.4">
+  <meta name="wihm-version" content="1.7.0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
   
@@ -18,6 +18,7 @@
   
   <link rel="stylesheet" href="/style.css">
   <link rel="preload" href="/fonts/Vazir-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <script src="/i18n.js"></script>
 </head>
 <body>
 
@@ -63,6 +64,7 @@
         </div>
 
         <p id="registration-help" class="session-help"></p>
+        <div id="auth-language-row"><label class="language-picker"><span data-no-i18n>Language / زبان</span><select id="auth-language" class="form-input" data-no-i18n><option value="fa">فارسی</option><option value="en">English</option></select></label></div>
         <div id="auth-error" class="error-banner"></div>
 
         <form id="auth-form">
@@ -103,12 +105,15 @@
         <button id="btn-saved" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-bookmark"/></svg><span>پیام‌های ذخیره‌شده</span></button>
         <button id="btn-channels" class="menu-item" type="button" role="menuitem"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg><span>کانال‌های تلگرام</span></button>
         <button id="btn-menu-group" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-users"/></svg><span>ساخت گروه</span></button>
+        <button id="btn-menu-channel" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg><span>ساخت کانال</span></button>
+        <button id="btn-menu-discover" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-search"/></svg><span>کانال‌های عمومی</span></button>
         <button id="btn-menu-archive" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg><span>گفتگوهای آرشیوشده</span></button>
         <div id="install-banner" class="menu-install" hidden><button id="btn-install-pwa" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-install"/></svg><span>نصب برنامه روی دستگاه</span></button></div>
+        <button id="btn-menu-admin" class="menu-item" role="menuitem" type="button" hidden><svg class="ui-icon" aria-hidden="true"><use href="#i-settings"/></svg><span>پنل مدیریت</span><span id="admin-menu-badge" class="unread-badge" hidden></span></button>
         <button id="btn-menu-server" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-server"/></svg><span>تنظیمات سرور</span></button>
         <div class="menu-divider"></div>
         <button id="btn-logout" class="menu-item danger-text" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-logout"/></svg><span>خروج از حساب</span></button>
-        <p class="app-version" dir="ltr">WIHM 1.6.4</p>
+        <p class="app-version" dir="ltr">WIHM 1.7.0</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrapper"><input type="search" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها"><svg class="ui-icon search-icon" aria-hidden="true"><use href="#i-search"/></svg></div>
@@ -213,6 +218,6 @@
 
   <script src="/updates.js"></script>
   <script src="/extras.js"></script>
-  <script src="/security.js"></script><script src="/backup.js"></script><script src="/calls.js"></script><script src="/media.js"></script><script src="/channels.js"></script><script src="/secure.bundle.js"></script><script src="/app.js"></script>
+  <script src="/security.js"></script><script src="/backup.js"></script><script src="/calls.js"></script><script src="/media.js"></script><script src="/admin.js"></script><script src="/channels.js"></script><script src="/secure.bundle.js"></script><script src="/app.js"></script>
 </body>
 </html>

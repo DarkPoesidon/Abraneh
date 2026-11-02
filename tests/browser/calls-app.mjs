@@ -68,7 +68,7 @@ try {
     }
     for (const [i, page] of pages.entries()) await page.screenshot({ path: `${directory}/${video ? 'video' : 'audio'}-connected-${i}.png` });
     await a.getByRole('button', { name: 'پایان تماس', exact: true }).click();
-    for (const page of pages) { await page.locator('dialog').waitFor({ state: 'hidden' }); assert.equal(await page.evaluate(() => tracks.every(t => t.readyState === 'ended')), true); }
+    for (const page of pages) { await page.locator('dialog.call-dialog').waitFor({ state: 'hidden' }); assert.equal(await page.evaluate(() => tracks.every(t => t.readyState === 'ended')), true); }
     assert.deepEqual(await api('/api/calls/incoming', fixture.peer), []);
   }
   await a.locator('#btn-main-menu').click(); await a.locator('#btn-menu-settings').click(); await a.locator('#settings-admin').click(); await a.locator('#service-call-settings').click();

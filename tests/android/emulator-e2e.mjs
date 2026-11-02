@@ -33,7 +33,7 @@ const serviceAlive = () => /ServiceRecord[^\n]*WihmNotificationService/.test(she
 function shot(name) { writeFileSync(join(SHOTS, name + '.png'), execFileSync(ADB, ['exec-out', 'screencap', '-p'], { maxBuffer: 1 << 26 })); }
 function tap(text) {
   shell('uiautomator dump /sdcard/ui.xml');
-  const dump = shell('cat /sdcard/ui.xml'), node = dump.match(new RegExp(`text="${text}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`));
+  const dump = shell('cat /sdcard/ui.xml'), node = dump.match(new RegExp(`text="${text}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`, 'i')); // Android may show buttons in capitals.
   assert.ok(node, `No "${text}" on screen; top: ${topActivity()}`);
   shell(`input tap ${(+node[1] + +node[3]) >> 1} ${(+node[2] + +node[4]) >> 1}`);
 }
@@ -81,7 +81,7 @@ async function invite(video = false) {
 const endCall = callId => caller.send(JSON.stringify({ action: 'call_signal', chatId, callId, kind: 'end' }));
 async function connectedToInbox() {
   // The status line in the service's own notification reports the socket state.
-  return notifications().includes('متصل است');
+  return notifications().includes('Connected and receiving');
 }
 const prepareDevice = () => adb('reverse', `tcp:${port}`, `tcp:${port}`);
 
@@ -120,7 +120,7 @@ try {
   let callId = await invite();
   let took = await until(ringing, 8000, 'the ring with the app in the background');
   ok('a call rings with the app in the background', took + ' ms');
-  endCall(callId); await until(() => !ringing(), 8000, 'the ring to stop'); await until(() => hasText('تماس از دست رفته'), 5000, 'the missed call notification');
+  endCall(callId); await until(() => !ringing(), 8000, 'the ring to stop'); await until(() => hasText('Missed call'), 5000, 'the missed call notification');
   ok('the caller hanging up stops the ring and leaves a missed call');
 
   await removeFromRecents();
@@ -151,7 +151,7 @@ try {
   await sleep(1500);
   shot('03-full-screen-call');
   const acceptFrom = events.length;
-  tap('پاسخ');
+  tap('Answer');
   await until(() => topActivity().includes('MainActivity'), 10000, 'the app to open from the answer button');
   await until(() => !ringing(), 8000, 'the ring to stop after answering');
   await until(() => events.slice(acceptFrom).some(event => event.kind === 'accept' && event.callId === callId), 30000, 'the page to accept the call');
@@ -163,7 +163,7 @@ try {
   home(); await sleep(1500);
   const messageFrom = events.length;
   caller.send(JSON.stringify({ action: 'send_message', chatId, text: 'متن خصوصی', clientMsgId: 'e2e-' + Date.now() }));
-  took = await until(() => hasText('پیام تازه در ابرانه'), 15000, 'the message notification');
+  took = await until(() => hasText('New message in Abraneh'), 15000, 'the message notification');
   assert.ok(!hasText('متن خصوصی'), 'the text stays hidden until previews are on');
   await sleep(1000);
   assert.ok(!events.slice(messageFrom).some(event => event.event === 'receipt' && event.readId), 'a message must not count as read while the app is off screen');

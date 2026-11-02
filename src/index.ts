@@ -12,7 +12,7 @@ import { allowRequest } from './limits.js';
 import { APP_VERSION } from './version.js';
 import { listReceipts, saveReceipt } from './receipts.js';
 import { corsResponse, jsonResponse, errorResponse, InputError, inputJson } from './http.js';
-import { chatAccess, isBlocked } from './access.js';
+import { chatAccess, MEMBER_LIMIT_SQL, isBlocked } from './access.js';
 import { handleFeatures, registrationMode, registrationGate, enrichMessages, enrichChats } from './features.js';
 import { handleUpdates, scheduledUpdates } from './updates.js';
 import { handleTelegram, telegramWebhook, scheduledTelegram } from './telegram.js';
@@ -22,6 +22,15 @@ import { publicSecure, handleSecure, scheduledSecure } from './secure.js';
 import { publicDiscovery, handleDiscovery } from './discovery.js';
 export { ChatRoom } from "./chatRoom.js";
 
+const CHANNEL_HANDLE = /^[a-z][a-z0-9_]{4,31}$/;
+function channelSettings(body: any) {
+  const visibility = body.visibility === 'public' ? 'public' : 'private';
+  const handle = visibility === 'public' ? String(body.handle || '').trim().toLowerCase() : null;
+  if (visibility === 'public' && !CHANNEL_HANDLE.test(handle!)) throw new InputError('نشانی کانال عمومی باید با حرف انگلیسی شروع شود و ۵ تا ۳۲ حرف، عدد یا _ باشد.');
+  const description = String(body.description || '').trim();
+  if (description.length > 255) throw new InputError('توضیح کانال حداکثر ۲۵۵ کاراکتر است.');
+  return { visibility, handle, description };
+}
 async function validatedMembers(value: unknown, env: Env, self: string): Promise<string[] | null> {
   if (!Array.isArray(value) || value.length > 99 || value.some(id => typeof id !== 'string' || !id)) return null;
   const ids = [...new Set<string>(value)].filter(id => id !== self);
@@ -61,8 +70,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
-        const ready = row?.n === 56;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('broadcast_channels','chat_moderation','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
+        const ready = row?.n === 58;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -98,9 +107,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
       }
 
       // Verify user membership in this chat
-      const member = await env.DB.prepare(
-        `SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?`
-      ).bind(chatId, auth.userId).first();
+      const member = await chatAccess(env, chatId, auth.userId);
 
       if (!member) {
         return errorResponse("شما عضو این گفتگو نیستید.", 403);
@@ -117,6 +124,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
       doUrl.searchParams.set("username", auth.username);
       doUrl.searchParams.set("displayName", auth.displayName);
       doUrl.searchParams.set('sessionId', auth.sid);
+      if (member.isChannel) doUrl.searchParams.set('quiet', '1');
 
       return stub.fetch(new Request(doUrl.toString(), request));
     }
@@ -331,12 +339,15 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
               (SELECT m.id FROM messages m WHERE m.chat_id = c.id AND NOT EXISTS(SELECT 1 FROM message_hidden h WHERE h.message_id=m.id AND h.user_id=cm.user_id) AND m.sender_id != cm.user_id
                 AND NOT EXISTS(SELECT 1 FROM message_details d WHERE d.message_id=m.id AND d.deleted_at>0) AND (m.created_at > COALESCE(r.read_at,0) OR (m.created_at = COALESCE(r.read_at,0) AND m.id > COALESCE(r.read_id,'')))
                 ORDER BY m.created_at,m.id LIMIT 1) AS firstUnreadId,
-              COALESCE(r.read_at,0) AS readAt, COALESCE(r.read_id,'') AS readId
+              COALESCE(r.read_at,0) AS readAt, COALESCE(r.read_id,'') AS readId,
+              bc.visibility AS channelVisibility, bc.handle AS channelHandle
             FROM chats c
             JOIN chat_members cm ON c.id = cm.chat_id AND cm.user_id = ?
             LEFT JOIN chat_members pm ON c.id = pm.chat_id AND pm.user_id != ? AND c.type = 'dm'
             LEFT JOIN users u ON pm.user_id = u.id
             LEFT JOIN chat_receipts r ON r.chat_id = c.id AND r.user_id = cm.user_id
+            LEFT JOIN broadcast_channels bc ON bc.chat_id = c.id
+            WHERE NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id = c.id)
             ORDER BY c.updated_at DESC
           `).bind(auth.userId, auth.userId).all<any>();
 
@@ -349,6 +360,9 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
               title,
               partnerId: row.partnerId,
               partnerUsername: row.partnerUsername,
+              isChannel: !!row.channelVisibility,
+              visibility: row.channelVisibility || undefined,
+              handle: row.channelHandle || undefined,
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
               unreadCount: row.unreadCount,
@@ -370,7 +384,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
         // --- CHATS: CREATE OR GET DM/GROUP ---
         if (url.pathname === "/api/chats" && request.method === "POST") {
           const body = await inputJson(request);
-          const type = body.type === "group" ? "group" : "dm";
+          const type = body.type === "group" || body.type === "channel" ? "group" : "dm";
           const now = Date.now();
 
           if (type === "dm") {
@@ -409,10 +423,14 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
             return jsonResponse({ id: chatId, isNew }, isNew ? 201 : 200);
           } else {
             // Group Chat
-            const title = String(body.title || "گروه جدید").trim();
-            if (!title || title.length > 100) return errorResponse('عنوان گروه باید بین ۱ تا ۱۰۰ کاراکتر باشد.');
-            const members = await validatedMembers(body.memberIds, env, auth.userId);
+            const channel = body.type === 'channel';
+            const title = String(body.title || (channel ? "کانال جدید" : "گروه جدید")).trim();
+            if (!title || title.length > 100) return errorResponse('عنوان باید بین ۱ تا ۱۰۰ کاراکتر باشد.');
+            // A channel can start with only its owner; people join later through a link or search.
+            const members = channel && !body.memberIds?.length ? [] : await validatedMembers(body.memberIds, env, auth.userId);
             if (!members) return errorResponse('حداقل یک عضو معتبر انتخاب کنید (حداکثر ۹۹ نفر).');
+            const settings = channel ? channelSettings(body) : null;
+            if (settings?.handle && await env.DB.prepare('SELECT 1 FROM broadcast_channels WHERE handle = ?').bind(settings.handle).first()) return errorResponse('این نشانی کانال قبلاً گرفته شده است.', 409);
             const chatId = crypto.randomUUID();
 
             await env.DB.batch([
@@ -420,6 +438,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
               env.DB.prepare(`INSERT INTO chat_members (chat_id, user_id, joined_at) VALUES (?, ?, ?)`).bind(chatId, auth.userId, now),
               env.DB.prepare('INSERT INTO chat_members(chat_id,user_id,joined_at) SELECT ?,value,? FROM json_each(?)').bind(chatId,now,JSON.stringify(members)),
               env.DB.prepare("INSERT INTO group_roles VALUES (?,?,'owner')").bind(chatId,auth.userId),
+              ...(settings ? [env.DB.prepare('INSERT INTO broadcast_channels VALUES (?,?,?,?)').bind(chatId,settings.visibility,settings.handle,settings.description)] : []),
             ]);
 
             return jsonResponse({ id: chatId, isNew: true }, 201);
@@ -429,7 +448,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
         const membersMatch = url.pathname.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/members$/);
         if (membersMatch && (request.method === 'GET' || request.method === 'POST')) {
           const chatId = membersMatch[1];
-          const member = await env.DB.prepare('SELECT c.type FROM chats c JOIN chat_members cm ON cm.chat_id = c.id WHERE c.id = ? AND cm.user_id = ?').bind(chatId, auth.userId).first<{ type: string }>();
+          const member = await chatAccess(env, chatId, auth.userId);
           if (!member) return errorResponse('شما عضو این گفتگو نیستید.', 403);
           if (request.method === 'POST') {
             if (member.type !== 'group') return errorResponse('افزودن عضو فقط برای گروه امکان‌پذیر است.');
@@ -440,22 +459,26 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
             if (!users) return errorResponse('اعضای انتخاب‌شده نامعتبر هستند.');
             // Existing members are harmless duplicates; only current members may invite.
             await env.DB.prepare(`INSERT OR IGNORE INTO chat_members (chat_id, user_id, joined_at)
-              SELECT ?, id, ? FROM users WHERE id IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM group_roles WHERE chat_id=? AND user_id=? AND role IN ('owner','admin')) AND (SELECT count(*) FROM chat_members WHERE chat_id=?) + (SELECT count(*) FROM json_each(?) selected WHERE NOT EXISTS(SELECT 1 FROM chat_members existing WHERE existing.chat_id=? AND existing.user_id=selected.value)) <= 100`)
-              .bind(chatId, Date.now(), JSON.stringify(users),chatId,auth.userId,chatId,JSON.stringify(users),chatId).run();
+              SELECT ?, id, ? FROM users WHERE id IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM group_roles WHERE chat_id=? AND user_id=? AND role IN ('owner','admin')) AND (SELECT count(*) FROM chat_members WHERE chat_id=?) + (SELECT count(*) FROM json_each(?) selected WHERE NOT EXISTS(SELECT 1 FROM chat_members existing WHERE existing.chat_id=? AND existing.user_id=selected.value)) <= ${MEMBER_LIMIT_SQL}`)
+              .bind(chatId, Date.now(), JSON.stringify(users),chatId,auth.userId,chatId,JSON.stringify(users),chatId,chatId).run();
             const admitted=await env.DB.prepare(`SELECT count(*) AS n FROM chat_members WHERE chat_id=? AND user_id IN (${users.map(()=>'?').join(',')})`).bind(chatId,...users).first<{n:number}>();
-            if(admitted?.n!==users.length) return errorResponse('عضو اضافه نشد؛ سقف گروه ۱۰۰ نفر است یا مجوز مدیریت شما تغییر کرده است.',409);
+            if(admitted?.n!==users.length) return errorResponse('عضو اضافه نشد؛ سقف اعضا پر شده یا مجوز مدیریت شما تغییر کرده است.',409);
           }
           const { results } = await env.DB.prepare(`SELECT u.id, u.username, u.display_name as displayName
-            FROM users u JOIN chat_members cm ON cm.user_id = u.id WHERE cm.chat_id = ? ORDER BY cm.joined_at, u.id`).bind(chatId).all();
+            FROM users u JOIN chat_members cm ON cm.user_id = u.id WHERE cm.chat_id = ? AND (NOT EXISTS(SELECT 1 FROM broadcast_channels bc WHERE bc.chat_id = cm.chat_id) OR EXISTS(SELECT 1 FROM group_roles g WHERE g.chat_id = cm.chat_id AND g.user_id = ? AND g.role IN ('owner','admin')) OR EXISTS(SELECT 1 FROM group_roles g WHERE g.chat_id = cm.chat_id AND g.user_id = u.id AND g.role IN ('owner','admin'))) ORDER BY cm.joined_at, u.id`).bind(chatId,auth.userId).all();
           return jsonResponse(results);
         }
 
         const receiptsMatch = url.pathname.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/receipts$/);
         if (receiptsMatch && (request.method === 'GET' || request.method === 'POST')) {
           const chatId = receiptsMatch[1];
-          const member = await env.DB.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').bind(chatId, auth.userId).first();
+          const member = await chatAccess(env, chatId, auth.userId);
           if (!member) return errorResponse('شما عضو این گفتگو نیستید.', 403);
-          if (request.method === 'GET') return jsonResponse(await listReceipts(env, chatId));
+          if (request.method === 'GET') {
+            const receipts = await listReceipts(env, chatId);
+            // Subscribers stay anonymous: the page only counts these rows to show views.
+            return jsonResponse(member.isChannel ? receipts.map((row: any, index: number) => ({ ...row, userId: row.userId === auth.userId ? auth.userId : 'r' + index })) : receipts);
+          }
           const body = await inputJson(request);
           if (!body || typeof body.messageId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(body.messageId) || typeof body.read !== 'boolean') return errorResponse('رسید پیام معتبر نیست.');
           const receipt = await saveReceipt(env, chatId, auth.userId, body.messageId, body.read);
@@ -468,9 +491,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           const chatId = historyMatch[1];
 
           // Check membership
-          const isMember = await env.DB.prepare(
-            `SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?`
-          ).bind(chatId, auth.userId).first();
+          const isMember = await chatAccess(env, chatId, auth.userId);
 
           if (!isMember) {
             return errorResponse("دسترسی به این چت امکان‌پذیر نیست.", 403);
