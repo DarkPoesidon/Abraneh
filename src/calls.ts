@@ -137,9 +137,11 @@ export async function handleCall(env: Env, sql: SqlStorage, sender: CallIdentity
       if (caller || call.stage !== 'ringing') throw new InputError('پاسخ تماس معتبر نیست.', 409);
       if (data.kind === 'accept') { call.calleeSession = sender.sessionId; call.stage = 'accepted'; call.expiresAt = now + 15 * 60_000; }
     } else if (data.kind === 'offer' || data.kind === 'answer') {
-      if (data.kind === 'offer' ? !caller || call.stage !== 'accepted' : caller || call.stage !== 'offered') throw new InputError('ترتیب برقراری تماس معتبر نیست.', 409);
+      // A caller re-offers on a live call to restart ICE after the network changes.
+      if (data.kind === 'offer' ? !caller || call.stage === 'ringing' : caller || call.stage !== 'offered') throw new InputError('ترتیب برقراری تماس معتبر نیست.', 409);
       if (typeof data.payload?.sdp !== 'string' || data.payload.sdp.length > 32_000 || !data.payload.sdp.startsWith('v=0') || data.payload.type !== data.kind) throw new InputError('تنظیمات تماس معتبر نیست.');
       payload = { type: data.kind, sdp: data.payload.sdp }; call.stage = data.kind === 'offer' ? 'offered' : 'active';
+      if (data.kind === 'offer') call.callerIce = call.calleeIce = 0;
     } else if (data.kind === 'ice') {
       if (!['offered','active'].includes(call.stage)) throw new InputError('ابتدا تماس باید پذیرفته شود.', 409);
       const ice = data.payload;

@@ -42,7 +42,7 @@
   let locatingUnread = null;
   let openingChatId = null;
   let profile = {}, archivedView = false, composerContext = null;
-  let extras=null,calls=null;
+  let extras=null,calls=null,media=null;
   let sidebarCompact=false,lastMobileLayout=window.innerWidth<=768;
   try {sidebarCompact=localStorage.getItem('cf_msg_sidebar_compact')==='1';}catch{/* Preferences are optional when device storage is unavailable. */}
   const hiddenMessages = new Map(), deniedChats = new Set(), chatDetails = new Map();
@@ -231,6 +231,7 @@
   });
 
   function endSession() {
+    media?.purge();
     calls?.reset();
     window.WihmSecure?.reset();secureItems=[];clearInterval(securePoll);securePoll=null;secureRequest=null;
     if (window.Android && window.Android.clearAuthToken) {
@@ -543,6 +544,7 @@
       ${!msg.deletedAt && msg.reactions?.length ? `<div class="reactions">${msg.reactions.map(r=>`<button type="button" class="reaction-chip ${r.users.includes(currentUser.id)?'selected':''}" data-emoji="${escapeHtml(r.emoji)}" aria-label="واکنش ${escapeHtml(r.emoji)}">${escapeHtml(r.emoji)} ${r.users.length.toLocaleString('fa-IR')}</button>`).join('')}</div>` : ''}
       <div class="message-footer"><div class="message-time">${msg.editedAt && !msg.deletedAt ? 'ویرایش‌شده · ' : ''}${formatTime(msg.createdAt)}${isSent ? `<span class="message-status">${messageStatus(msg)}</span>` : ''}</div></div>
     `;
+    media?.enhance(bubble,msg);
     if (!msg.pending) addMessageControls(bubble,msg);
     if (msg.pending) {
       if (msg.failed) {
@@ -569,6 +571,7 @@
   // --- WebSocket Connection Management ---
   function disconnectWebSocket(preserveCall = false) {
     if (!preserveCall) calls?.reset();
+    media?.reset();
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
     clearInterval(wsPingInterval);
@@ -584,9 +587,9 @@
   function connectWebSocket(chatId) {
     if (!token || activeChat?.id !== chatId || deniedChats.has(chatId)) return;
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ws?chatId=${encodeURIComponent(chatId)}&token=${encodeURIComponent(token)}`;
+    const wsUrl = `${protocol}//${location.host}/ws?chatId=${encodeURIComponent(chatId)}`;
 
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrl, ['wihm.v1', 'wihm.token.' + token]);
     ws = socket;
 
     socket.onopen = () => {
@@ -828,7 +831,7 @@
       const previous = backgroundSockets.get(chatId);
       if (previous) { if (previous.readyState === WebSocket.OPEN) sendQueued(previous, chatId); continue; }
       const sessionToken = token;
-      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws?chatId=${encodeURIComponent(chatId)}&token=${encodeURIComponent(token)}`);
+      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws?chatId=${encodeURIComponent(chatId)}`, ['wihm.v1', 'wihm.token.' + token]);
       backgroundSockets.set(chatId, socket);
       socket.onopen = () => { if (token === sessionToken) sendQueued(socket, chatId); else socket.close(); };
       socket.onmessage = event => {
@@ -1221,6 +1224,22 @@
     if((data.kind==='decline'||data.kind==='end')&&(activeChat?.id!==data.chatId||ws?.readyState!==WebSocket.OPEN)){post('/api/calls/'+data.kind,{chatId:data.chatId,callId:data.callId}).catch(error=>{chatError.textContent=error.message;});return;}
     if(!ws||ws.readyState!==WebSocket.OPEN||activeChat?.id!==data.chatId)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));
   },mount:callMount,notify:message=>chatError.textContent=message});
+  media=window.WihmMedia?.create({footer:document.querySelector('.chat-input-area'),sendButton:btnSendMessage,getChat:()=>activeChat,notify:message=>chatError.textContent=message,
+    canRecord:()=>{if(!activeChat)return false;if(deniedChats.has(activeChat.id)){chatError.textContent='دسترسی ارسال در این گفتگو بسته است.';return false;}if(composerContext?.mode==='edit'){chatError.textContent='ابتدا ویرایش پیام را تمام یا لغو کنید.';return false;}chatError.textContent='';return true;},
+    upload:async(blob,item)=>{
+      const query=new URLSearchParams({kind:item.kind,mime:item.mime,durationMs:String(item.durationMs),clientMsgId:item.clientMsgId});
+      if(composerContext?.mode==='reply'&&activeChat?.id===item.chatId)query.set('replyToId',composerContext.message.id);
+      const response=await fetch(`/api/chats/${item.chatId}/media?${query}`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':item.mime},body:blob});
+      const data=await response.json().catch(()=>null);
+      if(!response.ok)throw Error(data?.error||'ارسال پیام انجام نشد؛ دوباره تلاش کنید.');
+      if(composerContext?.mode==='reply'&&activeChat?.id===item.chatId)cancelComposer();
+      acceptMutation(data.message);
+    },
+    download:async msg=>{
+      const response=await fetch(`/api/chats/${msg.chatId}/media/${msg.id}`,{headers:{Authorization:'Bearer '+token}});
+      if(!response.ok)throw Error((await response.json().catch(()=>null))?.error||'دریافت پیام ممکن نشد.');
+      return response.blob();
+    }});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
   byId('settings-server')?.addEventListener('click',()=>{closeFeature();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
@@ -1367,7 +1386,7 @@
   function messageActions(msg) {
     const chat=chats.find(chat=>chat.id===msg.chatId)||activeChat, own=msg.senderId===currentUser.id;
     showFeature('گزینه‌های پیام',`<p class="action-preview">${escapeHtml(msg.deletedAt?'پیام حذف شده':msg.text.slice(0,240))}</p><div class="action-grid">
-      ${!msg.deletedAt?`<button id="action-reply" class="quiet-button">پاسخ</button>${own?'<button id="action-edit" class="quiet-button">ویرایش</button>':''}<button id="action-save" class="quiet-button">ذخیرهٔ پیام</button><button id="action-copy" class="quiet-button">کپی متن</button>${chat?.type==='dm'||isManager(chat)?'<button id="action-pin" class="quiet-button">سنجاق / برداشتن سنجاق</button>':''}`:''}
+      ${!msg.deletedAt?`<button id="action-reply" class="quiet-button">پاسخ</button>${own&&!msg.media?'<button id="action-edit" class="quiet-button">ویرایش</button>':''}<button id="action-save" class="quiet-button">ذخیرهٔ پیام</button><button id="action-copy" class="quiet-button">کپی متن</button>${chat?.type==='dm'||isManager(chat)?'<button id="action-pin" class="quiet-button">سنجاق / برداشتن سنجاق</button>':''}`:''}
       <button id="action-hide" class="quiet-button">حذف فقط برای من</button>${own||chat?.type==='group'&&isManager(chat)?'<button id="action-delete" class="quiet-button danger-text">حذف برای همه</button>':''}${!own?'<button id="action-report" class="quiet-button danger-text">گزارش پیام</button>':''}</div>
       ${!msg.deletedAt?`<p class="session-help">واکنش شما؛ انتخاب دوباره برای برداشتن</p><div class="emoji-picker">${['👍','❤️','😂','😮','😢','🙏'].map((emoji,i)=>`<button id="react-${i}" class="quiet-button" aria-label="واکنش ${emoji}">${emoji}</button>`).join('')}</div>`:''}`);
     bind('action-reply',()=>setComposer('reply',msg));bind('action-edit',()=>setComposer('edit',msg));

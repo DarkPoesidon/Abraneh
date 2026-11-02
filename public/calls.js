@@ -28,6 +28,23 @@
       const information = document.createElement('details'), summary = document.createElement('summary'); information.className = 'call-information'; summary.textContent = 'حریم خصوصی و محدودیت اتصال'; information.append(summary, privacy);
       const decisions = document.createElement('div'); decisions.className = 'call-decisions'; decisions.append(accept, decline, end);
       dialog.append(title, status, stage, audio, actions, decisions, information); document.body.appendChild(dialog);
+      let ringStop = null;
+      // Browsers may keep this silent until the page has had a user gesture; the dialog and vibration still show.
+      function startRing() {
+        if (ringStop) return;
+        const Context = window.AudioContext || window.webkitAudioContext, sound = Context ? new Context() : null;
+        const ring = () => {
+          navigator.vibrate?.([400, 200, 400]);
+          if (!sound) return;
+          sound.resume?.()?.catch?.(() => {});
+          const oscillator = sound.createOscillator(), gain = sound.createGain();
+          oscillator.frequency.value = 480; gain.gain.value = 0.08;
+          oscillator.connect(gain); gain.connect(sound.destination);
+          oscillator.start(); oscillator.stop(sound.currentTime + 1);
+        };
+        ring(); const timer = setInterval(ring, 3000);
+        ringStop = () => { clearInterval(timer); navigator.vibrate?.(0); sound?.close?.()?.catch?.(() => {}); ringStop = null; };
+      }
       function emit(kind, payload) {
         if (!current) return;
         send({ action: 'call_signal', chatId: current.chatId, callId: current.id, kind,
@@ -36,9 +53,9 @@
       function reset(signal = true, message = '') {
         const previous = current;
         if (signal && previous) try { emit(previous.incoming && !previous.accepted ? 'decline' : 'end'); } catch {}
-        current = null;
+        current = null; ringStop?.();
         if (previous) {
-          clearTimeout(previous.timer); clearTimeout(previous.connectTimer); clearInterval(previous.durationTimer);
+          clearTimeout(previous.timer); clearTimeout(previous.connectTimer); clearTimeout(previous.restartTimer); clearTimeout(previous.failTimer); clearInterval(previous.durationTimer);
           if (previous.peer) { previous.peer.onicecandidate = previous.peer.ontrack = previous.peer.onconnectionstatechange = null; previous.peer.close(); }
           previous.stream?.getTracks().forEach(track => track.stop());
         }
@@ -67,6 +84,13 @@
         microphone.textContent = 'قطع میکروفون'; camera.textContent = 'خاموش کردن دوربین';
         microphone.setAttribute('aria-pressed', 'false'); camera.setAttribute('aria-pressed', 'false');
         if (!dialog.open) dialog.showModal();
+        if (incoming) startRing();
+      }
+      // Only the caller restarts ICE, so both sides can't send colliding offers.
+      async function restartIce(call) {
+        if (current !== call || call.incoming || !call.peer || call.restarts >= 3 || call.peer.signalingState !== 'stable') return;
+        call.restarts++; call.peer.restartIce();
+        try { await description('offer'); } catch {} // connectionRestored resends the offer once the socket is back.
       }
       async function capture(video) {
         try { return { stream: await navigator.mediaDevices.getUserMedia({ audio: true, video }), hasVideo: video }; }
@@ -113,14 +137,19 @@
         peer.onconnectionstatechange = () => {
           if (current !== call) return;
           if (peer.connectionState === 'connected') {
-            clearTimeout(call.connectTimer);
+            clearTimeout(call.connectTimer); clearTimeout(call.restartTimer); clearTimeout(call.failTimer); call.restartTimer = call.failTimer = null; call.restarts = 0;
             if (!call.connectedAt) {
               call.connectedAt = Date.now();
               const duration = () => { const seconds = Math.floor((Date.now() - call.connectedAt) / 1000); status.textContent = 'تماس برقرار است. · ' + Math.floor(seconds / 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }) + ':' + (seconds % 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }); };
               duration(); call.durationTimer = setInterval(duration, 1000);
             }
           }
-          if (peer.connectionState === 'failed') reset(true, 'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.');
+          // A network change shows up as disconnected, then failed. Try a new path before giving up.
+          if (peer.connectionState === 'disconnected' && !call.restartTimer) call.restartTimer = setTimeout(() => { call.restartTimer = null; restartIce(call); }, 3000);
+          if (peer.connectionState === 'failed') {
+            restartIce(call);
+            if (!call.failTimer) call.failTimer = setTimeout(() => { if (current === call) reset(true, 'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.'); }, 30_000);
+          }
         };
         call.connectTimer = setTimeout(() => { if (current === call && peer.connectionState !== 'connected') reset(true, 'تماس برقرار نشد؛ دسترسی شبکه و نیاز به TURN را بررسی کنید.'); }, 45_000);
         return peer;
@@ -139,7 +168,7 @@
         for (const ice of call.remoteIce.splice(0)) await call.peer.addIceCandidate(ice);
       }
       function base(id, chatId, video, incoming) {
-        return { id, chatId, video, incoming, accepted: false, localIce: [], remoteIce: [], sentSdp: false };
+        return { id, chatId, video, incoming, accepted: false, localIce: [], remoteIce: [], sentSdp: false, restarts: 0 };
       }
       async function start(video = false) {
         const chat = getChat();
@@ -169,7 +198,7 @@
           } else if (data.kind === 'offer' && call.incoming && call.accepted && call.peer) {
             await remoteDescription(data.payload);
             if (current === call) await description('answer');
-          } else if (data.kind === 'answer' && !call.incoming && call.peer) await remoteDescription(data.payload);
+          } else if (data.kind === 'answer' && !call.incoming && call.peer && call.peer.signalingState !== 'stable') await remoteDescription(data.payload);
           else if (data.kind === 'ice' && call.accepted) {
             if (call.peer?.remoteDescription) await call.peer.addIceCandidate(data.payload);
             else if (call.remoteIce.length < 100) call.remoteIce.push(data.payload);
@@ -178,7 +207,7 @@
       }
       accept.onclick = async () => {
         if (!current || current.accepted) return;
-        const call = current; call.accepted = true; accept.disabled = true;
+        const call = current; call.accepted = true; accept.disabled = true; ringStop?.();
         try {
           await activate(call.chatId);
           if (current !== call) return;
@@ -210,7 +239,12 @@
       }
       return { start, receive, reset, active: () => !!current,
         connectionLost: () => { if (current && !current.accepted) reset(false); },
-        connectionRestored: () => { if (current) flushIce(current); }, ringingId: () => current?.incoming && !current.accepted ? current.id : null };
+        connectionRestored: () => {
+          if (!current) return;
+          const offer = current.peer?.signalingState === 'have-local-offer' && !current.incoming && current.peer.localDescription;
+          if (offer) try { emit('offer', { type: offer.type, sdp: offer.sdp }); } catch {}
+          flushIce(current);
+        }, ringingId: () => current?.incoming && !current.accepted ? current.id : null };
     },
   };
 })();

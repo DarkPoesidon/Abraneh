@@ -112,6 +112,19 @@ try {
   await hangUp(a, b);
   console.log('ok: TURN failure falls back');
 
+  // 8. A network change restarts ICE on the live call, and media keeps flowing on the new path.
+  await startCall(a, b, chat.id, false); await inbound(a, 'audio'); await inbound(b, 'audio');
+  const credentials = page => page.evaluate(() => peers.at(-1).localDescription.sdp.match(/a=ice-ufrag:(.+)/)[1]);
+  const [callerBefore, calleeBefore] = [await credentials(a), await credentials(b)];
+  await a.evaluate(() => { const peer = peers.at(-1); Object.defineProperty(peer, 'connectionState', { configurable: true, value: 'failed' }); peer.onconnectionstatechange(); delete peer.connectionState; });
+  await a.waitForFunction(ufrag => !peers.at(-1).localDescription.sdp.includes('a=ice-ufrag:' + ufrag) && peers.at(-1).signalingState === 'stable', callerBefore, { timeout: 15000 });
+  assert.notEqual(await credentials(b), calleeBefore, 'the callee must answer with new credentials');
+  const flowing = await bytes(b, 'audio'); await new Promise(resolve => setTimeout(resolve, 1500));
+  assert.ok(await bytes(b, 'audio') > flowing, 'audio must keep flowing after the restart');
+  assert.equal(await dialogOpen(a), true);
+  await hangUp(a, b);
+  console.log('ok: ICE restart');
+
   assert.deepEqual(errors, []);
   console.log('Call resilience passed.');
 } finally { await Promise.all(contexts.map(context => context.close().catch(() => {}))); await browser.close(); await fixture.close(); }

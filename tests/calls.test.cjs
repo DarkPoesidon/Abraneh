@@ -100,7 +100,7 @@ test('a participant whose call was lost can call again instead of waiting for it
   assert.equal(invited.kind, 'invite'); assert.equal(invited.callId, 'call-2');
 });
 
-function browser({ media, play, getIceServers, send } = {}) {
+function browser({ media, play, getIceServers, send, audioContext } = {}) {
   const peers = [];
   const nodes = [], packets = [], notices = [], timers = new Map(); let timer = 0, captures = 0, stopped = 0, closed = 0;
   const stream = { getTracks: () => [{ stop() { stopped++; } }] };
@@ -119,10 +119,10 @@ function browser({ media, play, getIceServers, send } = {}) {
     async setRemoteDescription(value) { this.remoteDescription = value; }
     async addIceCandidate() {}
   }
-  const sandbox = { window: { addEventListener() {} }, document: { createElement: element, body: element('body') },
+  const sandbox = { window: { addEventListener() {}, ...(audioContext ? { AudioContext: audioContext } : {}) }, document: { createElement: element, body: element('body') },
     navigator: { mediaDevices: { async getUserMedia(constraints) { captures++; assert.equal(constraints.audio, true); return media ? media() : stream; } } },
     RTCPeerConnection: Peer, MediaStream: class { constructor(tracks) { this.tracks = tracks; } getTracks() { return this.tracks; } }, crypto: { randomUUID: () => 'browser-call' }, Date, confirm: () => true,
-    setTimeout(fn) { timers.set(++timer, fn); return timer; }, clearTimeout(id) { timers.delete(id); }, clearInterval(id) { timers.delete(id); },
+    setTimeout(fn) { timers.set(++timer, fn); return timer; }, clearTimeout(id) { timers.delete(id); }, setInterval(fn) { timers.set(++timer, fn); return timer; }, clearInterval(id) { timers.delete(id); },
   };
   vm.runInNewContext(readFileSync('public/calls.js', 'utf8'), sandbox);
   const client = sandbox.window.WihmCalls.create({ getChat: () => ({ id: 'room', type: 'dm', title: 'Bob' }), getUser: () => ({ id: 'bob' }), ...(getIceServers ? { getIceServers } : {}), send: send ? data => send(data, packets) : data => packets.push(data), notify: text => notices.push(text) });
@@ -168,6 +168,27 @@ test('a video call without a usable camera continues as audio and can still rece
   assert.equal(f.nodes.find(node => node.className?.includes('call-camera')).hidden, true);
   assert.match(f.notices.at(-1), /دوربین/);
   f.client.reset();
+});
+
+test('the caller can re-offer on a live call to restart ICE, but the callee and an unaccepted call cannot', async t => {
+  const f = fixture(t); await f.signal(alice, 'invite', { video: false });
+  await assert.rejects(f.signal(alice, 'offer', { payload: { type: 'offer', sdp: 'v=0' } }), /ترتیب/);
+  await f.signal(bob, 'accept'); await f.signal(alice, 'offer', { payload: { type: 'offer', sdp: 'v=0' } }); await f.signal(bob, 'answer', { payload: { type: 'answer', sdp: 'v=0' } });
+  await assert.rejects(f.signal(bob, 'offer', { payload: { type: 'offer', sdp: 'v=0' } }), /ترتیب/);
+  for (let i = 0; i < 100; i++) await f.signal(alice, 'ice', { payload: { candidate: 'candidate' } });
+  await f.signal(alice, 'offer', { payload: { type: 'offer', sdp: 'v=0' } });
+  await f.signal(alice, 'ice', { payload: { candidate: 'after-restart' } });
+  await f.signal(bob, 'answer', { payload: { type: 'answer', sdp: 'v=0' } });
+  assert.equal(f.events.at(-1).kind, 'answer');
+});
+
+test('an incoming call rings until it is answered or ended', async () => {
+  const f = browser(); let oscillators = 0, closed = 0;
+  const f2 = browser({ audioContext: class { currentTime = 0; destination = {}; createGain() { return { gain: {}, connect() {} }; } createOscillator() { oscillators++; return { frequency: {}, connect() {}, start() {}, stop() {} }; } close() { closed++; return Promise.resolve(); } } });
+  await f2.client.receive(f2.invite); assert.equal(oscillators, 1); assert.equal(closed, 0);
+  await f2.nodes.find(node => node.textContent === 'پذیرش تماس').onclick(); assert.equal(closed, 1);
+  await f2.client.receive({ ...f2.invite, callId: 'second' }).catch(() => {}); f2.client.reset();
+  await f.client.receive(f.invite); assert.equal(f.client.active(), true); f.client.reset();
 });
 
 test('a voice call does not retry when the microphone is refused', async () => {
