@@ -24,7 +24,8 @@ async function deliver(env:Env,row:any,data:any,ttl:number,topic:string,fetcher:
   // Padding every short notification to 4096 bytes causes HTTP 413 on affected push services.
   const body=await encryptNotification(subscription,new TextEncoder().encode(JSON.stringify(data)),{pad:false});
   if(body.byteLength>4096)throw new InputError('حجم اعلان بیش از حد مجاز است.',413);
-  const payload={method:'POST',headers:{...headers,ttl:String(ttl),topic,'content-encoding':'aes128gcm','content-type':'application/octet-stream'},body};
+  // Without high urgency a sleeping phone holds the push back, and a 45 second call push expires first.
+  const payload={method:'POST',headers:{...headers,ttl:String(ttl),topic,urgency:'high','content-encoding':'aes128gcm','content-type':'application/octet-stream'},body};
   let response:Response;
   try{response=await fetcher(row.endpoint,{...payload,redirect:'manual',signal:AbortSignal.timeout(10_000)});}catch{throw new InputError('ارتباط سرور با سرویس اعلان مرورگر برقرار نشد؛ دوباره تلاش کنید.',502);}
   await response.body?.cancel();

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cloudflare-messenger-1.6.1';
+const CACHE_NAME = 'cloudflare-messenger-1.6.2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -85,7 +85,8 @@ self.addEventListener('push', event => {
   if(payload.kind==='call'&&(!Number.isFinite(payload.expiresAt)||payload.expiresAt<=Date.now()))return;
   event.waitUntil(self.registration.showNotification(typeof payload.title==='string'?payload.title:'پیام تازه', {
     body:typeof payload.body==='string'?payload.body:'یک پیام تازه دریافت کردید.',
-    tag:payload.kind==='update'?'wihm-update':payload.kind==='call'?'call-'+chatId:'chat-'+chatId,icon:'/icon.svg',badge:'/icon.svg',dir:'rtl',lang:'fa',data:{chatId,kind:['update','secure','call'].includes(payload.kind)?payload.kind:'chat'}
+    tag:payload.kind==='update'?'wihm-update':payload.kind==='call'?'call-'+chatId:'chat-'+chatId,icon:'/icon.svg',badge:'/icon.svg',dir:'rtl',lang:'fa',data:{chatId,kind:['update','secure','call'].includes(payload.kind)?payload.kind:'chat'},
+    ...(payload.kind==='call'?{requireInteraction:true,renotify:true,vibrate:[800,400,800,400,800,400,800]}:{})
   }));
 });
 self.addEventListener('notificationclick', event => {
