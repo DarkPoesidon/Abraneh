@@ -264,12 +264,47 @@
     authOverlay.style.display = 'flex';
   }
 
+  // The Android app opens this page with a referrer naming it, which later navigations lose.
+  function insideAndroidApp() {
+    try {
+      if (document.referrer.startsWith('android-app://com.wihm.messenger')) sessionStorage.setItem('wihm_android_app', '1');
+      return sessionStorage.getItem('wihm_android_app') === '1';
+    } catch { return false; }
+  }
+  function openServerSettings() {
+    if (window.Android?.openServerSettings) window.Android.openServerSettings();
+    else if (insideAndroidApp()) location.href = 'wihm://server-settings';
+    else alert('نشانی سرور متصل فعلی: ' + location.origin);
+  }
+  // Text shared from another Android app waits here until the user picks a chat.
+  let pendingShare = '';
+  function readSharedText() {
+    const params = new URLSearchParams(location.search || ''), shared = params.get('share');
+    if (!shared) return;
+    pendingShare = shared.slice(0, 10000); params.delete('share');
+    history.replaceState(null, '', location.pathname + (params.size ? '?' + params : ''));
+  }
+  let pushRenewedFor = null;
+  // Push reaches a closed app or browser only once enabled, and permission prompts need a user gesture.
+  function showNotificationPrompt() {
+    if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator) || window.Android) return;
+    // Android grants a verified app's permission by itself, so granted doesn't mean push was ever enabled.
+    if (Notification.permission === 'denied' || (Notification.permission === 'granted' && profile.notifications) || byId('notification-prompt')) return;
+    try { if (localStorage.getItem('wihm_notification_prompt_closed')) return; } catch { return; }
+    const box = document.createElement('div'); box.id = 'notification-prompt'; box.className = 'notification-prompt'; box.setAttribute('role', 'status');
+    box.innerHTML = '<span>برای دریافت پیام وقتی برنامه بسته است، اعلان را فعال کنید.</span><div class="notification-prompt-actions"><button type="button" class="btn-primary notification-enable">فعال‌کردن</button><button type="button" class="quiet-button notification-later">بعداً</button></div>';
+    box.querySelector('.notification-enable').addEventListener('click', async () => { try { await enableNotifications(); box.remove(); } catch (error) { box.firstChild.textContent = error.message || 'فعال‌کردن اعلان انجام نشد.'; } });
+    box.querySelector('.notification-later').addEventListener('click', () => { try { localStorage.setItem('wihm_notification_prompt_closed', '1'); } catch {} box.remove(); });
+    chatsList.before?.(box);
+  }
+
   function setupUserSession() {
     if (!currentUser || !token) {
       authOverlay.style.display = 'flex';
       return;
     }
     authOverlay.style.display = 'none';
+    insideAndroidApp(); readSharedText();
     if (window.Android && window.Android.saveAuthToken) {
       window.Android.saveAuthToken(token, currentUser.id, location.origin);
     }
@@ -390,7 +425,7 @@
     renderFilteredChats();
     typingBar.textContent = '';
     chatError.textContent = '';
-    messageInput.value = '';
+    messageInput.value = pendingShare; pendingShare = '';
     syncComposer();
     btnFirstUnread.hidden = !chat.firstUnreadId;
     btnAddMembers.style.display = chat.type === 'group' && ['owner','admin'].includes(chat.role) ? 'inline-flex' : 'none';
@@ -1265,9 +1300,9 @@
     }});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
-  byId('settings-server')?.addEventListener('click',()=>{closeFeature();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
-  byId('btn-menu-server')?.addEventListener('click',()=>{closeMainMenu();if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
-  byId('btn-auth-change-server')?.addEventListener('click',()=>{if(window.Android&&window.Android.openServerSettings){window.Android.openServerSettings();}else{alert('نشانی سرور متصل فعلی: '+location.origin);}});
+  byId('settings-server')?.addEventListener('click',()=>{closeFeature();openServerSettings();});
+  byId('btn-menu-server')?.addEventListener('click',()=>{closeMainMenu();openServerSettings();});
+  byId('btn-auth-change-server')?.addEventListener('click',()=>{openServerSettings();});
   byId('btn-channels')?.addEventListener('click',()=>{closeMainMenu();extras?.channels().catch(featureError);});
   async function loadProfile() {
     const sessionToken=token, row=await api('/api/profile'); if(!row||sessionToken!==token) return;
@@ -1275,6 +1310,7 @@
     extras?.notice(row).catch(()=>{});
     userDisplayName.textContent=currentUser.displayName; userAvatar.innerHTML=avatarHtml(row.avatar,currentUser.displayName);
     localStorage.setItem('cf_msg_user',JSON.stringify(currentUser)); applyAppearance(row.theme||'dark',row.font_size||'normal');
+    showNotificationPrompt(); renewPushSubscription();
   }
   function applyAppearance(theme,size) {
     const light=theme==='light'||(theme==='system'&&window.matchMedia?.('(prefers-color-scheme: light)').matches);
@@ -1362,24 +1398,36 @@
     } else {
       bind('test-notifications',async()=>{const result=await post('/api/push/test',{});byId('notification-state').textContent=result.message;});
       bind('test-local-notification',async()=>{if(Notification.permission!=='granted')throw new Error('ابتدا اعلان را فعال کنید.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('آزمایش نمایش ابرانه',{body:'اگر این اعلان را می‌بینید، نمایش اعلان روی دستگاه فعال است.',tag:'wihm-local-test',icon:'/icon.svg',dir:'rtl'});byId('notification-state').textContent='این آزمایش فقط نمایش دستگاه را بررسی می‌کند؛ برای مسیر شبکه، آزمایش ارسال سرور را بزنید.';});
-      bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
+      bind('enable-notifications',enableNotifications); bind('disable-notifications',async()=>{ await api('/api/push',{method:'DELETE'}); try{localStorage.setItem('wihm_push_off','1');}catch{} const registration=await navigator.serviceWorker?.getRegistration(); const subscription=await registration?.pushManager?.getSubscription(); await subscription?.unsubscribe();byId('notification-state').textContent='اعلان این دستگاه قطع شد.'; });
     }
 
   }
   async function saveProfile(extra={}) {
-    await patch('/api/profile',{displayName:byId('profile-name').value.trim(),about:byId('profile-about').value,avatar:avatarDraft,theme:byId('profile-theme').value,fontSize:byId('profile-font').value,notifications:!!profile.notifications,notificationPreview:byId('profile-preview').checked,...extra}); await loadProfile();
+    // The notification prompt saves from the chat list, where the settings form doesn't exist.
+    const fields=byId('profile-form')?{displayName:byId('profile-name').value.trim(),about:byId('profile-about').value,avatar:avatarDraft,theme:byId('profile-theme').value,fontSize:byId('profile-font').value,notificationPreview:byId('profile-preview').checked}:{displayName:currentUser.displayName,about:profile.about||'',avatar:profile.avatar||'',theme:profile.theme||'dark',fontSize:profile.font_size||'normal',notificationPreview:!!profile.notification_preview};
+    await patch('/api/profile',{...fields,notifications:!!profile.notifications,...extra}); await loadProfile();
   }
   async function enableNotifications() {
     if(!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)) throw new Error('این مرورگر از اعلان پس‌زمینه پشتیبانی نمی‌کند.');
     if(!profile.pushConfigured) throw new Error('سرور را با نصب‌کنندهٔ جدید به‌روز کنید.');
     const permission=await Notification.requestPermission(); if(permission!=='granted') throw new Error('اجازهٔ اعلان داده نشد. می‌توانید آن را در تنظیمات مرورگر تغییر دهید.');
+    try{localStorage.removeItem('wihm_push_off');}catch{}
+    pushRenewedFor=token; await subscribePush(); await saveProfile({notifications:true});
+    if(byId('notification-state'))byId('notification-state').textContent='اعلان این دستگاه فعال شد. یک پیام از حساب دیگر برای آزمایش بفرستید.';
+  }
+  async function subscribePush() {
     const registration=await navigator.serviceWorker.ready;
     const bytes=Uint8Array.from(atob(profile.vapidPublicKey.replace(/-/g,'+').replace(/_/g,'/')),ch=>ch.charCodeAt(0));
     let subscription=await registration.pushManager.getSubscription();
     if(subscription?.options.applicationServerKey && Array.from(new Uint8Array(subscription.options.applicationServerKey)).join()!==Array.from(bytes).join()) {await subscription.unsubscribe();subscription=null;}
     subscription ||= await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
-    await saveProfile({notifications:true}); await post('/api/push',subscription.toJSON());
-    byId('notification-state').textContent='اعلان این دستگاه فعال شد. یک پیام از حساب دیگر برای آزمایش بفرستید.';
+    await post('/api/push',subscription.toJSON());
+  }
+  // Subscriptions belong to a login session, so each new login on this device needs its own.
+  function renewPushSubscription() {
+    if(pushRenewedFor===token||window.Android||!profile.pushConfigured||!profile.notifications||!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)||Notification.permission!=='granted') return;
+    try{if(localStorage.getItem('wihm_push_off')) return;}catch{}
+    pushRenewedFor=token; subscribePush().catch(error=>console.warn('Push renewal failed:',error?.message));
   }
   function syncComposer() { messageInput.closest?.('.chat-input-area')?.classList.toggle('has-text',!!messageInput.value.trim()); }
   function cancelComposer() { composerContext=null; byId('composer-context').hidden=true; btnSendMessage.disabled=false; btnSendMessage.title='ارسال'; }

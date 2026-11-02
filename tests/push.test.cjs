@@ -35,7 +35,7 @@ const trigger=async(suffix='')=>(await mf.dispatchFetch('http://localhost/'+suff
 test('incoming call push has a short lifetime and never exposes private message content',async()=>{
   const calls=await trigger('?call');const payload=decrypt(calls);
   assert.equal(payload.kind,'call');assert.equal(payload.callId,'incoming-call');assert.equal(payload.chatId,'room');
-  assert.ok(payload.expiresAt>Date.now());assert.ok(Number(calls[0].headers.ttl)>0&&Number(calls[0].headers.ttl)<=45);
+  assert.ok(payload.expiresAt>Date.now());assert.ok(Number(calls[0].headers.ttl)>0&&Number(calls[0].headers.ttl)<=45);assert.equal(calls[0].headers.urgency,'high');
   assert.ok(!JSON.stringify(payload).includes('متن خصوصی'));assert.equal(payload.title,'تماس ورودی در ابرانه');
 });
 function decrypt(calls){

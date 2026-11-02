@@ -14,6 +14,8 @@ test('service worker suppresses expired call notifications and keeps active call
   push({ kind: 'call', chatId: 'private-chat', expiresAt: Date.now() - 1 }); assert.equal(w.notifications.length, 0);
   push({ kind: 'call', chatId: 'private-chat', expiresAt: Date.now() + 45000, title: 'Incoming call' }); await work;
   assert.equal(w.notifications[0].tag, 'call-private-chat'); assert.equal(w.notifications[0].data.kind, 'call');
+  assert.equal(w.notifications[0].requireInteraction, true, 'a call must stay on screen until answered');
+  push({ chatId: 'private-chat', title: 'Message' }); await work; assert.equal(w.notifications[1].requireInteraction, undefined);
 });
 test('call notification focuses an existing app without navigating away from a conversation, or opens the app', async () => {
   let focused = false, message, work;
