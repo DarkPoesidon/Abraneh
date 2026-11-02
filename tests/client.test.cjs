@@ -125,6 +125,7 @@ test('group picker creates a group and adds members to the selected group', asyn
   const posts = [];
   const users = [{ id: 'friend', username: 'friend', displayName: 'دوست' }];
   const app = harness((path, options) => {
+    if (path === '/api/channels/migrate') return reply({ migrated: 0 });
     if (options.method === 'POST') {
       posts.push({ path, body: JSON.parse(options.body) });
       if (path === '/api/chats') { chats = [...chats, { id: 'group', title: 'گروه ما', type: 'group', role: 'owner', updatedAt: 5 }]; return reply({ id: 'group' }, 201); }

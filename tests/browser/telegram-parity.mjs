@@ -33,11 +33,21 @@ try {
 
   // A public channel: only the owner gets a composer.
   await menu(owner, 'btn-menu-channel');
+  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==', 'base64');
+  await owner.locator('#new-channel-photo-file').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: pixel });
+  await owner.locator('#new-channel-photo img').waitFor();
   await owner.locator('#new-channel-title').fill('خبرنامه');
-  await owner.locator('#new-channel-visibility').selectOption('public');
-  await owner.locator('#new-channel-handle').fill('news_room');
-  await shot(owner, 'channel-create');
-  await owner.locator('#channel-create-form button[type=submit]').click();
+  await owner.locator('#new-channel-description').fill('تازه‌ترین خبرها');
+  await shot(owner, 'channel-create-1');
+  await owner.locator('#channel-step-one button[type=submit]').click();
+  await owner.locator('input[name=channel-type][value=public]').check();
+  await owner.locator('#channel-handle').fill('news_room');
+  await shot(owner, 'channel-create-2');
+  await owner.locator('#channel-step-two button[type=submit]').click();
+  await owner.locator('#channel-new-link').waitFor();
+  assert.match(await owner.locator('#channel-new-link').inputValue(), /#channel=news_room$/);
+  await shot(owner, 'channel-create-3');
+  await owner.locator('#channel-created-done').click();
   await owner.waitForFunction(() => document.querySelector('#active-chat-title')?.textContent === 'خبرنامه');
   await owner.locator('.message-input').fill('اولین پست کانال'); await owner.keyboard.press('Enter');
   await owner.locator('.message-text', { hasText: 'اولین پست کانال' }).waitFor();
@@ -53,6 +63,13 @@ try {
   assert.equal(await peer.locator('.chat-input-area').isVisible(), false, 'a subscriber has no composer');
   assert.equal(await peer.locator('.channel-footer button').isVisible(), true, 'a subscriber can mute');
   assert.equal(await peer.locator('.message-sender').count(), 0, 'posts show no author');
+  await peer.waitForFunction(() => /مشترک/.test(document.querySelector('#status-text').textContent));
+  assert.equal(await owner.locator('.message-bubble.sent').count(), 0, 'posts sit on one side, even for the owner');
+  await owner.locator('#btn-chat-details').click(); await owner.locator('#channel-edit').waitFor(); await shot(owner, 'channel-info');
+  await owner.locator('#channel-edit').click(); await owner.locator('#edit-channel-description').fill('خبرهای تازه'); await shot(owner, 'channel-edit');
+  await owner.locator('#channel-edit-form button[type=submit]').click(); await owner.locator('.channel-about', { hasText: 'خبرهای تازه' }).waitFor();
+  await owner.locator('#feature-modal .icon-btn[aria-label*="بستن"], #btn-close-feature').first().click();
+  assert.equal(await peer.locator('#settings-channels').count(), 0, 'the old channel screen is gone');
   assert.equal(await peer.locator('.call-launch').first().isVisible(), false, 'a channel has no call buttons');
   await peer.waitForTimeout(800); await shot(peer, 'channel-subscriber');
   await owner.locator('.message-input').fill('پست زنده'); await owner.keyboard.press('Enter');
@@ -66,7 +83,6 @@ try {
   await owner.waitForFunction(() => ['متصل به سرور', 'آنلاین'].includes(document.querySelector('#status-text').textContent));
   await owner.locator('.media-picker').setInputFiles({ name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') });
   await owner.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
-  const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==', 'base64');
   await owner.locator('.media-picker').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: pixel });
   await owner.locator('.image-note img[src^="blob:"]').waitFor();
   await peer.goto(fixture.origin); await peer.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
@@ -122,13 +138,31 @@ try {
   await english.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
   await english.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
   await shot(english, 'english-chat');
-  await english.locator('#btn-settings').click(); await english.locator('#settings-appearance').click(); await english.locator('#settings-language').waitFor(); await english.waitForTimeout(300); await shot(english, 'english-settings');
+  await english.locator('#btn-settings').click(); await english.locator('#settings-language-row').click(); await english.locator('input[name=app-language][value=en]:checked').waitFor(); await english.waitForTimeout(300); await shot(english, 'english-settings');
   const interfaceText = await english.locator('#feature-modal').innerText();
   const leftover = interfaceText.split('\n').filter(line => /[؀-ۿ]/.test(line) && !/سارا|فارسی|زبان/.test(line));
   assert.deepEqual(leftover, [], 'settings in English');
-  await english.evaluate(() => WihmI18n.set('fa')); await english.locator('.chat-item').first().waitFor();
+  await Promise.all([english.waitForNavigation(), english.locator('input[name=app-language][value=fa]').click()]); await english.locator('.chat-item').first().waitFor();
   assert.equal(await english.evaluate(() => document.documentElement.dir), 'rtl');
   console.log('ok: English and back');
+
+  // Someone with no Persian: a new device opens in English, and the switch needs no reading.
+  for (const [locale, dir, button] of [['de-DE', 'ltr', 'Sign in'], ['fa-IR', 'rtl', 'ورود']]) {
+    const context = await browser.newContext({ locale, serviceWorkers: 'block' }), fresh = await context.newPage();
+    await fresh.goto(fixture.origin); await fresh.locator('#auth-language-row').waitFor();
+    assert.equal(await fresh.evaluate(() => document.documentElement.dir), dir, locale);
+    assert.match(await fresh.locator('body').innerText(), new RegExp(button), locale);
+    if (locale === 'de-DE') await shot(fresh, 'first-open');
+    await context.close();
+  }
+  const fresh = await (await browser.newContext({ locale: 'de-DE', serviceWorkers: 'block' })).newPage();
+  await fresh.goto(fixture.origin); await fresh.locator('#auth-language-row').waitFor();
+  await Promise.all([fresh.waitForNavigation(), fresh.locator('#auth-language-row [data-language=fa]').click()]);
+  assert.equal(await fresh.evaluate(() => document.documentElement.dir), 'rtl', 'the choice sticks over the device language');
+  const menuPage = await open(fixture.owner, { width: 390, height: 800 });
+  await menuPage.locator('#btn-main-menu').click(); await menuPage.locator('#btn-menu-language').click();
+  await menuPage.locator('input[name=app-language][value=fa]:checked').waitFor();
+  console.log('ok: a first open without Persian');
 
   assert.deepEqual(errors, []);
   console.log('Parity screens passed.');

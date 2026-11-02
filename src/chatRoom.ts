@@ -201,6 +201,18 @@ export class ChatRoom extends DurableObject<Env> {
       return new Response(null,{status:204});
     }
     if (url.pathname === '/refresh-access') { await this.authorizedSockets(); return new Response(null,{status:204}); }
+    if (url.pathname === '/import-posts' && request.method === 'POST') {
+      const { chatId, posts } = await request.json<{ chatId: string; posts: { id: string; author: string; name: string; text: string; createdAt: number }[] }>();
+      this.ctx.storage.transactionSync(() => {
+        for (const post of posts) {
+          this.ctx.storage.sql.exec("INSERT OR IGNORE INTO messages (id, sender_id, sender_name, text, created_at, client_msg_id) VALUES (?,?,?,?,?,'')", post.id, post.author, post.name, post.text, post.createdAt);
+          this.ctx.storage.sql.exec('INSERT OR IGNORE INTO message_details(message_id) VALUES (?)', post.id);
+          this.ctx.storage.sql.exec('INSERT OR IGNORE INTO sync_queue VALUES (?,?)', post.id, chatId);
+        }
+      });
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
+      return new Response(null, { status: 204 });
+    }
     if (url.pathname === '/wipe-room' && request.method === 'POST') {
       for (const socket of this.ctx.getWebSockets()) try { socket.close(4003, 'Chat deleted'); } catch {}
       await this.ctx.storage.deleteAlarm(); await this.ctx.storage.deleteAll();

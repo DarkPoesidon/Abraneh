@@ -4,6 +4,14 @@ export const SESSION_VERSION_SQL = `NOT EXISTS (SELECT 1 FROM service_user_state
 export async function chatAccess(env: Env, chatId: string, userId: string) {
   return env.DB.prepare(`SELECT c.type,c.title,COALESCE(gr.role,'member') AS role,bc.visibility,bc.handle,bc.description,bc.chat_id IS NOT NULL AS isChannel FROM chats c JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = ? LEFT JOIN group_roles gr ON gr.chat_id = c.id AND gr.user_id = cm.user_id LEFT JOIN broadcast_channels bc ON bc.chat_id = c.id WHERE c.id = ? AND NOT EXISTS(SELECT 1 FROM chat_moderation cmod WHERE cmod.chat_id = c.id)`).bind(userId,chatId).first<{ type: string; title: string; role: string; isChannel: number; visibility: string | null; handle: string | null; description: string | null }>();
 }
+// A small PNG or WebP as a data URL, so no other content can be stored as an image.
+export function validAvatar(avatar: unknown): avatar is string {
+  if (typeof avatar !== 'string' || avatar.length > 48_000) return false;
+  if (!avatar) return true;
+  if (!/^data:image\/(png|webp);base64,[A-Za-z0-9+/]+=*$/.test(avatar)) return false;
+  try { const bytes = atob(avatar.split(',')[1]); return bytes.startsWith('\x89PNG\r\n\x1a\n') || (bytes.startsWith('RIFF') && bytes.slice(8, 12) === 'WEBP'); }
+  catch { return false; }
+}
 export const MEMBER_LIMIT_SQL = `(CASE WHEN EXISTS(SELECT 1 FROM broadcast_channels WHERE chat_id = ?) THEN 10000 ELSE 100 END)`;
 // The room's copy goes last, so a failed database delete can't leave a chat with no messages.
 export async function deleteChat(env: Env, chatId: string) {

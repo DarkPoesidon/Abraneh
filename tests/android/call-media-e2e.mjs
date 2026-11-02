@@ -79,7 +79,7 @@ try {
   const chatId = (await (await fixture.mf.dispatchFetch(fixture.origin + '/api/chats', { method: 'POST', headers, body: JSON.stringify({ targetUserId: fixture.peer.user.id }) })).json()).id;
 
   const context = await browser.newContext({ permissions: ['microphone', 'camera'], serviceWorkers: 'block' });
-  await context.addInitScript(account => { localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); }, fixture.owner);
+  await context.addInitScript(account => { localStorage.setItem('wihm_language','fa');localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); }, fixture.owner);
   const page = await context.newPage();
   page.on('dialog', dialog => dialog.accept());
   page.on('pageerror', error => note('browser exception: ' + error.message));
