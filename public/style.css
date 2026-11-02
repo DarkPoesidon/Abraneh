@@ -662,6 +662,18 @@ body {
 .group-title-input { margin: 12px 0; }
 .selected-members { color: var(--text-secondary); font-size: 0.85rem; overflow-wrap: anywhere; margin: 8px 0; }
 .chat-header, .chat-input-area { flex-shrink: 0; }
+.media-record { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+.chat-input-area.recording > :not(.media-recorder) { display: none; }
+.media-recorder { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.media-recorder[hidden] { display: none; }
+.media-status { flex: 1; min-width: 120px; color: var(--text-secondary); font-size: .85rem; }
+.media-preview { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; background: #000; }
+.media-send { width: auto; min-height: 44px; margin: 0; padding-inline: 18px; }
+.media-cancel { min-height: 44px; }
+.media-play { min-height: 44px; padding: 8px 14px; border: 1px solid currentColor; border-radius: var(--radius-md); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.media-play:disabled { opacity: .6; cursor: progress; }
+.media-player { display: block; max-width: min(100%, 320px); border-radius: var(--radius-md); }
+audio.media-player { width: 280px; }
 .messages-container { min-height: 0; }
 .chat-main, #active-chat-wrapper, .message-input { min-width: 0; }
 .unread-badge { display: inline-flex; min-width: 22px; padding: 0 6px; margin-inline-start: 6px; border-radius: 20px; background: var(--accent-color); color: var(--text-primary); font-size: .75rem; justify-content: center; }

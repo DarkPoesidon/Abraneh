@@ -133,7 +133,7 @@ try {
   const { page } = await loadedPage(375);
   await page.locator('#btn-back-to-chats').click(); await settings(page);
   await page.setViewportSize({ width: 375, height: 420 });
-  assert.ok((await page.locator('.feature-card').boundingBox()).height <= 396 + 1);
+  await waitFor(page, () => document.querySelector('.feature-card').getBoundingClientRect().height <= 396 + 1);
   await page.locator('#settings-admin').scrollIntoViewIfNeeded(); assert.equal(await page.locator('#settings-admin').isVisible(), true);
   await screenshot(page, 'settings-short-375');
   await page.setViewportSize({ width: 375, height: 860 });

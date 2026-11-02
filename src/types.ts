@@ -56,6 +56,7 @@ export interface Message {
   deletedAt?: number;
   revision?: number;
   reactions?: { emoji: string; users: string[] }[];
+  media?: { kind: string; mime: string; size: number; durationMs: number } | null;
 }
 
 export interface JwtPayload {

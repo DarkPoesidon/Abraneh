@@ -1,5 +1,6 @@
 import { publicChannels, handleChannels, scheduledChannels } from './channels.js';
 import { handleCallRequests } from './calls.js';
+import { handleMedia } from './media.js';
 import { beginOperation, withOperation } from './maintenance.js';
 import { handleBackup, publicRestore } from './backup.js';
 import { Env, User, UserRow } from "./types.js";
@@ -136,8 +137,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           if (!/^[a-zA-Z0-9_]+$/.test(username)) {
             return errorResponse("نام کاربری فقط می‌تواند شامل حروف انگلیسی، اعداد و خط زیر (_) باشد.");
           }
-          if (!password || password.length < 6 || password.length > 1024) {
-            return errorResponse("رمز عبور باید حداقل ۶ کاراکتر باشد.");
+          if (!password || password.length < 8 || password.length > 1024) {
+            return errorResponse("رمز عبور باید حداقل ۸ کاراکتر باشد.");
           }
 
           // Check duplicate
@@ -185,6 +186,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           ).bind(username).first<UserRow & { authVersion: number }>();
 
           if (!row) {
+            // Spend the same time as a wrong password, so timing doesn't reveal which usernames exist.
+            await hashPassword(password, '00000000000000000000000000000000');
             return errorResponse("نام کاربری یا رمز عبور اشتباه است.", 401);
           }
 
@@ -211,6 +214,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
         const callResponse=await handleCallRequests(request,env,auth);if(callResponse)return callResponse;
+        const media=await handleMedia(request,env,auth);if(media)return media;
         const backup=await handleBackup(request,env,auth);if(backup)return backup;
         const channels=await handleChannels(request,env,auth);if(channels)return channels;
         const security=await handleSecurity(request,env,auth);if(security)return security;

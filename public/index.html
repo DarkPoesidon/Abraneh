@@ -2,7 +2,8 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="wihm-version" content="1.5.2">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' wss:; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="wihm-version" content="1.6.0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
   
@@ -77,7 +78,7 @@
 
           <div class="form-group">
             <label class="form-label" for="input-password">رمز عبور</label>
-            <input type="password" id="input-password" class="form-input" placeholder="حداقل ۶ کاراکتر" required autocomplete="current-password">
+            <input type="password" id="input-password" class="form-input" placeholder="برای حساب تازه حداقل ۸ کاراکتر" required autocomplete="current-password">
           </div>
 
           <label for="input-otp">کد دومرحله‌ای؛ اگر فعال است</label><input id="input-otp" class="form-input" inputmode="numeric" autocomplete="one-time-code"><button id="btn-passkey-login" class="quiet-button" type="button">ورود با کلید عبور</button><button type="submit" id="auth-submit-btn" class="btn-primary">ورود به حساب</button>
@@ -107,7 +108,7 @@
         <button id="btn-menu-server" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-server"/></svg><span>تنظیمات سرور</span></button>
         <div class="menu-divider"></div>
         <button id="btn-logout" class="menu-item danger-text" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-logout"/></svg><span>خروج از حساب</span></button>
-        <p class="app-version" dir="ltr">WIHM 1.5.2</p>
+        <p class="app-version" dir="ltr">WIHM 1.6.0</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrapper"><input type="search" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها"><svg class="ui-icon search-icon" aria-hidden="true"><use href="#i-search"/></svg></div>
@@ -212,6 +213,6 @@
 
   <script src="/updates.js"></script>
   <script src="/extras.js"></script>
-  <script src="/security.js"></script><script src="/backup.js"></script><script src="/calls.js"></script><script src="/channels.js"></script><script src="/secure.bundle.js"></script><script src="/app.js"></script>
+  <script src="/security.js"></script><script src="/backup.js"></script><script src="/calls.js"></script><script src="/media.js"></script><script src="/channels.js"></script><script src="/secure.bundle.js"></script><script src="/app.js"></script>
 </body>
 </html>

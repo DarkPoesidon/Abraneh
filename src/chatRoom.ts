@@ -18,6 +18,11 @@ interface WsAttachment {
   typing?: boolean;
 }
 
+// SQLite rows in a Durable Object are capped at 2 MB, so longer recordings span several rows.
+const MEDIA_CHUNK_BYTES = 1024 * 1024;
+// shortcut: one flat cap per chat with no retention, add per-user quotas if a busy group ever reaches it.
+const ROOM_MEDIA_BYTES = 256 * 1024 * 1024;
+
 export class ChatRoom extends DurableObject<Env> {
   private sqlInitialized = false;
   private syncing = false;
@@ -54,6 +59,8 @@ export class ChatRoom extends DurableObject<Env> {
         CREATE TABLE IF NOT EXISTS message_details (message_id TEXT PRIMARY KEY,reply_to TEXT,edited_at INTEGER NOT NULL DEFAULT 0,deleted_at INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS message_reactions (message_id TEXT NOT NULL,user_id TEXT NOT NULL,emoji TEXT NOT NULL,PRIMARY KEY(message_id,user_id));
         CREATE TABLE IF NOT EXISTS push_queue (message_id TEXT PRIMARY KEY,chat_id TEXT NOT NULL,after_id TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS message_media (message_id TEXT PRIMARY KEY,kind TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,duration_ms INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS media_chunks (message_id TEXT NOT NULL,seq INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(message_id,seq));
       `);
       if (!this.ctx.storage.sql.exec("SELECT 1 FROM room_meta WHERE key = 'dedupe-v1'").toArray().length) {
         this.ctx.storage.transactionSync(() => {
@@ -126,6 +133,7 @@ export class ChatRoom extends DurableObject<Env> {
       const attachment: WsAttachment = { chatId, userId, username, displayName, sessionId };
       server.serializeAttachment(attachment);
 
+      const protocol = request.headers.get('Sec-WebSocket-Protocol')?.split(',').map(value => value.trim()).includes('wihm.v1') ? 'wihm.v1' : null;
       this.ctx.acceptWebSocket(server, [userId]);
       for (const socket of await this.authorizedSockets()) {
         const online = socket.deserializeAttachment() as WsAttachment | null;
@@ -143,7 +151,17 @@ export class ChatRoom extends DurableObject<Env> {
       return new Response(null, {
         status: 101,
         webSocket: client,
+        ...(protocol ? { headers: { 'Sec-WebSocket-Protocol': protocol } } : {}),
       });
+    }
+
+    if (url.pathname === '/media-upload' && request.method === 'POST') return this.uploadMedia(url, request);
+    if (url.pathname === '/media') {
+      const id = url.searchParams.get('id') || '', meta = this.ctx.storage.sql.exec('SELECT mime,size FROM message_media WHERE message_id=?', id).toArray()[0];
+      if (!meta) return new Response(null, { status: 404 });
+      const bytes = new Uint8Array(Number(meta.size)); let offset = 0;
+      for (const row of this.ctx.storage.sql.exec('SELECT data FROM media_chunks WHERE message_id=? ORDER BY seq', id)) { const part = new Uint8Array(row.data as ArrayBuffer); bytes.set(part, offset); offset += part.byteLength; }
+      return new Response(bytes, { headers: { 'Content-Type': String(meta.mime) } });
     }
 
     if (url.pathname === '/message') {
@@ -278,11 +296,6 @@ export class ChatRoom extends DurableObject<Env> {
         return;
       }
 
-      const clock = Date.now();
-      // A newly accepted message must sort after an already acknowledged read cursor,
-      // even when several messages arrive in the same millisecond.
-      const last = this.ctx.storage.sql.exec('SELECT created_at FROM messages ORDER BY created_at DESC LIMIT 1').toArray()[0];
-      const now = Math.max(clock, Number(last?.created_at || 0) + 1);
       const clientMsgId = data.clientMsgId || "";
       const previous = clientMsgId && this.ctx.storage.sql.exec(`SELECT m.* FROM message_keys k JOIN messages m ON m.id = k.message_id WHERE k.sender_id = ? AND k.client_msg_id = ?`, sender.userId, clientMsgId).toArray()[0];
       if (previous) {
@@ -293,37 +306,18 @@ export class ChatRoom extends DurableObject<Env> {
         await this.syncPending();
         return;
       }
-      const windowStart = Math.floor(clock / 60_000) * 60_000;
-      const counter = this.ctx.storage.sql.exec(`INSERT INTO send_limits VALUES (?,?,1) ON CONFLICT(user_id) DO UPDATE SET
-        count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END, window_start = excluded.window_start RETURNING count`, sender.userId, windowStart).toArray()[0];
-      if (Number(counter.count) > 120) {
+      if (!this.withinSendLimit(sender.userId)) {
         ws.send(JSON.stringify({ event: 'error', clientMsgId, retryable: true, message: 'تعداد پیام‌ها زیاد است؛ یک دقیقه صبر کنید و دوباره تلاش کنید.' }));
         return;
       }
-      const messageId = crypto.randomUUID();
+      let messageId: string;
       let replyToId: string | null = null;
       if (data.replyToId !== undefined) {
         if (!validId(data.replyToId)||!await this.materialize(data.replyToId,sender.chatId)) { ws.send(JSON.stringify({event:'error',clientMsgId,retryable:false,message:'پیام مورد پاسخ پیدا نشد.'})); return; }
         replyToId=data.replyToId;
       }
-      // Persist the canonical message, deduplication key and synchronization job atomically.
       try {
-        this.ctx.storage.transactionSync(() => {
-          this.ctx.storage.sql.exec(
-          `INSERT INTO messages (id, sender_id, sender_name, text, created_at, client_msg_id) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          messageId,
-          sender.userId,
-          sender.displayName,
-          text,
-          now,
-          clientMsgId
-          );
-          if (clientMsgId) this.ctx.storage.sql.exec('INSERT INTO message_keys VALUES (?,?,?)', sender.userId, clientMsgId, messageId);
-          this.ctx.storage.sql.exec('INSERT INTO message_details(message_id,reply_to) VALUES (?,?)',messageId,replyToId);
-          this.ctx.storage.sql.exec('INSERT INTO sync_queue VALUES (?,?)', messageId, sender.chatId);
-          this.ctx.storage.sql.exec('INSERT INTO push_queue(message_id,chat_id) VALUES (?,?)',messageId,sender.chatId);
-        });
+        messageId = this.storeMessage(sender, text, clientMsgId, replyToId);
         await this.ctx.storage.setAlarm(Date.now() + 5000);
       } catch (err) {
         console.error("Failed to insert into DO SQLite:", err);
@@ -331,14 +325,70 @@ export class ChatRoom extends DurableObject<Env> {
         return;
       }
 
-      await this.syncPending();
-
-      const msgPayload=this.payload(this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',messageId).toArray()[0],sender.chatId);
-
-      // 3. Broadcast to all connected sockets in this chat room
-      await this.broadcast({ event: "new_message", message: msgPayload });
-      this.ctx.waitUntil(this.flushPush().catch(()=>console.warn('Push delivery deferred or unavailable.')));
+      await this.announceMessage(messageId, sender.chatId);
     }
+  }
+
+  private withinSendLimit(userId: string) {
+    const counter = this.ctx.storage.sql.exec(`INSERT INTO send_limits VALUES (?,?,1) ON CONFLICT(user_id) DO UPDATE SET
+      count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END, window_start = excluded.window_start RETURNING count`, userId, Math.floor(Date.now() / 60_000) * 60_000).toArray()[0];
+    return Number(counter.count) <= 120;
+  }
+
+  // Persist the canonical message, deduplication key, media and synchronization job atomically.
+  private storeMessage(sender: { chatId: string; userId: string; displayName: string }, text: string, clientMsgId: string, replyToId: string | null, media?: { kind: string; mime: string; durationMs: number; bytes: Uint8Array }) {
+    // A newly accepted message must sort after an already acknowledged read cursor,
+    // even when several messages arrive in the same millisecond.
+    const last = this.ctx.storage.sql.exec('SELECT created_at FROM messages ORDER BY created_at DESC LIMIT 1').toArray()[0];
+    const now = Math.max(Date.now(), Number(last?.created_at || 0) + 1);
+    const messageId = crypto.randomUUID();
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+      `INSERT INTO messages (id, sender_id, sender_name, text, created_at, client_msg_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      messageId,
+      sender.userId,
+      sender.displayName,
+      text,
+      now,
+      clientMsgId
+      );
+      if (clientMsgId) this.ctx.storage.sql.exec('INSERT INTO message_keys VALUES (?,?,?)', sender.userId, clientMsgId, messageId);
+      this.ctx.storage.sql.exec('INSERT INTO message_details(message_id,reply_to) VALUES (?,?)',messageId,replyToId);
+      this.ctx.storage.sql.exec('INSERT INTO sync_queue VALUES (?,?)', messageId, sender.chatId);
+      this.ctx.storage.sql.exec('INSERT INTO push_queue(message_id,chat_id) VALUES (?,?)',messageId,sender.chatId);
+      if (media) {
+        this.ctx.storage.sql.exec('INSERT INTO message_media VALUES (?,?,?,?,?)', messageId, media.kind, media.mime, media.bytes.byteLength, media.durationMs);
+        for (let seq = 0, offset = 0; offset < media.bytes.byteLength; seq++, offset += MEDIA_CHUNK_BYTES) this.ctx.storage.sql.exec('INSERT INTO media_chunks VALUES (?,?,?)', messageId, seq, media.bytes.slice(offset, offset + MEDIA_CHUNK_BYTES).buffer);
+      }
+    });
+    return messageId;
+  }
+
+  private async announceMessage(messageId: string, chatId: string) {
+    await this.syncPending();
+    const message = this.payload(this.ctx.storage.sql.exec('SELECT * FROM messages WHERE id=?',messageId).toArray()[0],chatId);
+    // Broadcast to all connected sockets in this chat room
+    await this.broadcast({ event: "new_message", message });
+    this.ctx.waitUntil(this.flushPush().catch(()=>console.warn('Push delivery deferred or unavailable.')));
+    return message;
+  }
+
+  private async uploadMedia(url: URL, request: Request) {
+    const query = url.searchParams, chatId = query.get('chatId')!, userId = query.get('userId')!, clientMsgId = query.get('clientMsgId') || '';
+    const refuse = (error: string, status: number) => Response.json({ error }, { status });
+    // A retry after a lost response must not store the recording twice.
+    const previous = clientMsgId && this.ctx.storage.sql.exec('SELECT m.* FROM message_keys k JOIN messages m ON m.id = k.message_id WHERE k.sender_id = ? AND k.client_msg_id = ?', userId, clientMsgId).toArray()[0];
+    if (previous) return Response.json({ message: this.payload(previous, chatId) });
+    if (!this.withinSendLimit(userId)) return refuse('تعداد پیام‌ها زیاد است؛ یک دقیقه صبر کنید و دوباره تلاش کنید.', 429);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    const used = Number(this.ctx.storage.sql.exec('SELECT COALESCE(SUM(size),0) AS n FROM message_media').toArray()[0].n);
+    if (used + bytes.byteLength > ROOM_MEDIA_BYTES) return refuse('فضای پیام‌های صوتی و تصویری این گفتگو پر است؛ پیام‌های قدیمی را حذف کنید.', 413);
+    const replyToId = query.get('replyToId') || null;
+    if (replyToId && !await this.materialize(replyToId, chatId)) return refuse('پیام مورد پاسخ پیدا نشد.', 400);
+    const messageId = this.storeMessage({ chatId, userId, displayName: query.get('displayName') || 'کاربر' }, query.get('text') || '', clientMsgId, replyToId, { kind: query.get('kind')!, mime: query.get('mime')!, durationMs: Number(query.get('durationMs')), bytes });
+    await this.ctx.storage.setAlarm(Date.now() + 5000);
+    return Response.json({ message: await this.announceMessage(messageId, chatId) }, { status: 201 });
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
@@ -366,10 +416,12 @@ export class ChatRoom extends DurableObject<Env> {
     const details=this.ctx.storage.sql.exec('SELECT * FROM message_details WHERE message_id=?',row.id).toArray()[0];
     const reactions=this.ctx.storage.sql.exec('SELECT user_id,emoji FROM message_reactions WHERE message_id=?',row.id).toArray();
     const grouped=new Map<string,string[]>(); for(const reaction of reactions) grouped.set(String(reaction.emoji),[...(grouped.get(String(reaction.emoji))||[]),String(reaction.user_id)]);
+    const media=this.ctx.storage.sql.exec('SELECT kind,mime,size,duration_ms FROM message_media WHERE message_id=?',row.id).toArray()[0];
     const parent=details?.reply_to ? this.ctx.storage.sql.exec('SELECT m.*,d.deleted_at FROM messages m LEFT JOIN message_details d ON d.message_id=m.id WHERE m.id=?',details.reply_to).toArray()[0] : null;
     return { id: row.id, chatId, senderId: row.sender_id, senderName: row.sender_name, text: details?.deleted_at ? '' : row.text, createdAt: row.created_at, clientMsgId: row.client_msg_id || '',
       replyToId: details?.reply_to ? String(details.reply_to) : null, replyTo: parent ? {id:String(parent.id),text:parent.deleted_at?'':String(parent.text),senderName:String(parent.sender_name),deleted:!!parent.deleted_at}:null,
-      editedAt:Number(details?.edited_at||0),deletedAt:Number(details?.deleted_at||0),revision:Number(details?.revision||0),reactions:details?.deleted_at?[]:[...grouped].map(([emoji,users])=>({emoji,users})) };
+      editedAt:Number(details?.edited_at||0),deletedAt:Number(details?.deleted_at||0),revision:Number(details?.revision||0),reactions:details?.deleted_at?[]:[...grouped].map(([emoji,users])=>({emoji,users})),
+      ...(media?{media:{kind:String(media.kind),mime:String(media.mime),size:Number(media.size),durationMs:Number(media.duration_ms)}}:{}) };
   }
 
   private async materialize(id: string,chatId: string): Promise<any> {
@@ -395,13 +447,14 @@ export class ChatRoom extends DurableObject<Env> {
     const row=await this.materialize(data.messageId,data.chatId); if(!row) throw new InputError('پیام پیدا نشد.',404);
     const details=this.ctx.storage.sql.exec('SELECT * FROM message_details WHERE message_id=?',row.id).toArray()[0];
     if(data.action==='edit' && (row.sender_id!==data.actor||details?.deleted_at)) throw new InputError('فقط پیام خودتان را پیش از حذف می‌توانید ویرایش کنید.',403);
+    if(data.action==='edit' && this.ctx.storage.sql.exec('SELECT 1 FROM message_media WHERE message_id=?',row.id).toArray().length) throw new InputError('پیام صوتی و تصویری قابل ویرایش نیست.');
     if(data.action==='delete' && row.sender_id!==data.actor && !(access.type==='group'&&manager(access.role))) throw new InputError('اجازهٔ حذف این پیام برای همه را ندارید.',403);
     if(data.action==='edit' && (typeof data.text!=='string'||!data.text.trim()||data.text.trim().length>10000)) throw new InputError('متن پیام بین ۱ تا ۱۰٬۰۰۰ کاراکتر است.');
     if(data.action==='reaction' && (details?.deleted_at||!['','👍','❤️','😂','😮','😢','🙏'].includes(data.emoji))) throw new InputError('واکنش معتبر نیست یا پیام حذف شده است.');
     this.ctx.storage.transactionSync(()=>{
       this.ctx.storage.sql.exec('INSERT OR IGNORE INTO message_details(message_id) VALUES (?)',row.id);
       if(data.action==='edit') { this.ctx.storage.sql.exec('UPDATE messages SET text=? WHERE id=?',data.text.trim(),row.id); this.ctx.storage.sql.exec('UPDATE message_details SET edited_at=? WHERE message_id=?',Date.now(),row.id); }
-      else if(data.action==='delete') { this.ctx.storage.sql.exec("UPDATE messages SET text='' WHERE id=?",row.id); this.ctx.storage.sql.exec('UPDATE message_details SET deleted_at=? WHERE message_id=?',Date.now(),row.id); this.ctx.storage.sql.exec('DELETE FROM message_reactions WHERE message_id=?',row.id); }
+      else if(data.action==='delete') { this.ctx.storage.sql.exec("UPDATE messages SET text='' WHERE id=?",row.id); this.ctx.storage.sql.exec('UPDATE message_details SET deleted_at=? WHERE message_id=?',Date.now(),row.id); this.ctx.storage.sql.exec('DELETE FROM message_reactions WHERE message_id=?',row.id); this.ctx.storage.sql.exec('DELETE FROM message_media WHERE message_id=?',row.id); this.ctx.storage.sql.exec('DELETE FROM media_chunks WHERE message_id=?',row.id); }
       else if(data.action==='reaction') { if(data.emoji) this.ctx.storage.sql.exec('INSERT INTO message_reactions VALUES (?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET emoji=excluded.emoji',row.id,data.actor,data.emoji); else this.ctx.storage.sql.exec('DELETE FROM message_reactions WHERE message_id=? AND user_id=?',row.id,data.actor); }
       else throw new InputError('عملیات پیام معتبر نیست.');
       this.ctx.storage.sql.exec('UPDATE message_details SET revision=revision+1 WHERE message_id=?',row.id);

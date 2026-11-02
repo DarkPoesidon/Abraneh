@@ -17,7 +17,10 @@ export async function issueSession(request: Request, env: Env, user: User, passw
 
 export async function requestIdentity(request: Request, env: Env): Promise<(JwtPayload & { sid: string }) | null> {
   const header = request.headers.get('Authorization');
-  const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : new URL(request.url).searchParams.get('token') || '';
+  // Browsers can't set headers on a WebSocket, so the token travels as a subprotocol to stay out of URLs and logs.
+  const socketToken = request.headers.get('Sec-WebSocket-Protocol')?.split(',').map(value => value.trim()).find(value => value.startsWith('wihm.token.'))?.slice(11);
+  // shortcut: the query form remains for clients still running a cached older shell, remove it a few releases on.
+  const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : socketToken || new URL(request.url).searchParams.get('token') || '';
   const claims = token && await verifyJwt(token, env.JWT_SECRET);
   if (!claims) return null;
   let sid = claims.sid;
