@@ -206,7 +206,8 @@
         try { emit('invite'); current.invited = true; startTone(TONES.ringback); } catch { reset(false, 'ابتدا اتصال گفتگو به سرور را برقرار کنید.'); }
       }
       async function receive(data) {
-        if (data.event === 'call_error') { if (current?.id === data.callId) reset(false, data.message); return; }
+        // One lost candidate must not end a call, and any other failure must also release the other side.
+        if (data.event === 'call_error') { if (current?.id === data.callId && data.kind !== 'ice') reset(true, data.message); return; }
         if (data.event !== 'call_signal' || !getUser() || !getChat(data.chatId)) return;
         if (data.kind === 'claimed') { if (current?.id === data.callId && current.incoming && !current.accepted) reset(false, 'تماس در دستگاه دیگری پذیرفته شد.'); return; }
         if (data.from === getUser().id) return;
