@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' wss:; object-src 'none'; base-uri 'none'; form-action 'self'">
-  <meta name="wihm-version" content="1.7.4">
+  <meta name="wihm-version" content="1.7.5">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
   
@@ -50,7 +50,7 @@
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.500 6.500l4 4"/></symbol>
     <symbol id="i-hide" viewBox="0 0 24 24"><path d="M3 12s3.500-6 9-6 9 6 9 6-3.500 6-9 6-9-6-9-6z"/><path d="M4 4l16 16"/></symbol>
     <symbol id="i-forward" viewBox="0 0 24 24"><path d="m14 8 5 4.500-5 4.500M19 12.500h-9a5 5 0 0 0-5 5V19"/></symbol>
-    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
   </defs></svg>
   <div id="app-container">
     <div id="update-banner" class="update-banner" hidden><span id="update-banner-text">نسخهٔ جدید آماده است؛ دریافت شود؟</span><button id="btn-apply-update" class="install-btn" type="button">بله، به‌روزرسانی</button><button id="btn-later-update" class="quiet-button" type="button">فعلاً نه</button></div>
@@ -122,14 +122,14 @@
         <button id="btn-menu-server" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-server"/></svg><span>تنظیمات سرور</span></button>
         <div class="menu-divider"></div>
         <button id="btn-logout" class="menu-item danger-text" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-logout"/></svg><span>خروج از حساب</span></button>
-        <p class="app-version" dir="ltr">WIHM 1.7.4</p>
+        <p class="app-version" dir="ltr">WIHM 1.7.5</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrapper"><input type="search" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها"><svg class="ui-icon search-icon" aria-hidden="true"><use href="#i-search"/></svg></div>
         <button id="btn-open-search" class="icon-btn compose-button" title="گفتگوی جدید" aria-label="گفتگوی جدید" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-compose"/></svg></button>
       </div>
       <nav class="chat-filters" aria-label="نمایش گفتگوها"><span class="sidebar-caption">گفتگوها</span><button id="btn-archive" class="archive-button" type="button" aria-pressed="false" aria-label="گفتگوهای آرشیوشده" title="گفتگوهای آرشیوشده"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg><span id="archive-label">آرشیو</span></button></nav>
-      <div id="chats-list" class="chats-list" aria-label="گفتگوها"></div>
+      <div id="chats-list" class="chats-list" role="group" aria-label="گفتگوها"></div>
     </aside>
 
     <!-- Main Chat Window -->
@@ -166,7 +166,7 @@
         <button id="btn-pinned-message" class="pinned-message" type="button" hidden></button>
         <button id="btn-load-older" class="history-button" type="button" hidden>پیام‌های قبلی</button>
         <button id="btn-first-unread" class="history-button" type="button" hidden>اولین پیام نخوانده</button>
-        <div id="messages-container" class="messages-container">
+        <div id="messages-container" class="messages-container" role="log" aria-label="پیام‌ها">
           <!-- Messages will be rendered here -->
         </div>
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cloudflare-messenger-1.7.4';
+const CACHE_NAME = 'cloudflare-messenger-1.7.5';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

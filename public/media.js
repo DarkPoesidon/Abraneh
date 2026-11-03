@@ -50,14 +50,21 @@
       attach.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 11-9.2 9.2a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg>';
       attach.addEventListener('click', () => { if (!recording && !pending && canRecord()) picker.click(); });
       footer.prepend(attach, picker);
-      picker.addEventListener('change', () => {
-        const file = picker.files[0], chat = getChat(); picker.value = ''; if (!file || !chat) return;
+      picker.addEventListener('change', () => { const file = picker.files[0]; picker.value = ''; sendFile(file); });
+      // A pasted or dropped file asks first, since it may not have been meant for this chat.
+      const askToSend = file => { if (file && !recording && !pending && canRecord() && confirm('این فایل ارسال شود؟' + '\n' + file.name)) sendFile(file); };
+      footer.querySelector('.message-input')?.addEventListener('paste', event => { const file = event.clipboardData?.files?.[0]; if (file) { event.preventDefault(); askToSend(file); } });
+      const dropZone = footer.parentElement;
+      dropZone?.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
+      dropZone?.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (file) { event.preventDefault(); askToSend(file); } });
+      function sendFile(file) {
+        const chat = getChat(); if (!file || !chat) return;
         const kind = IMAGE_TYPES.includes(file.type) && file.size <= LIMITS.image ? 'image' : 'file';
         if (!file.size) { notify('این فایل خالی است.'); return; }
         if (file.size > LIMITS[kind]) { notify('حجم فایل بیشتر از ۳۲ مگابایت است.'); return; }
         pending = { blob: file, chatId: chat.id, kind, mime: file.type || 'application/octet-stream', durationMs: 0, name: file.name, clientMsgId: 'cli_' + crypto.randomUUID() };
         sendPending();
-      });
+      }
       function show(on) { bar.hidden = !on; footer.classList.toggle('recording', on); if (!on) delete bar.dataset.state; }
       function stopTracks(stream) { stream?.getTracks().forEach(track => track.stop()); preview.srcObject = null; preview.hidden = true; }
 

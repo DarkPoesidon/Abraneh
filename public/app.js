@@ -78,6 +78,7 @@
   const statusText = document.getElementById('status-text');
   const messagesContainer = document.getElementById('messages-container');
   const typingBar = document.getElementById('typing-bar');
+  const drafts = new Map();
   const messageInput = document.getElementById('message-input');
   const btnSendMessage = document.getElementById('btn-send-message');
   const btnLoadOlder = document.getElementById('btn-load-older');
@@ -226,7 +227,7 @@
     const accountId = currentUser?.id;
     try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); }
     catch (error) { if (token) { alert('خروج از سرور تأیید نشد. برای لغو نشست، اینترنت را وصل کنید و دوباره تلاش کنید.'); return; } }
-    if (accountId) localStorage.removeItem('cf_msg_outbox_' + accountId);
+    if (accountId) { localStorage.removeItem('cf_msg_outbox_' + accountId); localStorage.removeItem('cf_msg_drafts_' + accountId); }
     endSession(); location.reload();
   });
 
@@ -306,6 +307,7 @@
     userDisplayName.textContent = currentUser.displayName || currentUser.username;
     userUsernameBadge.textContent = `@${currentUser.username}`;
     userAvatar.textContent = (currentUser.displayName || currentUser.username)[0].toUpperCase();
+    try { const saved = JSON.parse(localStorage.getItem('cf_msg_drafts_' + currentUser.id) || '[]'); drafts.clear(); for (const row of saved) if (typeof row?.[0] === 'string' && typeof row[1] === 'string') drafts.set(row[0], row[1]); } catch {}
     try {
       const saved = JSON.parse(localStorage.getItem('cf_msg_outbox_' + currentUser.id) || '[]');
       outbox = Array.isArray(saved) ? saved.filter(item => item && typeof item.clientMsgId === 'string' && typeof item.chatId === 'string' && typeof item.text === 'string' && item.text.length <= 10000).slice(0, 100) : [];
@@ -441,7 +443,8 @@
     renderFilteredChats();
     typingBar.textContent = '';
     chatError.textContent = '';
-    messageInput.value = pendingShare; pendingShare = '';
+    clearSelection();
+    messageInput.value = pendingShare || drafts.get(chat.id) || ''; pendingShare = '';
     syncComposer();
     btnFirstUnread.hidden = !chat.firstUnreadId;
     btnAddMembers.style.display = chat.type === 'group' && ['owner','admin'].includes(chat.role) ? 'inline-flex' : 'none';
@@ -591,6 +594,7 @@
       keep('message:' + msg.id, bubbleSignature(msg, grouping), old => buildBubble(msg, !switched && !old && !(msg.clientMsgId && sentBefore.has(msg.clientMsgId)), grouping), msg.clientMsgId);
     });
     placeNodes(wanted);
+    if (selected.size) paintSelection();
     if (!keepPosition || atBottom) scrollToBottom(); else messagesContainer.scrollTop = top;
   }
 
@@ -879,9 +883,14 @@
   btnSendMessage.addEventListener('click', sendMessage);
 
   messageInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !window.matchMedia?.('(pointer:coarse)').matches) {
       e.preventDefault();
       sendMessage();
+    }
+    if (e.key === 'Escape' && composerContext) byId('btn-cancel-context').click();
+    if (e.key === 'ArrowUp' && !messageInput.value && activeChat && !activeChat.secure) {
+      const last = (messagesByChat[activeChat.id] || []).filter(msg => msg.senderId === currentUser.id && !msg.media && !msg.deletedAt && !msg.pending).pop();
+      if (last) { e.preventDefault(); setComposer('edit', last); }
     }
   });
 
@@ -1625,7 +1634,13 @@
     try{if(localStorage.getItem('wihm_push_off')) return;}catch{}
     pushRenewedFor=token; subscribePush().catch(error=>console.warn('Push renewal failed:',error?.message));
   }
-  function syncComposer() { messageInput.closest?.('.chat-input-area')?.classList.toggle('has-text',!!messageInput.value.trim()); suggestMentions(); }
+  function syncComposer() { messageInput.closest?.('.chat-input-area')?.classList.toggle('has-text',!!messageInput.value.trim());messageInput.style.height='auto';if(messageInput.value)messageInput.style.height=messageInput.scrollHeight+'px';saveDraft();suggestMentions(); }
+  // As in Telegram, unsent text stays with its chat. A secure chat's text stays in memory only.
+  function saveDraft() {
+    if(!activeChat||!currentUser||composerContext?.mode==='edit')return;
+    if(messageInput.value.trim())drafts.set(activeChat.id,messageInput.value);else drafts.delete(activeChat.id);
+    try{localStorage.setItem('cf_msg_drafts_'+currentUser.id,JSON.stringify([...drafts].filter(([id])=>!chats.find(chat=>chat.id===id)?.secure)));}catch{}
+  }
   const mentionBox=document.createElement('div');mentionBox.className='mention-box';mentionBox.hidden=true;mentionBox.setAttribute('role','listbox');
   document.querySelector('.chat-input-area')?.before(mentionBox);
   function suggestMentions() {
@@ -1641,7 +1656,7 @@
   const scrollDown=document.createElement('button');scrollDown.id='btn-scroll-bottom';scrollDown.type='button';scrollDown.className='scroll-bottom';scrollDown.hidden=true;scrollDown.title='رفتن به آخرین پیام';scrollDown.setAttribute('aria-label',scrollDown.title);scrollDown.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
   scrollDown.addEventListener('click',()=>{messagesContainer.scrollTop=messagesContainer.scrollHeight;});messagesContainer.after?.(scrollDown);
   messagesContainer.addEventListener('scroll',()=>{scrollDown.hidden=nearBottom();},{passive:true});
-  function setComposer(mode,msg) { if(messageInput.value.trim()&&!confirm('متن فعلی کادر کنار گذاشته شود؟')) return; composerContext={mode,message:msg}; byId('composer-label').textContent=`${mode==='edit'?'ویرایش پیام':'پاسخ به '+msg.senderName}: ${msg.text.slice(0,120)}`;byId('composer-context').hidden=false;messageInput.value=mode==='edit'?msg.text:'';syncComposer();btnSendMessage.title=mode==='edit'?'ذخیرهٔ ویرایش':'ارسال';closeFeature();messageInput.focus?.(); }
+  function setComposer(mode,msg) { if(messageInput.value.trim()&&!confirm('متن فعلی کادر کنار گذاشته شود؟')) return; composerContext={mode,message:msg}; byId('composer-label').innerHTML=`<strong>${escapeHtml(mode==='edit'?'ویرایش پیام':'پاسخ به '+msg.senderName)}</strong><small>${escapeHtml(String(msg.text||'').slice(0,120)||'رسانه')}</small>`;byId('composer-context').hidden=false;messageInput.value=mode==='edit'?msg.text:'';syncComposer();btnSendMessage.title=mode==='edit'?'ذخیرهٔ ویرایش':'ارسال';closeFeature();messageInput.focus?.(); }
   async function commitEdit(text) {
     const context=composerContext,chatId=activeChat.id; btnSendMessage.disabled=true;
     try { const result=await post(`/api/chats/${chatId}/messages/${context.message.id}/edit`,{text});acceptMutation(result.message); if(composerContext===context) {cancelComposer();messageInput.value='';syncComposer();} }
@@ -1679,7 +1694,7 @@
       if(!start)return;const touch=event.touches[0],dx=touch.clientX-start.x,dy=touch.clientY-start.y;
       if(Math.abs(dx)>8||Math.abs(dy)>8)clearTimeout(timer);
       if(start.sideways===null&&(Math.abs(dx)>8||Math.abs(dy)>8))start.sideways=Math.abs(dx)>Math.abs(dy);
-      if(!start.sideways||!canPost(chat()))return;
+      if(!start.sideways||selected.size||!canPost(chat()))return;
       // The swipe moves away from the side messages are read from: left in English, right in Persian.
       const direction=document.documentElement.dir==='rtl'?1:-1,pull=Math.max(0,dx*direction);
       event.preventDefault();offset=Math.min(pull,SWIPE*1.4);
@@ -1691,15 +1706,55 @@
   }
   async function mutate(msg,action,body={}) { const result=await post(`/api/chats/${msg.chatId}/messages/${msg.id}/${action}`,body);if(result.message) acceptMutation(result.message);return result; }
   async function react(msg,emoji) { const previous=msg.reactions?.find(row=>row.users.includes(currentUser.id));await mutate(msg,'reaction',{emoji:previous?.emoji===emoji?'':emoji}); }
+  // Telegram's selection mode: tap messages to mark them, then act on all of them at once.
+  const MAX_SELECTED=50,selected=new Map(),selectionBar=document.createElement('div');
+  const selectionButton=(id,icon,label)=>`<button id="${id}" class="icon-btn" type="button" title="${label}" aria-label="${label}">${uiIcon(icon)}</button>`;
+  selectionBar.className='selection-bar';selectionBar.hidden=true;selectionBar.setAttribute('role','toolbar');selectionBar.setAttribute('aria-label','پیام‌های انتخاب‌شده');
+  selectionBar.innerHTML=`${selectionButton('btn-select-cancel','close','لغو انتخاب')}<span class="selection-label" role="status"><span>انتخاب‌شده:</span> <strong id="selection-count"></strong></span>${selectionButton('btn-select-copy','copy','کپی متن')}${selectionButton('btn-select-forward','forward','هدایت پیام')}${selectionButton('btn-select-delete','trash','حذف برای همه')}`;
+  document.querySelector('.chat-input-area')?.before(selectionBar);
+  const selectedMessages=()=>[...selected.values()].sort((a,b)=>a.createdAt-b.createdAt);
+  function paintSelection() {
+    const on=selected.size>0;selectionBar.hidden=!on;messagesContainer.classList?.toggle('selecting',on);
+    byId('selection-count').textContent=selected.size.toLocaleString(document.documentElement.lang==='fa'?'fa-IR':'en');
+    messagesContainer.querySelectorAll?.('.message-bubble').forEach(node=>node.classList.toggle('selected',selected.has(node.id.slice('message-'.length))));
+    const chat=activeChat;byId('btn-select-delete').hidden=!selectedMessages().every(msg=>msg.senderId===currentUser?.id||chat?.type==='group'&&isManager(chat));
+  }
+  function clearSelection() { if(!selected.size)return;selected.clear();paintSelection(); }
+  function toggleSelected(msg) {
+    if(msg.deletedAt||msg.pending)return;
+    if(selected.has(String(msg.id)))selected.delete(String(msg.id));
+    else if(selected.size>=MAX_SELECTED){chatError.textContent='حداکثر ۵۰ پیام را می‌توانید انتخاب کنید.';return;}
+    else selected.set(String(msg.id),msg);
+    paintSelection();
+  }
+  messagesContainer.addEventListener('click',event=>{
+    if(!selected.size)return;event.preventDefault();event.stopPropagation();
+    const id=event.target.closest?.('.message-bubble')?.id.slice('message-'.length),msg=id&&(messagesByChat[activeChat?.id]||[]).find(row=>String(row.id)===id);
+    if(msg)toggleSelected(msg);
+  },true);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&selected.size&&featureModal.style.display!=='flex')clearSelection();});
+  selectionBar.addEventListener('click',async event=>{
+    const action=event.target.closest?.('button')?.id;
+    if(action==='btn-select-cancel')clearSelection();
+    if(action==='btn-select-forward')forwardPicker(selectedMessages());
+    if(action==='btn-select-copy'){try{await navigator.clipboard.writeText(selectedMessages().map(msg=>msg.text).filter(Boolean).join('\n\n'));chatError.textContent='متن کپی شد.';clearSelection();}catch(error){chatError.textContent=error.message;}}
+    if(action==='btn-select-delete'&&confirm('پیام‌های انتخاب‌شده برای همه حذف شوند؟ این کار برگشت‌پذیر نیست.')){
+      try{for(const msg of selectedMessages()){await mutate(msg,'delete');selected.delete(String(msg.id));}}
+      catch(error){chatError.textContent=error.message;}
+      paintSelection();
+    }
+  });
   function messageActions(msg) {
+    if(selected.size){toggleSelected(msg);return;}
     const chat=chats.find(chat=>chat.id===msg.chatId)||activeChat, own=msg.senderId===currentUser.id;
     const anchor=byId('message-'+msg.id)?.getBoundingClientRect?.(),row=(id,icon,label,danger)=>`<button id="${id}" class="menu-row${danger?' danger-text':''}" type="button">${uiIcon(icon)}<span>${label}</span></button>`;
     showFeature('گزینه‌های پیام',`${!msg.deletedAt?`<div class="emoji-picker">${['👍','❤️','😂','😮','😢','🙏'].map((emoji,i)=>`<button id="react-${i}" type="button" aria-label="واکنش ${emoji}">${emoji}</button>`).join('')}</div>`:''}<div class="action-grid">
-      ${!msg.deletedAt?`${canPost(chat)?row('action-reply','reply','پاسخ'):''}${own&&!msg.media?row('action-edit','edit','ویرایش'):''}${row('action-forward','forward','هدایت پیام')}${row('action-copy','copy','کپی متن')}${row('action-save','bookmark','ذخیرهٔ پیام')}${chat?.type==='dm'||isManager(chat)?row('action-pin','pin','سنجاق / برداشتن سنجاق'):''}`:''}
+      ${!msg.deletedAt?`${canPost(chat)?row('action-reply','reply','پاسخ'):''}${own&&!msg.media?row('action-edit','edit','ویرایش'):''}${row('action-forward','forward','هدایت پیام')}${row('action-copy','copy','کپی متن')}${row('action-select','check','انتخاب')}${row('action-save','bookmark','ذخیرهٔ پیام')}${chat?.type==='dm'||isManager(chat)?row('action-pin','pin','سنجاق / برداشتن سنجاق'):''}`:''}
       ${row('action-hide','hide','حذف فقط برای من')}${own||chat?.type==='group'&&isManager(chat)?row('action-delete','trash','حذف برای همه',true):''}${!own?row('action-report','flag','گزارش پیام',true):''}</div>`);
     placeMessageMenu(anchor);
     bind('action-reply',()=>setComposer('reply',msg));bind('action-edit',()=>setComposer('edit',msg));
     bind('action-forward',()=>forwardPicker(msg));
+    bind('action-select',()=>{closeFeature();toggleSelected(msg);});
     bind('action-copy',async()=>{await navigator.clipboard.writeText(msg.text);byId('feature-status').textContent='متن کپی شد.';});
     bind('action-save',async()=>{await mutate(msg,'save');byId('feature-status').textContent='در پیام‌های ذخیره‌شده قرار گرفت.';});
     bind('action-hide',async()=>{if(!confirm('این پیام فقط برای حساب شما پنهان شود؟ مخاطب همچنان آن را می‌بیند.'))return;await mutate(msg,'hide');const hidden=hiddenMessages.get(msg.chatId)||new Set();hidden.add(msg.id);hiddenMessages.set(msg.chatId,hidden);messagesByChat[msg.chatId]=(messagesByChat[msg.chatId]||[]).filter(row=>row.id!==msg.id);renderMessages(messagesByChat[msg.chatId],{keepPosition:true});closeFeature();await loadChats(true);});
@@ -1709,11 +1764,12 @@
     ['👍','❤️','😂','😮','😢','🙏'].forEach((emoji,i)=>bind('react-'+i,async()=>{await react(msg,emoji);closeFeature();}));
   }
   function forwardPicker(msg,query='') {
+    const list=[].concat(msg);
     const q=query.trim().toLowerCase(),rows=chats.filter(chat=>!chat.secure&&canPost(chat)&&!chat.blocked&&(!q||String(chat.title).toLowerCase().includes(q))).slice(0,40);
     showFeature('هدایت به…',`<form id="forward-search" class="feature-form"><input id="forward-query" class="form-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها" value="${escapeHtml(query)}"></form><div class="forward-list">${rows.map((chat,i)=>`<button id="forward-to-${i}" class="forward-row" type="button"><span class="avatar" style="--avatar-hue:${avatarHue(chat.id)}">${avatarHtml(chat.avatar,chat.title)}</span><span class="forward-title">${escapeHtml(chat.title)}</span></button>`).join('')||'<p class="session-help">گفتگویی پیدا نشد.</p>'}</div>`);
     const input=byId('forward-query');input.addEventListener('input',()=>{const value=input.value;forwardPicker(msg,value);const again=byId('forward-query');again.focus();again.setSelectionRange(value.length,value.length);});
     bind('forward-search',()=>{},'submit');
-    rows.forEach((chat,i)=>bind('forward-to-'+i,async()=>{await post(`/api/chats/${msg.chatId}/messages/${msg.id}/forward`,{targetChatId:chat.id});closeFeature();await loadChats(true);const fresh=chats.find(row=>row.id===chat.id);if(fresh&&activeChat?.id!==fresh.id)await openChat(fresh);}));
+    rows.forEach((chat,i)=>bind('forward-to-'+i,async()=>{for(const row of list)await post(`/api/chats/${row.chatId}/messages/${row.id}/forward`,{targetChatId:chat.id});clearSelection();closeFeature();await loadChats(true);const fresh=chats.find(row=>row.id===chat.id);if(fresh&&activeChat?.id!==fresh.id)await openChat(fresh);}));
   }
   function denyChat(chatId,reload=true) {
     if(!chatId)return;deniedChats.add(chatId);
