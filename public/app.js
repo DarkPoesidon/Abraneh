@@ -151,7 +151,8 @@
   // --- Service Worker Registration ---
   window.WihmUpdates?.init({
     canReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||!!document.getElementById('client-update-mode'))&&document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
-    prepareReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||!!document.getElementById('client-update-mode'))&&composerContext?.mode!=='edit'&&(!outbox.length||saveOutbox()),
+    // Says exactly what stops the page reloading now, or nothing. Text in the box stays as a draft.
+    blocker:()=>calls?.active()?'تماس در جریان است. بعد از پایان تماس دوباره این دکمه را بزنید.':document.getElementById('feature-modal')?.style.display==='flex'&&!document.getElementById('client-update-mode')?'اول این پنجره را ببندید و دوباره به‌روزرسانی را بزنید.':composerContext?.mode==='edit'?'در حال ویرایش پیام هستید. ویرایش را ذخیره یا لغو کنید و دوباره این دکمه را بزنید.':outbox.length&&!saveOutbox()?'پیام‌های ارسال‌نشده ذخیره نشدند. اول فضای مرورگر را آزاد کنید و دوباره این دکمه را بزنید.':'',
   });
 
   // --- PWA Installation Handling ---
