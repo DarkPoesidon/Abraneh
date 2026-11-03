@@ -11,22 +11,14 @@ if (location.protocol === 'file:') {
   const PING_MS = 2 * 60_000;
   let token = '', socket = null, failures = 0, retry = 0, waitingForPong = false;
 
-  function notify(title, body, chatId) {
-    const notification = new Notification(String(title), { body: String(body || ''), icon: '/icon.svg', tag: String(chatId || ''), dir: 'auto' });
-    notification.onclick = () => {
-      ipcRenderer.send('show-window');
-      if (/^[a-zA-Z0-9_-]{1,100}$/.test(String(chatId || ''))) location.assign('/?chat=' + encodeURIComponent(chatId));
-    };
-  }
-
   function handleEvent(text) {
     let event;
     try { event = JSON.parse(text); } catch { return; }
     if (event.kind === 'call') {
       ipcRenderer.send('show-window');
       window.dispatchEvent(new Event('wihm-check-calls'));
-    } else if (event.kind !== 'call-end' && event.title && !document.hasFocus()) {
-      notify(event.title, event.body, event.chatId);
+    } else if (event.kind !== 'call-end' && event.title) {
+      ipcRenderer.send('notify', { title: event.title, body: event.body, chatId: event.chatId });
     }
   }
 
@@ -69,10 +61,8 @@ if (location.protocol === 'file:') {
       socket?.close();
       socket = null;
     },
-    // The inbox socket notifies whenever this window has no focus.
-    showNotification(title, body, chatId) {
-      if (document.hasFocus()) notify(title, body, chatId);
-    },
+    // The inbox socket does this, but without this method the page would notify too.
+    showNotification() {},
     openServerSettings() {
       ipcRenderer.send('open-setup');
     },

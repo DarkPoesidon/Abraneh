@@ -53,7 +53,12 @@ try {
   assert.equal(await (await browserWindow()).evaluate(window => window.isVisible()), false);
   console.log('ok: closing hides to the tray');
 
-  // A message from someone else reaches the inbox socket while hidden.
+  // A message from someone else reaches the inbox socket while hidden, and Windows shows it.
+  await app.evaluate(({ Notification }) => {
+    globalThis.shown = [];
+    const show = Notification.prototype.show;
+    Notification.prototype.show = function () { globalThis.shown.push(this.title); return show.call(this); };
+  });
   const socket = await page.evaluate(({ origin, token }) => new Promise((done, fail) => {
     const ws = new WebSocket(origin.replace('http', 'ws') + '/ws?chatId=design-team', ['wihm.v1', 'wihm.token.' + token]);
     ws.onopen = () => { ws.send(JSON.stringify({ action: 'send_message', chatId: 'design-team', text: 'windows inbox test', clientMsgId: 'cli_windows_test' })); setTimeout(() => { ws.close(); done(true); }, 500); };
@@ -63,7 +68,9 @@ try {
   const delivered = () => frames.some(frame => frame.includes('"chatId":"design-team"'));
   for (let i = 0; i < 40 && !delivered(); i++) await page.waitForTimeout(250);
   assert.ok(delivered(), 'inbox frames: ' + frames.join(' | '));
-  console.log('ok: the inbox socket gets messages while hidden');
+  for (let i = 0; i < 20 && !(await app.evaluate(() => globalThis.shown.length)); i++) await page.waitForTimeout(250);
+  assert.equal(await app.evaluate(() => globalThis.shown.length), 1, 'one notification while hidden');
+  console.log('ok: a message notifies while hidden');
 
   await (await browserWindow()).evaluate(window => window.show());
   await page.waitForFunction(() => window.wihmAppHidden === false);

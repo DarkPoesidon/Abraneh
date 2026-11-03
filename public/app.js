@@ -38,7 +38,7 @@
   const backgroundSockets = new Map();
   const receiptsByChat = {};
   const reportedReceipts = new Map();
-  const reportingReceipts = new Set();
+  const reportingReceipts = new Set(), pendingReceipts = new Set();
   let locatingUnread = null;
   let openingChatId = null;
   let profile = {}, archivedView = false, composerContext = null;
@@ -244,7 +244,7 @@
     disconnectWebSocket();
     for (const socket of backgroundSockets.values()) { socket.onmessage = socket.onclose = null; socket.close(); }
     backgroundSockets.clear(); outbox = [];
-    reportedReceipts.clear(); reportingReceipts.clear();
+    reportedReceipts.clear(); reportingReceipts.clear(); pendingReceipts.clear();
     hiddenMessages.clear();chatDetails.clear();deniedChats.clear();profile={};cancelComposer();
     extras?.clearNotice();featureGeneration++;
     for (const key of Object.keys(receiptsByChat)) delete receiptsByChat[key];
@@ -626,7 +626,7 @@
   function statusMarkup(msg) {
     const text = messageStatus(msg), state = msg.failed ? 'failed' : msg.pending ? 'pending' : text.startsWith('خوانده') ? 'read' : text.startsWith('تحویل') ? 'delivered' : 'sent';
     const check = 'M3 12.5 8 17.5 18 6.5', second = 'M9.5 15.5 11 17.5 21 6.5';
-    const mark = state === 'failed' ? '' : state === 'pending' ? '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>' : `<path d="${check}"/>${state === 'sent' ? '' : `<path d="${second}"/>`}`;
+    const mark = state === 'failed' ? '' : state === 'pending' ? '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>' : `<path d="${check}"/>${state === 'read' ? `<path d="${second}"/>` : ''}`; // As in Telegram, two ticks only mean read.
     return `<span class="message-status" data-state="${state}" title="${escapeHtml(text)}">${mark ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${mark}</svg><span class="visually-hidden">${escapeHtml(text)}</span>` : escapeHtml(text)}</span>`;
   }
 
@@ -997,7 +997,9 @@
     } catch { /* Poll again; a receipt failure does not discard a message. */ }
   }
   async function reportReceipt(chatId) {
-    if (!token || reportingReceipts.has(chatId)) return;
+    if (!token) return;
+    // A report sent while the chat was still opening says unread, so a newer state must follow it.
+    if (reportingReceipts.has(chatId)) { pendingReceipts.add(chatId); return; }
     const messages = (messagesByChat[chatId] || []).filter(message => !message.pending);
     const last = messages.at(-1);
     if (!last) return;
@@ -1015,7 +1017,7 @@
         if (activeChat?.id === chatId) btnFirstUnread.hidden = true;
       }
     } catch { /* A later scroll/poll retries the cumulative receipt. */ }
-    finally { reportingReceipts.delete(chatId); }
+    finally { reportingReceipts.delete(chatId); if (pendingReceipts.delete(chatId)) reportReceipt(chatId); }
   }
   messagesContainer.addEventListener('scroll', () => { if (activeChat) reportReceipt(activeChat.id); });
   function scrollToUnread(id) { document.getElementById('message-' + id)?.scrollIntoView?.({ block: 'start' }); }
