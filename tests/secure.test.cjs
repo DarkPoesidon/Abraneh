@@ -154,3 +154,16 @@ test('a failed secure push retries later without blocking another recipient',asy
  pushBroken=false;await api(1,'/test/tick');assert.ok((await db.prepare('SELECT notified_at FROM secure_events WHERE id=?').bind(b.id).first()).notified_at);
  await db.prepare('UPDATE secure_events SET push_next_attempt=0 WHERE id=?').bind(a.id).run();await api(1,'/test/tick');assert.ok((await db.prepare('SELECT notified_at FROM secure_events WHERE id=?').bind(a.id).first()).notified_at);
 });
+test('the server keeps a device list only when a listed device signed it, and contacts can read it',async()=>{
+ const one=await register(1,'mallory'),two=await register(1,'mallory'),outsider=keypair(),list=(version,devices,signer,overrides={})=>{const body={version,devices:devices.map(d=>({device:d.device,key:d.key})),signer:signer.key,...overrides};body.signature=sign(null,Buffer.from(JSON.stringify(['wihm-device-list/1',one.who,version,body.devices.map(d=>[d.device,d.key]),body.signer])),signer.privateKey).toString('base64');return body;};
+ const put=body=>api(1,'/api/secure/device-list',{user:'mallory',method:'PUT',body}),first=list(1,[one],one);
+ assert.equal((await put({...first,signature:list(1,[one,two],one).signature})).status,403,'a signature over another list');
+ assert.equal((await put(list(1,[one],outsider))).status,403,'a signer from outside the account');
+ assert.equal((await put(list(1,[{device:randomUUID(),key:outsider.key}],one))).status,409,'a device the account does not have');
+ assert.equal((await put(first)).status,200);
+ assert.equal((await put(first)).status,409,'the same version again');
+ assert.equal((await put(list(2,[one,two],two))).status,403,'a device adding itself');
+ assert.equal((await put(list(2,[one,two],one))).status,200);
+ for(const server of [1,0]){const read=await api(server,'/api/secure/device-lists',{user:'bob',body:{address:one.who}});assert.equal(read.status,200,JSON.stringify(read));assert.equal(read.data.list.version,2);}
+ assert.deepEqual((await api(1,'/api/secure/device-list',{user:'mallory'})).data.list.devices.map(d=>d.device),[one.device,two.device]);
+});
