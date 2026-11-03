@@ -1386,6 +1386,7 @@
   byId('settings-language-row')?.addEventListener('click',()=>{languageScreen();byId('btn-settings-back').hidden=false;});
   byId('btn-menu-language')?.addEventListener('click',()=>{closeMainMenu();languageScreen();});
   byId('settings-updates')?.addEventListener('click',()=>extras?.updates().catch(featureError));
+  if(window.Android?.getAppVersion)document.querySelector('.app-version')?.append(` · ${window.Android.isDesktop?'Windows':'Android'} ${window.Android.getAppVersion()}`);
   byId('settings-telegram')?.addEventListener('click',()=>extras?.botSettings().catch(featureError));
   // The apps' server screen also holds the proxy; a browser's proxy is its own.
   if(window.Android)for(const id of ['settings-server','btn-menu-server']){const label=byId(id)?.querySelector('strong,span');if(label)label.textContent='سرور و پروکسی';}
