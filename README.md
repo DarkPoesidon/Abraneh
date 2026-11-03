@@ -1,251 +1,89 @@
 <div align="center">
 
-<h1 dir="ltr">WIHM Cloudflare</h1>
+<h1>ابرانه · Abraneh</h1>
 
-<p dir="rtl">ابرانه؛ پیام‌رسان فارسی برای گفتگوی خصوصی و گروهی</p>
+<p dir="rtl"><strong>پیام‌رسان فارسی روی زیرساخت خودتان، بدون نیاز به سرور اختصاصی</strong></p>
+
+<p>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Server" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Server&style=for-the-badge&logo=cloudflare&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=android-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=windows-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
+</p>
 
 <img src="docs/assets/wihm-cloudflare-poster.png" alt="پوستر پیام‌رسان ابرانه با نمای نسخهٔ دسکتاپ و موبایل" width="100%">
-
-<p dir="rtl">
-  <a href="docs/EASY-INSTALL.fa.md"><strong>نصب آسان و خودکار</strong></a>
-  ·
-  <a href="#local-setup">اجرای محلی</a>
-  ·
-  <a href="#cloudflare-deploy">انتشار روی کلادفلر</a>
-</p>
 
 </div>
 
 <div dir="rtl">
 
-ابرانه در مرورگر اجرا می‌شود و می‌توانید آن را روی گوشی و رایانه نصب کنید. میزبانی برنامه و ذخیرهٔ پیام‌ها روی کلادفلر انجام می‌شود؛ برای راه‌اندازی به سرور اختصاصی نیاز ندارید.
+ابرانه پیام‌رسانی برای گفتگوی خصوصی، گروه و کانال است که روی حساب کلادفلر خودتان اجرا می‌شود. داده‌ها در حساب خودتان می‌مانند و برای راه‌اندازی به خرید یا مدیریت سرور نیاز ندارید.
 
-## راهنما؛ از اولین قدم
+## دریافت
 
-اگر تجربهٔ فنی ندارید، **[از اینجا شروع کنید](docs/START-HERE.fa.md)**. ساخت سرور با استفاده از برنامه فرق دارد؛ راهنما مسیر هرکدام را جدا توضیح می‌دهد.
+| چه می‌خواهید؟ | صفحهٔ آخرین نسخه | دریافت مستقیم |
+| --- | --- | --- |
+| **ساخت سرور** | [نصب‌کنندهٔ سرور](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
+| **برنامهٔ اندروید** (اندروید ۵ به بالا) | [اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) |
+| **برنامهٔ ویندوز** (ویندوز ۱۰ و ۱۱، ۶۴ بیتی) | [ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) |
 
-| کار شما | راهنمای قدم‌به‌قدم |
+- اگر کسی برایتان سرور ساخته است، فقط برنامه را نصب کنید و نشانی سرور را وارد کنید. روی آیفون و مک، نشانی را در مرورگر باز کنید و برنامه را از همان‌جا نصب کنید.
+- نصب‌کنندهٔ ویندوز امضای دیجیتال ندارد و ویندوز موقع نصب هشدار می‌دهد. برای ادامه، «More info» و بعد «Run anyway» را بزنید.
+- سرور و برنامه‌ها از داخل خود برنامه به‌روز می‌شوند.
+
+## شروع
+
+اگر تجربهٔ فنی ندارید، **[از اینجا شروع کنید](docs/START-HERE.fa.md)**.
+
+| کار شما | راهنما |
 | --- | --- |
-| ساخت پیام‌رسان با رایانه یا فقط گوشی اندروید | [نصب خودکار، حساب کلادفلر، توکن و فعال‌سازی مدیر](docs/EASY-INSTALL.fa.md) |
-| استفاده از پیام‌رسان | [ثبت‌نام، پیام، گروه، اعلان و تنظیمات](docs/DAILY-USE.fa.md) |
-| ارتباط سرورها و امکانات نسخهٔ ۱.۵ | [رمزگذاری، امنیت ورود، پشتیبان، دامنه، کانال و تماس](docs/ADVANCED.fa.md) |
-| گرفتن نسخه‌های جدید | [آپدیت دستگاه و سرور](docs/AUTO-UPDATE.fa.md) |
-| خواندن کانال تلگرام | [آینهٔ عمومی و اتصال ربات](docs/TELEGRAM.fa.md) |
-| معرفی پروژه در تلگرام | [پوستر و متن کوتاه آماده](artifacts/releases/1.5.0/README.fa.md) |
-
-## نصب با نصب‌کنندهٔ فارسی
-
-برای ویندوز، مک، لینوکس و **اندروید با ترموکس**، [راهنمای نصب آسان](docs/EASY-INSTALL.fa.md) را باز کنید. نصب‌کننده دیتابیس، کلید امنیتی و انتشار را خودکار انجام می‌دهد؛ ویرایش فایل و نصب Git یا Wrangler لازم نیست. فقط دسترسی حساب کلادفلر و نام پیام‌رسان را وارد می‌کنید.
-
-[دریافت نصب‌کنندهٔ ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) · [نصب با گوشی اندروید](docs/EASY-INSTALL.fa.md#اندروید-فقط-با-گوشی) · [آپدیت بدون حذف اطلاعات](docs/UPDATE.fa.md) · [پلن توسعه](docs/ROADMAP.fa.md)
-
-راهنمای دستورهای زیر برای توسعه‌دهندگان و نصب دستی است. [راهنمای مفصل نصب دستی](docs/INSTALL.fa.md) هم در دسترس است.
+| ساخت پیام‌رسان با رایانه یا فقط گوشی اندروید | [نصب آسان](docs/EASY-INSTALL.fa.md) |
+| استفاده از پیام‌رسان | [راهنمای روزانه](docs/DAILY-USE.fa.md) |
+| گرفتن نسخه‌های جدید | [به‌روزرسانی](docs/AUTO-UPDATE.fa.md) · [آپدیت بدون حذف اطلاعات](docs/UPDATE.fa.md) |
+| مدیریت کاربران و وضعیت سرویس | [مدیریت سرویس](docs/SERVICE-MANAGEMENT.fa.md) |
+| ارتباط سرورها، امنیت و پشتیبان | [امکانات پیشرفته](docs/ADVANCED.fa.md) |
+| خواندن کانال تلگرام | [آینهٔ کانال](docs/TELEGRAM.fa.md) |
+| نصب دستی و توسعه | [راهنمای توسعه‌دهندگان](docs/DEVELOPMENT.fa.md) |
 
 ## امکانات
 
-نسخهٔ برنامه: **1.5.0**؛ [تغییرات و راهنمای ارتقا](docs/releases/1.5.0.fa.md).
+- **گفتگو:** پاسخ، ویرایش، حذف، واکنش، هدایت، انتخاب چند پیام، اشاره با `@` و جستجوی فارسی.
+- **گروه و کانال:** نقش‌های مالک، مدیر و عضو، دعوت قابل لغو، کانال عمومی و خصوصی، و جستجو و عضویت در کانال‌های سرورهای دیگر.
+- **تماس و رسانه:** تماس صوتی و تصویری، پیام صوتی و تصویری، و ارسال تصویر و فایل.
+- **برنامه‌ها:** وب، اندروید و ویندوز، با اعلان حتی وقتی پنجرهٔ برنامه بسته است.
+- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، و طراحی نزدیک به تلگرام.
+- **مدیریت:** پنل مدیر، گزارش مزاحمت، ثبت‌نام آزاد یا دعوتی، پشتیبان و بازگردانی.
+- **شبکه:** پشتیبانی از پروکسی SOCKS5 و HTTP در برنامه‌های اندروید و ویندوز.
 
-- صف ارسال روی دستگاه و تلاش مجدد بدون ساخت پیام تکراری.
-- وضعیت ارسال، تحویل و مشاهدهٔ گفتگو؛ شمارندهٔ نخوانده‌ها.
-- مدیریت دستگاه‌های متصل و خروج از نشست‌های دیگر.
-- [مدیریت کاربران، وضعیت سرویس و پیدا کردن کاربران سرورهای دیگر با رضایت](docs/SERVICE-MANAGEMENT.fa.md)؛ [راهنمای ارتباط بین سرورها، امنیت، پشتیبان و امکانات تازه](docs/ADVANCED.fa.md).
-- [به‌روزرسانی با تأیید یا خودکار از داخل برنامه](docs/AUTO-UPDATE.fa.md)؛ انتخاب مستقل هر دستگاه و کنترل سرور برای صاحب سرویس.
-- [خواندن کانال عمومی تلگرام یا اتصال ربات برای کانال خودتان/خصوصی](docs/TELEGRAM.fa.md)؛ متن و کپشن، با لینک رسانهٔ اصلی.
+## امنیت
 
-- پاسخ، ویرایش، حذف و واکنش به پیام؛ جستجوی فارسی داخل گفتگو.
-- پروفایل و عکس، تغییر رمز، تم روشن/تیره و اندازهٔ نوشته.
-- اعلان مرورگر/گوشی، بی‌صداکردن و آرشیو؛ سنجاق و پیام‌های ذخیره‌شده.
-- گروه با نقش مالک/مدیر/عضو و دعوت قابل لغو؛ ثبت‌نام آزاد/دعوتی و گزارش مزاحمت.
-- [راهنمای کامل استفاده از امکانات](docs/DAILY-USE.fa.md).
-- رابط فارسی و راست‌چین، پنل جمع‌شوندهٔ دسکتاپ و تنظیمات دسته‌بندی‌شده برای گوشی و رایانه.
-- دریافت زندهٔ پیام‌ها و اتصال دوباره پس از قطع اینترنت.
-- نمایش وضعیت اتصال و نشانگر در حال نوشتن.
-- دریافت پیام‌های قدیمی‌تر از تاریخچهٔ گفتگو.
-- نصب از طریق مرورگر، بدون نیاز به فایل نصب جداگانه.
+- پیام‌های گفتگوهای عادی و گروه‌ها **رمزگذاری سرتاسری ندارند** و در حساب کلادفلر صاحب سرور ذخیره می‌شوند. پس فقط از سروری استفاده کنید که به صاحبش اعتماد دارید.
+- گفتگوی دو دستگاهِ تأییدشده از MLS آزمایشی استفاده می‌کند، و کتابخانهٔ آن هنوز ممیزی مستقل امنیتی ندارد.
+- برای گزارش آسیب‌پذیری، موضوع را به‌صورت خصوصی از [Security Advisories](https://github.com/DarkPoesidon/WIHM-Cloudflare/security/advisories/new) بفرستید.
 
-گفتگوی دو دستگاهِ تأییدشده از MLS آزمایشی استفاده می‌کند؛ گفتگوهای قدیمی و گروه‌ها رمزگذاری سرتاسری ندارند. کتابخانهٔ MLS هنوز ممیزی مستقل امنیتی ندارد. صف محلی جای پشتیبان را نمی‌گیرد و رسید مشاهده تأیید قطعی خواندن توسط انسان نیست.
+## مجوز
 
-<details>
-<summary>سرویس‌های استفاده‌شده در کلادفلر</summary>
+این پروژه با مجوز **[PolyForm Noncommercial 1.0.0](LICENSE)** منتشر شده است، پس متن‌باز به معنای رسمی آن نیست. خلاصهٔ زیر جای متن انگلیسی مجوز را نمی‌گیرد:
 
-| سرویس | کاربرد |
-| --- | --- |
-| Workers | اجرای درخواست‌ها و احراز هویت |
-| Durable Objects | مدیریت ارتباط زنده و ذخیرهٔ پیام‌های هر گفتگو در SQLite |
-| D1 | نگهداری کاربران، عضویت‌ها و نسخهٔ سراسری پیام‌ها |
-| Static Assets | میزبانی فایل‌های رابط کاربری |
+- **مجاز:** استفاده، تغییر، میزبانی و بازنشر برای کار شخصی و غیرتجاری، و استفادهٔ سازمان‌های غیرانتفاعی مطابق متن مجوز.
+- **بدون اجازهٔ جداگانه مجاز نیست:** فروش، ارائهٔ پولی، یا هر استفادهٔ تجاری دیگر.
+- **برای بازنشر:** متن مجوز و خط Required Notice باید همراه نرم‌افزار بماند.
 
-</details>
-
-<details>
-<summary>فقط برای توسعه‌دهندگان: ساختار پروژه، اجرای محلی و نصب دستی</summary>
-
-## ساختار پروژه
-
-<details>
-<summary>نمایش ساختار فایل‌ها</summary>
-
-<div dir="ltr">
-
-```text
-├── public/                 # کلاینت و اپلیکیشن PWA
-│   ├── index.html         # اسکلت اصلی رابط کاربری
-│   ├── style.css          # استایل‌های مدرن و واکنش‌گرا (RTL)
-│   ├── app.js             # منطق برنامه، مدیریت وب‌سوکت و API
-│   ├── manifest.json      # فایل پیکربندی PWA برای نصب
-│   ├── sw.js              # Service Worker برای کش و آفلاین
-│   └── icon.svg           # آیکون وکتور اپلیکیشن
-├── src/                    # کدهای بک‌اند و سرورلس کلادفلر
-│   ├── index.ts           # ورودی اصلی Worker، روت‌های API و ارتقای WebSocket
-│   ├── chatRoom.ts        # Durable Object با دیتابیس SQLite داخلی و وب‌سوکت
-│   ├── auth.ts            # سیستم هش PBKDF2 و توکن JWT مبتنی بر Web Crypto
-│   └── types.ts           # تایپ‌های داده و پروتکل پیام‌های وب‌سوکت
-├── schema.sql              # اسکیما و جداول دیتابیس Cloudflare D1
-├── wrangler.toml           # فایل پیکربندی سرویس‌های کلادفلر
-└── package.json            # اسکریپت‌ها و وابستگی‌ها
-```
+برای مجوز تجاری، در [Issues](https://github.com/DarkPoesidon/WIHM-Cloudflare/issues) پیام بگذارید. مجوز کتابخانه‌ها و فونت‌ها در [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) آمده است. این پروژه وابستگی یا ارتباطی با تلگرام ندارد.
 
 </div>
 
-</details>
+---
 
-<a id="local-setup"></a>
-## اجرای محلی
+## English
 
-### ۱. نصب وابستگی‌ها
+**Abraneh** is a messenger you host on your own Cloudflare account, with chats, groups, channels, voice and video calls, and file sharing. No dedicated server is needed.
 
-<div dir="ltr">
+| You want | Latest release | Direct download |
+| --- | --- | --- |
+| **Run a server** | [Server installer](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
+| **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) |
+| **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) |
 
-```bash
-npm ci
-```
+Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Experimental MLS encryption between two verified devices has not had an independent audit.
 
-</div>
-
-### ۲. تنظیم کلید امنیتی محلی
-
-این دستور را یک بار در پوشهٔ پروژه اجرا کنید؛ اگر `.dev.vars` موجود باشد، آن را بازنویسی نمی‌کند:
-
-<div dir="ltr">
-
-```bash
-node -e "require('node:fs').writeFileSync('.dev.vars', 'JWT_SECRET=' + require('node:crypto').randomBytes(32).toString('hex') + '\n', {flag:'wx'})"
-```
-
-</div>
-
-کلید در `.dev.vars` نگهداری می‌شود و نباید منتشر یا وارد مخزن شود. بدون `JWT_SECRET` اختصاصی با حداقل ۳۲ بایت، API و اتصال وب‌سوکت پاسخ 503 می‌دهند. کلید پیش‌فرض عمومی حذف شده است؛ توکن‌های قدیمی مبتنی بر آن معتبر نیستند و کاربران باید دوباره وارد شوند.
-
-### ۳. مقداردهی اولیه دیتابیس لوکال (D1)
-
-<div dir="ltr">
-
-```bash
-npm run db:init:local
-```
-
-</div>
-
-### ۴. اجرای سرور توسعه
-
-<div dir="ltr">
-
-```bash
-npm run dev
-```
-
-</div>
-سپس مرورگر را باز کرده و به آدرس `http://localhost:8787` مراجعه کنید.
-برای آزمایش دو کاربر، از دو مرورگر متفاوت یا یک پنجرهٔ عادی و یک پنجرهٔ ناشناس استفاده کنید؛ زبانه‌های عادی یک مرورگر فضای ورود مشترک دارند.
-
-<a id="cloudflare-deploy"></a>
-## انتشار روی کلادفلر
-
-برای انتشار نسخه زنده روی اکانت کلادفلر خود:
-
-### ۱. ورود به حساب کلادفلر در ترمینال
-
-<div dir="ltr">
-
-```bash
-npx wrangler login
-```
-
-</div>
-
-### ۲. ساخت دیتابیس D1 در کلادفلر
-
-<div dir="ltr">
-
-```bash
-npx wrangler d1 create messenger-db --update-config=false
-```
-
-</div>
-پس از اجرای دستور، شناسه `database_id` نمایش داده می‌شود. آن را در فایل `wrangler.toml` جلوی `database_id` جایگزین کنید.
-
-### ۳. اعمال اسکیمای جداول روی دیتابیس ریموت
-
-<div dir="ltr">
-
-```bash
-npm run db:init:remote
-```
-
-</div>
-
-### ۴. ساخت فایل کلید اختصاصی محیط اصلی
-
-یک فایل خصوصی با کلیدی تصادفی و مستقل از کلید محلی بسازید. دستور زیر فایل موجود را بازنویسی نمی‌کند:
-
-<div dir="ltr">
-
-```bash
-node -e "require('node:fs').writeFileSync('.env.production', 'JWT_SECRET=' + require('node:crypto').randomBytes(32).toString('hex') + '\n', {flag:'wx'})"
-```
-
-</div>
-
-فایل `.env.production` در `.gitignore` قرار دارد؛ آن را عمومی نکنید و کلید را داخل `wrangler.toml` ننویسید. تغییر کلید، توکن‌های قبلی را نامعتبر می‌کند. در به‌روزرسانی‌ها همین کلید قبلی را نگه دارید.
-
-### ۵. انتشار سراسری روی شبکه کلادفلر
-
-<div dir="ltr">
-
-```bash
-npm run deploy -- --secrets-file .env.production
-```
-
-</div>
-این دستور کد و کلید را با هم روی Cloudflare ثبت می‌کند. در پایان، آدرس نصب شما (با ساختاری مانند `https://cloudflare-messenger.<your-subdomain>.workers.dev`) چاپ می‌شود. نمونهٔ آدرس را با آدرس واقعی خروجی خودتان جایگزین کنید.
-
-## بررسی تغییرات
-
-<div dir="ltr">
-
-```bash
-npm run typecheck
-npm test
-```
-
-</div>
-
-تست‌ها از دیتابیس موقت و شبیه‌ساز محلی Cloudflare استفاده می‌کنند و دیتابیس اصلی یا `.wrangler/state` را تغییر نمی‌دهند. تست‌های کلاینت، منطق برنامه را با DOM و شبکهٔ شبیه‌سازی‌شده بررسی می‌کنند؛ تست مرورگر و دستگاه واقعی جداگانه لازم است.
-
-## گروه‌ها و تاریخچه
-
-در پنجرهٔ گفتگوی جدید، «ساخت گروه» را بزنید، نام گروه را وارد کنید، کاربران را جستجو و انتخاب کنید و گروه را بسازید. اعضای فعلی می‌توانند از «افزودن عضو» در سربرگ گروه استفاده کنند. کاربران خارج از گروه اجازهٔ افزودن عضو یا خواندن پیام‌ها را ندارند.
-
-تاریخچه همچنان آرایهٔ JSON برمی‌گرداند. `GET /api/chats/:id/messages` پارامتر `limit` بین ۱ تا ۱۰۰ (پیش‌فرض ۵۰) و `before=<createdAt>:<id>` می‌پذیرد. برای صفحهٔ قبلی از زمان و شناسهٔ اولین پیام صفحه استفاده کنید. ترتیب زمان و شناسه از جاافتادن پیام‌های هم‌زمان جلوگیری می‌کند. در رابط برنامه، دکمهٔ «پیام‌های قبلی» همین کار را انجام می‌دهد.
-
-ساخت هم‌زمان گفتگوی خصوصی برای یک زوج کاربر اکنون یک شناسهٔ مشترک می‌سازد. گفتگوهای موجود حفظ می‌شوند؛ گفتگوهای تکراری قدیمی برای جلوگیری از حذف یا جابه‌جایی تاریخچه، خودکار ادغام نمی‌شوند.
-
-## نصب روی گوشی و رایانه
-
-- **روی اندروید (Chrome / Samsung Internet):** وارد آدرس سایت شوید و بنر "نصب اپلیکیشن پیام‌رسان" یا گزینه "Install app" را در منوی مرورگر لمس کنید.
-- **روی iOS / iPhone (Safari):** دکمه Share را بزنید و گزینه **Add to Home Screen** را انتخاب کنید.
-- **روی ویندوز / مک (Chrome / Edge):** روی آیکون نصب در نوار آدرس کلیک کنید.
-
-</details>
-
-</div>
+Licensed under [PolyForm Noncommercial 1.0.0](LICENSE): free for noncommercial use, and commercial use needs separate permission. Not affiliated with Telegram.

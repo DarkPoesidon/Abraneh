@@ -62,3 +62,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # Never "latest": the server installer downloads the latest release of this repository.
         run: gh release create "$GITHUB_REF_NAME" release-files/* --repo "$GITHUB_REPOSITORY" --title "WIHM Windows ${GITHUB_REF_NAME#windows-v}" --notes "نسخهٔ ویندوز پیام‌رسان ابرانه" --latest=false
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Update the fixed download address
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh source/scripts/publish-latest-app.sh windows "${GITHUB_REF_NAME#windows-v}" release-files
