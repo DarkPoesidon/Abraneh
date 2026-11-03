@@ -4,7 +4,8 @@
 set -eu
 PACKAGE=com.wihm.messenger
 adb install -r "$1"
-adb logcat -c
+# Some images refuse to clear the log, and then it only holds more than this run.
+adb logcat -c || true
 adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
 sleep 20
 adb exec-out screencap -p > "$2"

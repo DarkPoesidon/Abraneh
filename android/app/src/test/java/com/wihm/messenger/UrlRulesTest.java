@@ -12,9 +12,10 @@ public class UrlRulesTest {
 
     @Test
     public void webViewVersionRule() {
-        assertTrue(UrlRules.webViewTooOld("93.0.4577.82"));
-        assertFalse(UrlRules.webViewTooOld("94.0.4606.61"));
-        assertFalse(UrlRules.webViewTooOld("138.0.0.0"));
+        assertTrue(UrlRules.webViewTooOld("Mozilla/5.0 (Linux; Android 5.0) Version/4.0 Chrome/37.0.0.0 Mobile Safari/537.36"));
+        assertTrue(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/93.0.4577.82 Mobile"));
+        assertFalse(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/94.0.4606.61 Mobile"));
+        assertFalse(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/138.0.0.0 Mobile"));
         assertFalse(UrlRules.webViewTooOld("unknown"));
         assertFalse(UrlRules.webViewTooOld(null));
     }
