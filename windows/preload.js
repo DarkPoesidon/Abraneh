@@ -49,6 +49,8 @@ if (location.protocol === 'file:') {
 
   contextBridge.exposeInMainWorld('Android', {
     isDesktop: true,
+    getAppVersion: () => ipcRenderer.sendSync('app-version'),
+    checkForUpdates: () => ipcRenderer.send('check-updates'),
     saveAuthToken(value) {
       if (typeof value !== 'string' || !value || value === token) return;
       token = value;

@@ -96,6 +96,23 @@ try {
   await page.locator('.chat-item').first().waitFor();
   console.log('ok: settings reach the proxy, and Back saves nothing');
 
+  // The menu names the app's version, and the update page can check from inside the app.
+  const version = createRequire(resolve('windows/package.json'))('./package.json').version;
+  await page.locator('#btn-main-menu').click();
+  assert.match(await page.locator('.app-version').innerText(), new RegExp('Windows ' + version.replaceAll('.', '[.]')));
+  await page.keyboard.press('Escape');
+  await app.evaluate(({ dialog }) => {
+    globalThis.answers = [];
+    dialog.showMessageBox = async ({ message }) => { globalThis.answers.push(message); return { response: 1 }; };
+    dialog.showErrorBox = (title, content) => { globalThis.answers.push(title + ': ' + content); };
+  });
+  await page.evaluate(() => { document.getElementById('settings-updates').click(); });
+  await page.locator('#desktop-update-check').click();
+  for (let i = 0; i < 40 && !(await app.evaluate(() => globalThis.answers.length)); i++) await page.waitForTimeout(250);
+  assert.equal(await app.evaluate(() => globalThis.answers.length), 1, 'the check must answer');
+  await page.locator('#btn-close-feature').click();
+  console.log('ok: version and update check inside the app');
+
   // Other sites never open inside the app.
   const before = page.url();
   await page.evaluate(() => { location.href = 'https://example.org/'; }).catch(() => {});

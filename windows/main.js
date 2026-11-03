@@ -8,12 +8,12 @@ const STRINGS = {
   fa: {
     dir: 'rtl', title: 'سرور و پروکسی', intro: 'نشانی سروری که ابرانه روی آن اجرا می‌شود.', server: 'نشانی سرور', useProxy: 'استفاده از پروکسی', proxyType: 'نوع پروکسی', host: 'نشانی پروکسی (مثل 127.0.0.1)', port: 'پورت', proxyHelp: 'پروکسی SOCKS5 یا HTTP بدون نام کاربری و رمز. پروکسی MTProto فقط با تلگرام کار می‌کند.', connect: 'ذخیره و اتصال', back: 'بازگشت',
     badServer: 'نشانی سرور معتبر نیست. باید با https باشد.', badProxy: 'نشانی یا پورت پروکسی معتبر نیست.', noServer: 'اتصال برقرار نشد. نشانی سرور، اینترنت و پروکسی را بررسی کنید.', notServer: 'این نشانی سرور ابرانه نیست.', loadFailed: 'سرور باز نشد. اینترنت و نشانی را بررسی کنید.',
-    open: 'باز کردن ابرانه', changeServer: 'سرور و پروکسی', checkUpdates: 'بررسی به‌روزرسانی', quit: 'خروج', noUpdate: 'آخرین نسخه را دارید.', updateReady: 'نسخهٔ {0} آماده است. دریافت و نصب شود؟', update: 'نصب', later: 'بعداً', badUpdate: 'فایل به‌روزرسانی معتبر نیست.', updateFailed: 'به‌روزرسانی انجام نشد',
+    open: 'باز کردن ابرانه', changeServer: 'سرور و پروکسی', checkUpdates: 'بررسی به‌روزرسانی', quit: 'خروج', noUpdate: 'آخرین نسخه را دارید.', updateReady: 'نسخهٔ {0} آماده است. دریافت و نصب شود؟', update: 'نصب', later: 'بعداً', badUpdate: 'فایل به‌روزرسانی معتبر نیست.', updateFailed: 'به‌روزرسانی انجام نشد', downloading: 'در حال دریافت نسخهٔ جدید. پیشرفت آن روی نوار وظیفه دیده می‌شود و بعد از پایان، نصب شروع می‌شود.',
   },
   en: {
     dir: 'ltr', title: 'Server and proxy', intro: 'The address of the server running Abraneh.', server: 'Server address', useProxy: 'Use a proxy', proxyType: 'Proxy type', host: 'Proxy address (like 127.0.0.1)', port: 'Port', proxyHelp: 'A SOCKS5 or HTTP proxy with no username or password. MTProto proxies only work with Telegram.', connect: 'Save and connect', back: 'Back',
     badServer: 'The server address is invalid. It must use https.', badProxy: 'The proxy address or port is invalid.', noServer: 'Could not connect. Check the server address, the internet and the proxy.', notServer: 'This address is not an Abraneh server.', loadFailed: 'The server did not open. Check the internet and the address.',
-    open: 'Open Abraneh', changeServer: 'Server and proxy', checkUpdates: 'Check for updates', quit: 'Quit', noUpdate: 'You have the latest version.', updateReady: 'Version {0} is ready. Download and install it?', update: 'Install', later: 'Later', badUpdate: 'The update file is not valid.', updateFailed: 'The update failed',
+    open: 'Open Abraneh', changeServer: 'Server and proxy', checkUpdates: 'Check for updates', quit: 'Quit', noUpdate: 'You have the latest version.', updateReady: 'Version {0} is ready. Download and install it?', update: 'Install', later: 'Later', badUpdate: 'The update file is not valid.', updateFailed: 'The update failed', downloading: 'Downloading the new version. The taskbar shows its progress, and installation starts when it ends.',
   },
 };
 const t = (key, value = '') => (STRINGS[app.getLocale().startsWith('fa') ? 'fa' : 'en'][key]).replace('{0}', value);
@@ -104,7 +104,7 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: t('open'), click: showWindow },
     { label: t('changeServer'), click: () => openSetup() },
-    { label: t('checkUpdates'), click: () => checkForUpdate(t, true) },
+    { label: t('checkUpdates'), click: () => checkForUpdate(t, true, window) },
     { type: 'separator' },
     { label: t('quit'), click: () => { app.isQuitting = true; app.quit(); } },
   ]));
@@ -112,6 +112,8 @@ function createTray() {
 
 ipcMain.on('is-server-origin', (event, origin) => { event.returnValue = !!config.server && origin === config.server && onServerPage(event.senderFrame?.url); });
 ipcMain.on('show-window', event => { if (onServerPage(event.senderFrame?.url)) showWindow(); });
+ipcMain.on('app-version', event => { event.returnValue = app.getVersion(); });
+ipcMain.on('check-updates', event => { if (onServerPage(event.senderFrame?.url)) checkForUpdate(t, true, window); });
 ipcMain.on('notify', (event, message) => { if (onServerPage(event.senderFrame?.url)) notify(message); });
 ipcMain.on('open-setup', event => { if (onServerPage(event.senderFrame?.url)) openSetup(); });
 ipcMain.on('setup-back', event => { if (onSetupPage(event.senderFrame?.url) && config.server) openPage(); });
@@ -157,6 +159,10 @@ else {
     await applyProxy(config.proxy);
     createWindow();
     createTray();
-    if (app.isPackaged) checkForUpdate(t, false);
+    // The app can stay open in the tray for weeks, so one check at startup is not enough.
+    if (app.isPackaged) {
+      checkForUpdate(t, false, window);
+      setInterval(() => checkForUpdate(t, false, window), 6 * 3600_000);
+    }
   });
 }
