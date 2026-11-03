@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.webkit.WebSettings;
+import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -12,6 +13,19 @@ final class WebViewCheck {
     private static final String WEBVIEW_PACKAGE = "com.google.android.webview";
 
     private WebViewCheck() {
+    }
+
+    /** Without WebView the app can't open at all, and a phone can have it disabled or mid-update. */
+    static boolean stopIfMissing(AppCompatActivity activity) {
+        try {
+            WebSettings.getDefaultUserAgent(activity);
+            return false;
+        } catch (RuntimeException missing) {
+            Toast.makeText(activity, R.string.webview_missing, Toast.LENGTH_LONG).show();
+            openStore(activity);
+            activity.finish();
+            return true;
+        }
     }
 
     static void warnIfOld(AppCompatActivity activity) {
@@ -29,7 +43,11 @@ final class WebViewCheck {
         try {
             activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + WEBVIEW_PACKAGE)));
         } catch (ActivityNotFoundException noStore) {
-            activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + WEBVIEW_PACKAGE)));
+            try {
+                activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + WEBVIEW_PACKAGE)));
+            } catch (ActivityNotFoundException noBrowser) {
+                // The message has already told them what to install.
+            }
         }
     }
 }

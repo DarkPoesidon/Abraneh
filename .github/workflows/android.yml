@@ -38,7 +38,9 @@ jobs:
           - { android: '5', api: 21, target: default }
           - { android: '6', api: 23, target: default }
           - { android: '7', api: 24, target: default }
-          - { android: '8', api: 26, target: default }
+          - { android: '8', api: 26, target: google_apis }
+          # This image has no WebView, which is how the app's own handling of that gets tested.
+          - { android: '8-no-webview', api: 26, target: default, check: no-webview }
           - { android: '9', api: 28, target: default }
           - { android: '11', api: 30, target: default }
           - { android: '13', api: 33, target: google_apis }
@@ -63,7 +65,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png
+          script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png ${{ matrix.check }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

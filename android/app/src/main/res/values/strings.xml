@@ -56,6 +56,7 @@
     <string name="service_turned_on">سرویس دریافت پیام در پس‌زمینه فعال شد</string>
     <string name="webview_old_title">WebView قدیمی است</string>
     <string name="webview_old_message">نسخهٔ Android System WebView این گوشی برای اجرای پیام‌رسان خیلی قدیمی است و ممکن است صفحه خالی بماند. لطفاً آن را به‌روز کنید.</string>
+    <string name="webview_missing">این گوشی Android System WebView فعال ندارد. لطفاً آن را نصب یا فعال کنید.</string>
     <string name="webview_update">به‌روزرسانی</string>
     <string name="service_turned_off">سرویس پس‌زمینه غیرفعال شد</string>
     <string name="battery_free">وضعیت: ✅ محدودیت باتری غیرفعال است (سرویس بدون وقفه کار می‌کند)</string>
