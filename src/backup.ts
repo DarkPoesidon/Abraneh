@@ -84,6 +84,7 @@ export async function publicRestore(request:Request,env:Env) {
       env.DB.prepare("DELETE FROM site_settings WHERE key LIKE 'discovery_%' OR key LIKE 'federation_%' OR key LIKE 'secure_%' OR key IN ('update_push','server_origin','call_turn')"),
       env.DB.prepare("INSERT INTO site_settings(key,value) VALUES ('discovery_enabled','0'),('secure_enabled','0')"),
       env.DB.prepare('UPDATE secure_devices SET revoked_at=COALESCE(revoked_at,?)').bind(Date.now()),
+      env.DB.prepare('DELETE FROM secure_device_lists'),
       env.DB.prepare('DELETE FROM channel_outbox'),env.DB.prepare('DELETE FROM channel_webhooks'),env.DB.prepare('DELETE FROM channel_tokens'),env.DB.prepare('DELETE FROM security_recovery'),
       env.DB.prepare("UPDATE telegram_bots SET state='disconnected'"),env.DB.prepare("UPDATE telegram_sources SET enabled=0 WHERE kind='bot'"),
       env.DB.prepare("UPDATE service_restore SET state='complete' WHERE id=1 AND digest=? AND state='importing'").bind(marker.digest),

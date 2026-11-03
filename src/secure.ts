@@ -23,6 +23,11 @@ async function verify(key:string,signature:string,data:string) {
 export interface SecureEnvelope {id:string;thread:string;from:string;fromDevice:string;to:string;toDevice:string;kind:'welcome'|'message';payload:string;senderKey:string;signature:string}
 export const envelopeData=(e:SecureEnvelope)=>JSON.stringify(['wihm-mls/1',e.id,e.thread,e.from,e.fromDevice,e.to,e.toDevice,e.kind,e.payload,e.senderKey]);
 export const deviceData=(who:string,device:string,keyPackage:string)=>JSON.stringify(['wihm-device/1',who,device,keyPackage]);
+export const listData=(who:string,list:any)=>JSON.stringify(['wihm-device-list/1',who,list.version,list.devices.map((d:any)=>[d.device,d.key]),list.signer]);
+async function storedList(env:Env,username:string) {
+  const row=await env.DB.prepare('SELECT l.list FROM secure_device_lists l JOIN users u ON u.id=l.user_id WHERE u.username=?').bind(username).first<{list:string}>();
+  return row?JSON.parse(row.list):null;
+}
 async function envelope(value:any):Promise<SecureEnvelope> {
   const fields=['id','thread','from','fromDevice','to','toDevice','kind','payload','senderKey','signature'];
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==fields.length||fields.some(k=>!(k in value)))return bad();
@@ -107,7 +112,7 @@ export async function publicSecure(request:Request,env:Env,ctx?:ExecutionContext
   const url=new URL(request.url);if(!url.pathname.startsWith('/api/federation/'))return null;
   try{
     if(url.pathname==='/api/federation/identity'&&request.method==='GET'){const identity=await serverKeys(env,url.origin);return jsonResponse({protocol:'wihm-federation/1',origin:identity.origin,publicKey:identity.publicKey,enabled:identity.enabled});}
-    if(request.method!=='POST'||!['/api/federation/keys','/api/federation/inbox'].includes(url.pathname))return jsonResponse({error:'یافت نشد.'},404);
+    if(request.method!=='POST'||!['/api/federation/keys','/api/federation/inbox','/api/federation/device-list'].includes(url.pathname))return jsonResponse({error:'یافت نشد.'},404);
     const settings=await serverKeys(env,url.origin);if(!settings.enabled)return bad('فدراسیون غیرفعال است.',403);
     const source=origin(request.headers.get('X-WIHM-Origin')),host=new URL(source).hostname;
     const time=request.headers.get('X-WIHM-Time')||'',nonce=uuid(request.headers.get('X-WIHM-Nonce')),signature=request.headers.get('X-WIHM-Signature')||'';
@@ -117,9 +122,10 @@ export async function publicSecure(request:Request,env:Env,ctx?:ExecutionContext
     const body=await inputJson(request),hash=await digest(JSON.stringify(body));
     if(!await verify(key,signature,requestData(source,settings.origin,url.pathname,time,nonce,hash)))return bad('امضای سرور معتبر نیست.',403);
     const inserted=await env.DB.prepare('INSERT OR IGNORE INTO secure_nonces VALUES (?,?,?)').bind(host,nonce,Date.now()+600000).run();if(!inserted.meta.changes)return bad('درخواست تکراری است.',409);
-    if(url.pathname==='/api/federation/keys'){
+    if(url.pathname==='/api/federation/keys'||url.pathname==='/api/federation/device-list'){
       const who=fullAddress(body.address);if(who.host!==new URL(settings.origin).hostname)return bad();
       const visible=await env.DB.prepare("SELECT 1 FROM users u JOIN discovery_profiles p ON p.user_id=u.id AND p.enabled=1 WHERE u.username=? AND NOT EXISTS(SELECT 1 FROM site_settings WHERE key='discovery_enabled' AND value='0')").bind(who.username).first();
+      if(url.pathname==='/api/federation/device-list')return jsonResponse({address:body.address,list:visible?await storedList(env,who.username):null});
       return jsonResponse({address:body.address,devices:visible?await claimDevices(env,who.username):[]});
     }
     const e=await envelope(body);if(fullAddress(e.from).host!==host||fullAddress(e.to).host!==new URL(settings.origin).hostname)return bad('مبدأ یا مقصد معتبر نیست.',403);
@@ -163,6 +169,34 @@ export async function handleSecure(request:Request,env:Env,auth:JwtPayload,ctx?:
     }
     if(request.method==='GET')return jsonResponse({address:auth.username+'@'+new URL(await serverOrigin(env,url.origin)).hostname,devices:await activeDevices(env,auth.username)});
     if(request.method==='DELETE'){const body=await inputJson(request);await env.DB.prepare('UPDATE secure_devices SET revoked_at=? WHERE user_id=? AND device_id=?').bind(Date.now(),auth.userId,uuid(body.device)).run();return jsonResponse({ok:true});}
+  }
+  if(path==='/api/secure/device-list'){
+    if(request.method==='GET')return jsonResponse({list:await storedList(env,auth.username)});
+    if(request.method==='PUT'){
+      const body=await inputJson(request),who=auth.username+'@'+new URL(await serverOrigin(env,url.origin)).hostname;
+      if(!Number.isSafeInteger(body.version)||body.version<1||!Array.isArray(body.devices)||!body.devices.length||body.devices.length>10)return bad();
+      bytes(body.signer,32);bytes(body.signature,64);
+      const devices=body.devices.map((d:any)=>{uuid(d?.device);bytes(d?.key,32);return {device:d.device,key:d.key};});
+      if(new Set(devices.map((d:any)=>d.device)).size!==devices.length)return bad();
+      if(!await verify(body.signer,body.signature,listData(who,{...body,devices})))return bad('امضای فهرست دستگاه‌ها معتبر نیست.',403);
+      const {results:active}=await env.DB.prepare('SELECT device_id AS device,identity_key AS key FROM secure_devices WHERE user_id=? AND revoked_at IS NULL').bind(auth.userId).all<{device:string;key:string}>();
+      if(devices.some((d:any)=>!active.some(a=>a.device===d.device&&a.key===d.key)))return bad('فهرست فقط می‌تواند دستگاه‌های فعال همین حساب را داشته باشد.',409);
+      if(!active.some(a=>a.key===body.signer))return bad('امضاکننده دستگاه فعال این حساب نیست.',403);
+      const previous=await storedList(env,auth.username);
+      if(previous){
+        if(body.version<=previous.version)return bad('نسخهٔ فهرست دستگاه‌ها قدیمی است.',409);
+        // Only a listed device may change the list, unless none of them is active any more.
+        if(previous.devices.some((d:any)=>active.some(a=>a.device===d.device))&&!previous.devices.some((d:any)=>d.key===body.signer))return bad('فقط دستگاه تأییدشده می‌تواند فهرست را تغییر دهد.',403);
+      }
+      const list={version:body.version,devices,signer:body.signer,signature:body.signature};
+      await env.DB.prepare('INSERT INTO secure_device_lists VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET list=excluded.list,version=excluded.version,updated_at=excluded.updated_at').bind(auth.userId,JSON.stringify(list),body.version,Date.now()).run();
+      return jsonResponse({ok:true,version:body.version});
+    }
+  }
+  if(path==='/api/secure/device-lists'&&request.method==='POST'){
+    const body=await inputJson(request),who=fullAddress(body.address);if(!await allowRequest(env,'secure-device-list',auth.userId,120,3600000))return bad('درخواست زیاد است.',429);const settings=await serverKeys(env,url.origin);
+    if(who.host===new URL(settings.origin).hostname)return jsonResponse({address:body.address,list:await storedList(env,who.username)});
+    const result=await signedFetch(env,settings,who.host,'/api/federation/device-list',{address:body.address});if(result.address!==body.address)return bad('پاسخ سرور مقصد معتبر نیست.',502);return jsonResponse({address:body.address,list:result.list||null});
   }
   if(path==='/api/secure/keys'&&request.method==='POST'){
     const body=await inputJson(request),who=fullAddress(body.address);if(!await allowRequest(env,'secure-key-claim',auth.userId+':'+body.address,20,3600000))return bad('دریافت کلید این مخاطب زیاد است.',429);const settings=await serverKeys(env,url.origin);if(who.host===new URL(settings.origin).hostname)return jsonResponse({address:body.address,devices:await claimDevices(env,who.username)});

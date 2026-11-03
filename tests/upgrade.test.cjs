@@ -48,11 +48,11 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
       for (const statement of sql.split(';').map(s => s.trim()).filter(Boolean)) results.push(await db.prepare(statement).bind(...params).all());
       return results;
     } };
-    const manifest = { migrations: ['0001_reliable_delivery.sql','0002_daily_use.sql','0003_updates_telegram.sql','0004_service_discovery.sql','0005_service_backup.sql','0006_advanced_security.sql','0007_secure_federation.sql','0009_channels.sql','0010_broadcast_channels.sql','0011_chat_deletions.sql','0012_chat_photos_remote_channels.sql'] };
+    const manifest = { migrations: ['0001_reliable_delivery.sql','0002_daily_use.sql','0003_updates_telegram.sql','0004_service_discovery.sql','0005_service_backup.sql','0006_advanced_security.sql','0007_secure_federation.sql','0009_channels.sql','0010_broadcast_channels.sql','0011_chat_deletions.sql','0012_chat_photos_remote_channels.sql','0013_secure_device_lists.sql'] };
     const payload = resolve('.');
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
     await applyMigrations(api, 'account', 'same-database', payload, manifest);
-    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 11);
+    assert.equal((await db.prepare('SELECT count(*) AS n FROM schema_migrations').first()).n, 12);
     assert.equal((await db.prepare("SELECT user_id FROM group_roles WHERE chat_id='legacy-group' AND role='owner'").first()).user_id,'legacy-user');
     // Replaying an upgrade must not take ownership back after a real transfer.
     await db.batch([db.prepare("UPDATE group_roles SET role='member' WHERE chat_id='legacy-group'"),db.prepare("INSERT INTO group_roles VALUES ('legacy-group','a-member','owner')")]);
@@ -66,7 +66,7 @@ test('1.0 storage and legacy JWT upgrade in place; migrations are replay-safe an
     const claims = Buffer.from(JSON.stringify({ userId: 'legacy-user', username: 'legacy', displayName: 'قدیمی', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
     const token = header + '.' + claims + '.' + createHmac('sha256', secret).update(header + '.' + claims).digest('base64url');
     const health = await (await mf.dispatchFetch('http://localhost/api/health')).json();
-    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.7.14', database: true });
+    assert.deepEqual(health, { app: 'wihm-cloudflare', version: '1.7.15', database: true });
     const history = await (await mf.dispatchFetch('http://localhost/api/chats/legacy-room/messages', { headers: { Authorization: 'Bearer ' + token } })).json();
     assert.deepEqual(history.map(message => message.id), ['old-a', 'old-b']);
     const response = await mf.dispatchFetch('http://localhost/ws?chatId=legacy-room&token=' + token, { headers: { Upgrade: 'websocket' } });
