@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file:; style-src 'unsafe-inline'; img-src file:">
+  <title>Abraneh</title>
+  <style>
+    :root { color-scheme:dark; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:#1d2733; color:#fff; font:15px/1.5 "Segoe UI",Tahoma,sans-serif; }
+    form { display:flex; flex-direction:column; gap:14px; width:min(100%,420px); }
+    img { width:72px; height:72px; align-self:center; }
+    h1 { margin:0; text-align:center; font-size:1.4rem; font-weight:600; }
+    p { margin:0; color:#99a3af; }
+    label { display:flex; flex-direction:column; gap:6px; }
+    label.check { flex-direction:row; align-items:center; gap:10px; }
+    input[type=text],input[type=number],select { min-height:44px; padding:0 14px; border:1px solid transparent; border-radius:12px; background:#2a3544; color:#fff; font:inherit; }
+    input:focus,select:focus { border-color:#2399f0; outline:0; }
+    input.url { direction:ltr; text-align:left; }
+    button { min-height:48px; border:0; border-radius:12px; background:#1877c4; color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    button:hover { background:#1a6fb5; }
+    button:disabled { opacity:.6; cursor:wait; }
+    #error { color:#ff6b6b; min-height:1.5em; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <img src="tray.png" alt="">
+    <h1 id="title"></h1>
+    <p id="intro"></p>
+    <label><span id="server-label"></span><input id="server" class="url" type="text" placeholder="https://your-wihm.workers.dev" autofocus required></label>
+    <label class="check"><input id="use-proxy" type="checkbox"><span id="proxy-label"></span></label>
+    <div id="proxy-fields" hidden>
+      <label><span id="type-label"></span><select id="proxy-type"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select></label>
+      <label><span id="host-label"></span><input id="proxy-host" class="url" type="text"></label>
+      <label><span id="port-label"></span><input id="proxy-port" class="url" type="number" min="1" max="65535"></label>
+      <p id="proxy-help"></p>
+    </div>
+    <div id="error" role="alert"></div>
+    <button id="connect" type="submit"></button>
+  </form>
+  <script src="setup.js"></script>
+</body>
+</html>

@@ -106,6 +106,7 @@
     'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.': 'A direct connection failed; a restricted network may need a TURN server.',
     'ارتباط موقتاً قطع است؛ دوباره تلاش کنید.': 'Temporarily disconnected; try again.',
     'ارسال': 'Send',
+    'برنامهٔ ویندوز تا وقتی در نوار وظیفه باز است اعلان می‌دهد.': 'The Windows app notifies you while it is open in the system tray.',
     'مخاطبان': 'Contacts',
     'پروفایل': 'Profile',
     'پیمایش اصلی': 'Main navigation',

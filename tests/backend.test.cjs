@@ -51,7 +51,7 @@ async function account(name, displayName = name) {
 test('readiness endpoint checks schema without exposing configuration', async () => {
   const ready = await api('/api/health');
   assert.equal(ready.status, 200);
-  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.7.6', database: true });
+  assert.deepEqual(ready.data, { app: 'wihm-cloudflare', version: '1.7.7', database: true });
   const missingSecret = await api('/api/health', { runtime: unconfigured });
   assert.equal(missingSecret.status, 503);
   assert.ok(!JSON.stringify(missingSecret.data).includes(secret));

@@ -124,7 +124,9 @@ export class ChatRoom extends DurableObject<Env> {
       // Answered without waking this object, so idle phones cost almost nothing.
       this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
       this.ctx.acceptWebSocket(server, ['inbox']);
-      return new Response(null, { status: 101, webSocket: client });
+      // A browser socket sends its token as a protocol and fails unless one is chosen. The Android app asks for none.
+      const protocol = request.headers.get('Sec-WebSocket-Protocol')?.split(',').map(value => value.trim()).includes('wihm.v1') ? 'wihm.v1' : null;
+      return new Response(null, { status: 101, webSocket: client, ...(protocol ? { headers: { 'Sec-WebSocket-Protocol': protocol } } : {}) });
     }
     if (url.pathname === '/inbox-send' && request.method === 'POST') {
       const { sessionId, data } = await request.json<{ sessionId: string; data: unknown }>();

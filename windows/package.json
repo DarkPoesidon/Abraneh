@@ -1,0 +1,24 @@
+{
+  "name": "wihm-messenger-windows",
+  "productName": "Abraneh",
+  "version": "1.0.0",
+  "description": "Abraneh messenger for Windows",
+  "author": "WIHM",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.wihm.messenger.desktop",
+    "files": ["main.js", "preload.js", "rules.js", "updates.js", "setup.html", "setup.js", "tray.png"],
+    "artifactName": "wihm-messenger-windows-v${version}-setup.${ext}",
+    "electronFuses": { "runAsNode": false },
+    "nsis": { "oneClick": true, "perMachine": false }
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  }
+}
