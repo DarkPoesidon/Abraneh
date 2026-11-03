@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, net, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Notification, Tray, ipcMain, net, session, shell } = require('electron');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { serverOrigin, proxyRule } = require('./rules');
@@ -19,6 +19,8 @@ const STRINGS = {
 const t = (key, value = '') => (STRINGS[app.getLocale().startsWith('fa') ? 'fa' : 'en'][key]).replace('{0}', value);
 
 let window = null, tray = null, config = {}, setupError = '';
+// Windows drops a notification's click if nothing holds on to it.
+const notifications = new Set();
 const configFile = () => join(app.getPath('userData'), 'config.json');
 function loadConfig() {
   try { config = JSON.parse(readFileSync(configFile(), 'utf8')); } catch { config = {}; }
@@ -43,6 +45,22 @@ function reportHidden() {
   if (!window || !onServerPage(window.webContents.getURL())) return;
   const hidden = !window.isVisible() || window.isMinimized();
   window.webContents.executeJavaScript(`window.wihmAppHidden=${hidden};window.dispatchEvent(new Event('wihm-app-visibility'));`).catch(() => {});
+}
+
+// document.hasFocus() stays true in a hidden window, so only this process can tell.
+function notify({ title, body, chatId } = {}) {
+  if (window.isVisible() && !window.isMinimized() && window.isFocused()) return;
+  const notification = new Notification({ title: String(title).slice(0, 200), body: String(body || '').slice(0, 500), icon: join(__dirname, 'tray.png') });
+  notifications.add(notification);
+  const forget = () => notifications.delete(notification);
+  notification.on('close', forget);
+  notification.on('failed', (_event, error) => { forget(); console.warn('Notification failed:', error); });
+  notification.on('click', () => {
+    forget();
+    showWindow();
+    if (/^[a-zA-Z0-9_-]{1,100}$/.test(String(chatId))) window.loadURL(config.server + '/?chat=' + encodeURIComponent(chatId));
+  });
+  notification.show();
 }
 
 function openPage() {
@@ -94,6 +112,7 @@ function createTray() {
 
 ipcMain.on('is-server-origin', (event, origin) => { event.returnValue = !!config.server && origin === config.server && onServerPage(event.senderFrame?.url); });
 ipcMain.on('show-window', event => { if (onServerPage(event.senderFrame?.url)) showWindow(); });
+ipcMain.on('notify', (event, message) => { if (onServerPage(event.senderFrame?.url)) notify(message); });
 ipcMain.on('open-setup', event => { if (onServerPage(event.senderFrame?.url)) openSetup(); });
 ipcMain.on('setup-back', event => { if (onSetupPage(event.senderFrame?.url) && config.server) openPage(); });
 ipcMain.handle('setup-load', event => {
