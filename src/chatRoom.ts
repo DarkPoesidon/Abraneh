@@ -1,5 +1,5 @@
 import { handleCall, closeCall, callInbox, activeCall, CallEvent, CallIdentity } from './calls.js';
-import { beginOperation, withOperation } from './maintenance.js';
+import { withOperation } from './maintenance.js';
 import { ROOM_BACKUP_TABLES, roomBackupPage, restoreRoomTable } from './room-backup.js';
 import { DurableObject } from "cloudflare:workers";
 import { Env, ClientWsAction, ServerWsEvent, Message } from "./types.js";
