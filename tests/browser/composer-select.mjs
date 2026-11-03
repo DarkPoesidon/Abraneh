@@ -83,7 +83,7 @@ try {
   await bubble('برای حذف دو').click();
   await page.locator('#btn-select-delete').click();
   await page.waitForFunction(() => ![...document.querySelectorAll('.message-bubble')].some(node => node.textContent.includes('برای حذف')));
-  assert.ok(await page.locator('.selection-bar').isHidden());
+  await page.locator('.selection-bar').waitFor({ state: 'hidden' });
   console.log('ok: delete several');
 
   // A pasted image goes out after the question.

@@ -51,7 +51,7 @@
 .channel-post { min-width:0; padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-md); background:var(--bg-primary); }
 .channel-post-text { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.95; unicode-bidi:plaintext; }
 .channel-post footer { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; margin-top:18px; font-size:.75rem; color:var(--text-secondary); }
-.channel-post a,.telegram-steps a { color:var(--accent-color); }
+.channel-post a,.telegram-steps a { color:var(--accent-text); }
 .telegram-steps { padding-inline-start:24px; line-height:2.1; }
 .telegram-steps li { padding-bottom:8px; }
 .main-menu { max-height:calc(100dvh - 92px); overflow-y:auto; }
@@ -1472,3 +1472,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
   .nav-item .avatar { width:25px; height:25px; font-size:.75rem; background:hsl(207 55% 42%); color:#fff; }
 }
 #btn-passkey-login { display:block; width:100%; margin-bottom:12px; }
+/* Telegram's new-chat button: a white bubble with a blue plus. */
+.sidebar:not(.collapsed) .compose-button { --compose-plus:var(--tg-blue); color:#fff; }
+.sidebar:not(.collapsed) .compose-button .ui-icon { width:30px; height:30px; }
+.archive-button[aria-pressed="true"],.archive-button:hover { color:var(--accent-text); }

@@ -25,7 +25,7 @@
     finally{state.checking=false;emit();}
   }
   async function apply(){
-    if(options.prepareReload&&!options.prepareReload()){state.message='ابتدا متنِ داخل کادر را ارسال یا کپی کنید؛ سپس دوباره دریافت نسخه را بزنید.';emit();return false;}
+    if(options.prepareReload&&!options.prepareReload()){state.message='تماس یا ویرایش پیام در جریان است؛ بعد از پایان آن دوباره دریافت نسخه را بزنید.';emit();return false;}
     applying=true;
     try {
       if(changed){location.reload();return true;}
