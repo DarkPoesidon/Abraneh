@@ -1230,7 +1230,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .call-actions .quiet-button:hover { background:transparent; }
 .call-microphone::before,.call-camera::before,.call-speaker::before { box-sizing:content-box; width:24px; height:24px; padding:15px; background:currentColor; -webkit-mask-origin:content-box; -webkit-mask-clip:content-box; mask-origin:content-box; mask-clip:content-box; }
 .call-actions .quiet-button { position:relative; }
-.call-actions .quiet-button::after { content:''; position:absolute; top:0; inset-inline-start:50%; translate:50% 0; width:54px; height:54px; border-radius:50%; background:rgb(255 255 255 / .18); z-index:-1; }
+.call-actions .quiet-button::after { content:''; position:absolute; top:0; left:50%; translate:-50% 0; width:54px; height:54px; border-radius:50%; background:rgb(255 255 255 / .18); z-index:-1; }
 .call-actions { isolation:isolate; }
 .call-actions [aria-pressed="true"] { background:transparent; border:0; }
 .call-actions [aria-pressed="true"]::after { background:#fff; opacity:.55; }
@@ -1387,3 +1387,17 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .mention-row:first-child { border-start-start-radius:12px; border-start-end-radius:12px; }
 .mention-row:last-child { border-end-start-radius:12px; border-end-end-radius:12px; }
 .mention-row small { color:var(--text-secondary); }
+
+/* "typing" with moving dots, as in Telegram */
+#typing-bar:not(:empty)::after, .typing-bar:not(:empty)::after { content:'...'; display:inline-block; width:1.2em; overflow:hidden; vertical-align:bottom; white-space:nowrap; animation:typingDots 1.2s steps(4,end) infinite; text-align:start; }
+@keyframes typingDots { from { width:0; } to { width:1.2em; } }
+
+/* The call screen: every control is a centered circle with its icon inside and its label below. */
+.call-actions { flex-wrap:nowrap; justify-content:center; align-items:flex-start; gap:4px; flex-shrink:0; }
+.call-actions .quiet-button { flex:0 1 96px; width:96px; min-width:0; text-align:center; }
+.call-avatar { line-height:1; text-align:center; }
+.call-actions [aria-pressed="true"]::before { background:#3b3f8f; }
+.call-actions [aria-pressed="true"]::after { background:#fff; opacity:1; }
+@media (max-width:768px) {
+  dialog.call-dialog { width:100%; max-width:none; height:100dvh; max-height:none; min-height:0; margin:0; border-radius:0; padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom)); }
+}

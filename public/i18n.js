@@ -556,6 +556,7 @@
     'در حال دریافت…': 'Loading…',
     'در حال ضبط': 'Recording',
     'در حال نوشتن...': 'typing...',
+    'در حال نوشتن': 'typing',
     'در حال یافتن پیام نخوانده…': 'Finding the unread message…',
     'در صف این دستگاه': 'In this device\'s queue',
     'در صف سرور': 'In the server queue',

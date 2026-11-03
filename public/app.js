@@ -566,25 +566,50 @@
   function renderMessages(msgList, { keepPosition = false } = {}) {
     const top = messagesContainer.scrollTop;
     const atBottom = nearBottom();
-    const previousIds = new Set([...messagesContainer.children].map(child => child.id));
-    messagesContainer.innerHTML = '';
     if (!msgList || !msgList.length) {
+      rendered.clear(); renderedChat = null;
+      messagesContainer.innerHTML = '';
       messagesContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); margin: auto; font-size: 0.85rem;">هنوز هیچ پیامی در این گفتگو ارسال نشده است.<br>اولین پیام را شما بفرستید!</div>`;
       return;
     }
 
     const visible = msgList.filter(msg => !hiddenMessages.get(msg.chatId)?.has(msg.id));
+    const chatId = msgList[0].chatId, switched = renderedChat !== chatId;
+    if (switched) { rendered.clear(); renderedChat = chatId; }
+    const earlier = new Map(rendered), sentBefore = new Set([...rendered.values()].map(entry => entry.clientMsgId).filter(Boolean)), wanted = [];
+    rendered.clear();
+    const keep = (key, signature, build, clientMsgId) => { const old = earlier.get(key), node = old?.signature === signature ? old.node : build(old); rendered.set(key, { signature, node, clientMsgId }); wanted.push(node); };
+    const textNode = (className, text) => () => { const node = document.createElement('div'); node.className = className; node.textContent = text; return node; };
     // Consecutive messages from one person read as a group, broken by a new day or a long pause.
     const sameGroup = (a, b) => !!a && !!b && a.senderId === b.senderId && dayKey(a.createdAt) === dayKey(b.createdAt) && Math.abs(b.createdAt - a.createdAt) < 300_000;
     visible.forEach((msg, index) => {
       const previous = visible[index - 1];
-      if (dayKey(previous?.createdAt) !== dayKey(msg.createdAt)) { const pill = document.createElement('div'); pill.className = 'date-pill'; pill.textContent = dayLabel(msg.createdAt); messagesContainer.appendChild(pill); }
-      if (activeChat?.firstUnreadId === msg.id) { const divider = document.createElement('div'); divider.className = 'unread-divider'; divider.textContent = 'پیام‌های نخوانده'; messagesContainer.appendChild(divider); }
-      appendMessageToUI(msg, !previousIds.has('message-' + msg.id), { first: !sameGroup(previous, msg), last: !sameGroup(msg, visible[index + 1]) });
+      if (dayKey(previous?.createdAt) !== dayKey(msg.createdAt)) { const label = dayLabel(msg.createdAt); keep('day:' + dayKey(msg.createdAt), label, textNode('date-pill', label)); }
+      if (activeChat?.firstUnreadId === msg.id) keep('unread', msg.id, textNode('unread-divider', 'پیام‌های نخوانده'));
+      const grouping = { first: !sameGroup(previous, msg), last: !sameGroup(msg, visible[index + 1]) };
+      // A message that only changed its id when the server confirmed it must not animate again.
+      keep('message:' + msg.id, bubbleSignature(msg, grouping), old => buildBubble(msg, !switched && !old && !(msg.clientMsgId && sentBefore.has(msg.clientMsgId)), grouping), msg.clientMsgId);
     });
+    placeNodes(wanted);
     if (!keepPosition || atBottom) scrollToBottom(); else messagesContainer.scrollTop = top;
   }
 
+  // Rebuilding a long chat for every new message cost over 600ms on a phone-sized list, so unchanged messages keep their elements.
+  const rendered = new Map(); let renderedChat = null;
+  function bubbleSignature(msg, grouping) {
+    const sent = msg.senderId === currentUser.id;
+    return JSON.stringify([msg.text, msg.senderName, !!msg.pending, !!msg.failed, msg.deletedAt || 0, msg.editedAt || 0, msg.reactions || null, msg.replyTo || null, msg.forwardedFrom || '', msg.media?.kind || '', grouping.first, grouping.last, activeChat?.type, !!activeChat?.isChannel,
+      activeChat?.isChannel ? (receiptsByChat[msg.chatId] || []).filter(receipt => covers(receipt, msg, 'read')).length : sent ? messageStatus(msg) : '']);
+  }
+  function placeNodes(wanted) {
+    const list = messagesContainer;
+    if (!list.insertBefore) { list.innerHTML = ''; wanted.forEach(node => list.appendChild(node)); return; }
+    // Removing first means a kept message is never moved, and moving one would replay its animation.
+    const staying = new Set(wanted);
+    for (const child of [...list.children]) if (!staying.has(child)) child.remove();
+    let cursor = list.firstElementChild;
+    for (const node of wanted) { if (node === cursor) cursor = cursor.nextElementSibling; else list.insertBefore(node, cursor); }
+  }
   function dayKey(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`; }
   function dayLabel(timestamp) {
     const key = dayKey(timestamp);
@@ -606,13 +631,14 @@
       .replace(/https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?\u061f\u060c\u061b)]/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow" dir="ltr">${url}</a>`)
       .replace(/(^|[\s(])@([a-zA-Z0-9_]{3,32})\b/g, (_, before, name) => `${before}<span class="mention" dir="ltr">@${name}</span>`);
   }
-  function appendMessageToUI(msg, animate = true, { first = true, last = true } = {}) {
+  function buildBubble(msg, animate = true, { first = true, last = true } = {}) {
     // Channel posts belong to the channel, so they all sit on one side, as in Telegram.
     const isSent = msg.senderId === currentUser.id && !activeChat?.isChannel;
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isSent ? 'sent' : 'received'}${first ? ' group-first' : ''}${last ? ' group-last' : ''}${msg.pending ? ' pending' : ''}${msg.failed ? ' failed' : ''}`;
     bubble.id = 'message-' + msg.id;
     if (!animate) bubble.style.animation = 'none';
+    else bubble.addEventListener?.('animationend', () => { bubble.style.animation = 'none'; }, { once: true });
 
     let senderHtml = '';
     if (!isSent && first && activeChat?.type === 'group' && !activeChat.isChannel) {
@@ -643,8 +669,7 @@
         if (activeChat?.id === msg.chatId) renderMessages(messagesByChat[msg.chatId], { keepPosition: true });
       }); bubble.appendChild(remove);
     }
-
-    messagesContainer.appendChild(bubble);
+    return bubble;
   }
 
   function scrollToBottom() {
@@ -809,7 +834,7 @@
     } else if (data.event === 'typing') {
       if (activeChat && data.chatId === activeChat.id && data.userId !== currentUser.id) {
         if (data.isTyping) {
-          typingBar.textContent = `${data.username} در حال نوشتن...`;
+          typingBar.textContent = `${data.username} در حال نوشتن`;
         } else {
           typingBar.textContent = '';
         }

@@ -8,7 +8,7 @@ async function checkLayout(page, label) {
  console.log(label,JSON.stringify(layout));
  assert.ok(Math.abs(layout.x+layout.width/2-layout.viewportWidth/2)<=1,'Call dialog must be horizontally centered');
  assert.ok(Math.abs(layout.y+layout.height/2-layout.viewportHeight/2)<=1,'Call dialog must be vertically centered');
- assert.ok(layout.x>=12&&layout.y>=12&&layout.x+layout.width<=layout.viewportWidth-12&&layout.y+layout.height<=layout.viewportHeight-12,'Call dialog must stay inside the viewport');
+ assert.ok(layout.x>=0&&layout.y>=0&&layout.x+layout.width<=layout.viewportWidth&&layout.y+layout.height<=layout.viewportHeight,'Call dialog must stay inside the viewport');
  assert.equal(layout.color,'rgb(248, 250, 252)','Native dialog must use the app text color');
 }
 const browser=await chromium.launch({headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'],...(process.env.WIHM_CHROME_PATH?{executablePath:process.env.WIHM_CHROME_PATH}:{})}),contexts=[],pages=[],errors=[];
