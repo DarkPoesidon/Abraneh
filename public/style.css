@@ -1036,7 +1036,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .65); }
 .settings-row>span {flex:1;min-width:0;}
 .settings-row strong {display:block;font-size:.92rem;font-weight:600;line-height:1.7;}
 .settings-row small {display:block;color:var(--text-secondary);font-size:.74rem;line-height:1.8;margin-top:3px;}
-.row-chevron {width:18px;height:18px;color:var(--text-muted);transform:scaleX(-1);}
+.row-chevron {width:18px;height:18px;color:var(--text-muted);}
 #feature-content .settings-profile-fields,
 #feature-content .settings-appearance-fields,
 #feature-content .settings-notification-fields,
@@ -1142,7 +1142,7 @@ body { font-size:16px; }
 .message-bubble.sent:not(.group-first) { border-start-start-radius:6px; }
 .message-bubble.received { background-color:var(--msg-received); border-start-end-radius:15px; border-end-end-radius:6px; border-end-start-radius:15px; }
 .message-bubble.received:not(.group-first) { border-start-end-radius:6px; }
-/* The tail marks the last message of a group; the document is always RTL, so sent bubbles sit on the right. */
+/* The tail marks the last message of a group. */
 .message-bubble.group-last:not(.media-video)::after { content:''; position:absolute; bottom:0; width:9px; height:14px; background:inherit; }
 .message-bubble.sent.group-last { border-end-start-radius:0; }
 .message-bubble.received.group-last { border-end-end-radius:0; }
@@ -1476,3 +1476,44 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .sidebar:not(.collapsed) .compose-button { --compose-plus:var(--tg-blue); color:#fff; }
 .sidebar:not(.collapsed) .compose-button .ui-icon { width:30px; height:30px; }
 .archive-button[aria-pressed="true"],.archive-button:hover { color:var(--accent-text); }
+
+/* As in Telegram, your own messages sit on the right in every language, so these rules are physical. */
+:root[dir="ltr"] .message-bubble.sent { align-self:flex-end; }
+:root[dir="ltr"] .message-bubble.received { align-self:flex-start; }
+.message-bubble.sent { border-radius:15px 6px 15px 15px; }
+.message-bubble.sent:not(.group-first) { border-top-right-radius:6px; }
+.message-bubble.received { border-radius:6px 15px 15px 6px; border-top-left-radius:15px; }
+.message-bubble.received:not(.group-first) { border-top-left-radius:6px; }
+.message-bubble.sent.group-first { border-top-right-radius:15px; }
+.message-bubble.sent.group-last { border-bottom-right-radius:0; border-bottom-left-radius:15px; }
+.message-bubble.received.group-last { border-bottom-left-radius:0; border-bottom-right-radius:15px; }
+.message-bubble.sent.group-last::after { inset-inline:auto; right:-8px; left:auto; }
+.message-bubble.received.group-last::after { inset-inline:auto; left:-8px; right:auto; }
+.message-bubble.sent .message-more { inset-inline:auto; left:-42px; right:auto; }
+.message-bubble.received .message-more { inset-inline:auto; right:-42px; left:auto; }
+@media (hover:none) { .message-bubble.sent .message-more { left:-48px; } .message-bubble.received .message-more { right:-48px; } }
+
+/* A chevron points the way the row goes, which follows the reading direction. */
+:root[dir="rtl"] .row-chevron { transform:scaleX(-1); }
+
+/* A player reads left to right in every language. The triangle is drawn, so its corners can be round. */
+.voice-note { direction:ltr; gap:12px; }
+.voice-note .media-play { width:44px; height:44px; min-height:44px; }
+.media-play::before { width:18px; height:20px; margin:0 0 0 3px; border:0; background:currentColor; clip-path:path('M1 2.200C1 .600 2.800-.400 4.200 .500l12.700 8c1.300.800 1.300 2.200 0 3l-12.700 8C2.800 20.400 1 19.400 1 17.800Z'); }
+[data-state="playing"] > .media-play::before { width:14px; height:16px; margin:0; background:linear-gradient(90deg,currentColor 0 5px,transparent 5px 9px,currentColor 9px); border:0; border-radius:2px; clip-path:none; }
+[data-state="loading"] > .media-play::before { width:20px; height:20px; margin:0; background:none; border:2px solid currentColor; border-inline-end-color:transparent; border-radius:50%; clip-path:none; }
+.voice-bars { gap:2px; }
+.voice-bars span { min-height:3px; border-radius:2px; opacity:.6; }
+.video-note .media-play::before { margin-left:3px; }
+
+/* Native controls and scrollbars follow the theme. */
+:root { color-scheme:dark; }
+[data-theme="light"] { color-scheme:light; }
+* { scrollbar-width:thin; scrollbar-color:var(--bg-input) transparent; }
+
+/* The swipe icon is a separate thing from the tail it replaces. */
+.message-bubble.group-last[data-swiping]::after { left:auto; right:auto; inset-inline-end:-38px; }
+/* A name or preview in the other language keeps its own punctuation, and stays on the row's side. */
+.chat-preview,.chat-title-text,.message-sender,#composer-label small,#composer-label strong,.reply-quote span,.reply-quote strong { unicode-bidi:plaintext; }
+:root[dir="ltr"] .chat-preview,:root[dir="ltr"] .chat-title-text,:root[dir="ltr"] .message-sender,:root[dir="ltr"] #composer-label small,:root[dir="ltr"] #composer-label strong,:root[dir="ltr"] .reply-quote span,:root[dir="ltr"] .reply-quote strong { text-align:left; }
+:root[dir="rtl"] .chat-preview,:root[dir="rtl"] .chat-title-text,:root[dir="rtl"] .message-sender,:root[dir="rtl"] #composer-label small,:root[dir="rtl"] #composer-label strong,:root[dir="rtl"] .reply-quote span,:root[dir="rtl"] .reply-quote strong { text-align:right; }

@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-messenger",
-  "version": "1.7.12",
+  "version": "1.7.13",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
