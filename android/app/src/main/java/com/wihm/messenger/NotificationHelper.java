@@ -40,7 +40,7 @@ public class NotificationHelper {
                     .build();
             channel.setSound(defaultSoundUri, audioAttributes);
 
-            NotificationManager notificationManager = context.getSystemService(NotificationManager.class);
+            NotificationManager notificationManager = ContextCompat.getSystemService(context, NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
             }

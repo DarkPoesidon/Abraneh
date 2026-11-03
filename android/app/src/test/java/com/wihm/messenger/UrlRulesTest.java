@@ -11,6 +11,16 @@ public class UrlRulesTest {
     private static final String SERVER = "https://chat.workers.dev";
 
     @Test
+    public void webViewVersionRule() {
+        assertTrue(UrlRules.webViewTooOld("Mozilla/5.0 (Linux; Android 5.0) Version/4.0 Chrome/37.0.0.0 Mobile Safari/537.36"));
+        assertTrue(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/93.0.4577.82 Mobile"));
+        assertFalse(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/94.0.4606.61 Mobile"));
+        assertFalse(UrlRules.webViewTooOld("Mozilla/5.0 Chrome/138.0.0.0 Mobile"));
+        assertFalse(UrlRules.webViewTooOld("unknown"));
+        assertFalse(UrlRules.webViewTooOld(null));
+    }
+
+    @Test
     public void sameOriginAcceptsPagesOnTheServer() {
         assertTrue(UrlRules.sameOrigin("https://chat.workers.dev/?chat=1", SERVER));
         assertTrue(UrlRules.sameOrigin("https://CHAT.workers.dev:443/a", SERVER));

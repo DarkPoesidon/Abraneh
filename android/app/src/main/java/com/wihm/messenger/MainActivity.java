@@ -160,6 +160,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (WebViewCheck.stopIfMissing(this)) return;
         setContentView(R.layout.activity_main);
 
         NotificationHelper.createNotificationChannel(this);
@@ -182,6 +183,7 @@ public class MainActivity extends AppCompatActivity {
         if (currentServerUrl == null || currentServerUrl.trim().isEmpty()) {
             openServerConfig();
         } else {
+            WebViewCheck.warnIfOld(this);
             loadServer(currentServerUrl);
         }
 

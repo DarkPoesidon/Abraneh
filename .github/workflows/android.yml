@@ -9,7 +9,6 @@ permissions:
   contents: read
 jobs:
   check:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,9 +21,62 @@ jobs:
           java-version: '17'
           cache: gradle
       - run: chmod +x gradlew
-      # Pull requests get no secrets, so this build signs with the debug key.
-      - run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+      # This build signs with the debug key, so it needs no secrets. lintDebug fails on a call
+      # that older Android versions don't have.
+      - run: ./gradlew lintDebug testDebugUnitTest assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: android/app/build/outputs/apk/release/app-universal-release.apk
+  emulator:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { android: '5', api: 21, target: default }
+          - { android: '6', api: 23, target: default }
+          - { android: '7', api: 24, target: default }
+          - { android: '8', api: 26, target: google_apis }
+          # This image has no WebView, which is how the app's own handling of that gets tested.
+          - { android: '8-no-webview', api: 26, target: default, check: no-webview }
+          - { android: '9', api: 28, target: default }
+          - { android: '11', api: 30, target: default }
+          - { android: '13', api: 33, target: google_apis }
+          - { android: '14', api: 34, target: google_apis }
+          - { android: '15', api: 35, target: google_apis }
+          - { android: '16', api: 36, target: google_apis }
+    name: Android ${{ matrix.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png ${{ matrix.check }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-${{ matrix.android }}
+          path: |
+            android-${{ matrix.android }}.png
+            smoke-logcat.txt
+          if-no-files-found: ignore
   release:
+    # Publishing waits for every Android version above.
+    needs: emulator
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -58,7 +110,9 @@ jobs:
           fi
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
           # Another key would stop every installed app from updating.
-          "$apksigner" verify --print-certs app/build/outputs/apk/release/app-universal-release.apk | grep -q 'SHA-256 digest: 04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99'
+          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
+            "$apksigner" verify --print-certs "app/build/outputs/apk/release/app-$abi-release.apk" | grep -q 'SHA-256 digest: 04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99'
+          done
       - name: Publish for the in-app updater
         if: startsWith(github.ref, 'refs/tags/android-v')
         env:

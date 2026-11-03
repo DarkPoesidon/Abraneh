@@ -1,12 +1,22 @@
 package com.wihm.messenger;
 
 import java.net.URI;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Pure URL and version rules, kept free of Android types so they can be unit tested. */
 final class UrlRules {
     private static final String ANDROID_TAG_PREFIX = "android-v";
+    // The web client's secure bundle is built for es2022, which needs Chrome 94.
+    private static final int MIN_WEBVIEW = 94;
 
     private UrlRules() {
+    }
+
+    /** userAgent is WebView's own, which names its Chrome version. An unreadable one is not treated as old. */
+    static boolean webViewTooOld(String userAgent) {
+        Matcher chrome = Pattern.compile("Chrome/(\\d+)").matcher(userAgent == null ? "" : userAgent);
+        return chrome.find() && Integer.parseInt(chrome.group(1)) < MIN_WEBVIEW;
     }
 
     /** A plain string prefix would accept https://server.example.evil.com for https://server.example. */
