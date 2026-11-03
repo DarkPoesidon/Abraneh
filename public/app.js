@@ -1274,7 +1274,8 @@
     const card=featureModal.querySelector?.('.feature-card');if(!card||!rect)return;
     const box=card.getBoundingClientRect(),gap=8,edge=10;
     const top=rect.bottom+gap+box.height<=innerHeight-edge?rect.bottom+gap:Math.max(edge,rect.top-gap-box.height);
-    const left=Math.min(Math.max(edge,document.documentElement.dir==='rtl'?rect.right-box.width:rect.left),innerWidth-box.width-edge);
+    // The menu opens from whichever side the message sits on, in any language.
+    const left=Math.min(Math.max(edge,rect.left+rect.width/2>innerWidth/2?rect.right-box.width:rect.left),innerWidth-box.width-edge);
     card.style.top=top+'px';card.style.left=left+'px';
   }
   featureModal.addEventListener?.('click',event=>{if(event.target===featureModal&&featureModal.classList?.contains('message-menu'))closeFeature();});
@@ -1434,7 +1435,7 @@
   }
   function channelInfo(chat,details) {
     const chatId=chat.id,manage=isManager(details),owner=details.role==='owner',count=Number(details.memberCount||0).toLocaleString('fa-IR')+' مشترک',link=details.handle?location.origin+'/#channel='+details.handle:'';
-    const row=(id,title,value='')=>`<button id="${id}" class="settings-row" type="button"><span><strong>${title}</strong>${value?`<small>${value}</small>`:''}</span></button>`;
+    const row=(id,title,value='')=>`<button id="${id}" class="settings-row" type="button"><span><strong>${title}</strong>${value?`<small>${value}</small>`:''}</span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>`;
     showFeature('اطلاعات کانال',`<div class="channel-profile"><div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chatId)}">${avatarHtml(details.avatar,chat.title)}</div><h4>${escapeHtml(chat.title)}</h4><p class="session-help">${count}</p></div>
       ${details.description?`<section class="channel-about"><p>${escapeHtml(details.description)}</p><small>توضیح</small></section>`:''}
       ${link?`<section class="channel-about"><p dir="ltr">${escapeHtml(link)}</p><small>لینک</small><button id="channel-copy-link" class="quiet-button" type="button">کپی لینک</button></section>`:''}
@@ -1683,7 +1684,7 @@
   }
   function addMessageControls(bubble,msg) {
     const button=document.createElement('button');button.type='button';button.className='message-more';button.innerHTML=uiIcon('more');button.title='گزینه‌های پیام';button.setAttribute?.('aria-label','گزینه‌های پیام');button.addEventListener('click',()=>messageActions(msg));bubble.appendChild(button);
-    bubble.addEventListener?.('contextmenu',event=>{if(window.getSelection?.()?.toString()||event.target.closest?.('a,input,audio,video'))return;event.preventDefault();messageActions(msg);});
+    bubble.addEventListener?.('contextmenu',event=>{if(window.getSelection?.()?.toString()||event.target.closest?.('a,input:not(.voice-seek),audio,video'))return;event.preventDefault();messageActions(msg);});
     addMessageGestures(bubble,msg);
     bubble.querySelector?.('.reply-quote')?.addEventListener('click',()=>jumpToMessage(msg.chatId,msg.replyTo.id).catch(error=>{chatError.textContent=error.message;}));
     bubble.querySelectorAll?.('[data-emoji]').forEach(button=>button.addEventListener('click',()=>react(msg,button.dataset.emoji).catch(error=>{chatError.textContent=error.message;})));
@@ -1695,7 +1696,7 @@
     const chat=()=>chats.find(row=>row.id===msg.chatId)||activeChat;
     const settle=()=>{clearTimeout(timer);if(offset){bubble.style.transition='transform .18s ease-out';bubble.style.transform='';delete bubble.dataset.swiping;offset=0;}start=null;};
     bubble.addEventListener('touchstart',event=>{
-      if(event.touches.length!==1||event.target.closest?.('button,a,input,audio,video'))return;
+      if(event.touches.length!==1||event.target.closest?.('button,a,input:not(.voice-seek),audio,video'))return;
       const touch=event.touches[0];start={x:touch.clientX,y:touch.clientY,sideways:null};pressed=false;bubble.style.transition='';
       timer=setTimeout(()=>{start=null;pressed=true;navigator.vibrate?.(10);messageActions(msg);},450);
     },{passive:true});
