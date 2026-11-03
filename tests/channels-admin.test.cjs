@@ -217,3 +217,30 @@ test('another server can read public channels, and only public ones', async () =
   assert.deepEqual(await ok(fixture.owner, '/api/network/channels/follows'), []);
   assert.equal((await call(fixture.owner, '/api/network/channels/search', 'POST', { server: 'localhost', q: '' })).status, 400, 'local addresses are refused');
 });
+
+test('forwarding copies a message or file, names its first source, and honours permissions', async () => {
+  const from = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'group', title: 'مبدأ', memberIds: [fixture.peer.user.id] })).id;
+  const to = (await ok(fixture.peer, '/api/chats', 'POST', { type: 'group', title: 'مقصد', memberIds: [fixture.owner.user.id] })).id;
+  const onlyPeer = (await ok(fixture.peer, '/api/chats', 'POST', { type: 'channel', title: 'بسته', visibility: 'private' })).id;
+  const owner = await socket(fixture.owner, from);
+  owner.ws.send(JSON.stringify({ action: 'send_message', chatId: from, text: 'متن اصلی', clientMsgId: 'fw-1' }));
+  const sent = await until(() => owner.events.find(event => event.event === 'new_message' && event.message.clientMsgId === 'fw-1'), 'the original');
+  assert.equal((await call(fixture.owner, `/api/chats/${from}/messages/${sent.message.id}/forward`, 'POST', { targetChatId: onlyPeer })).status, 403, 'a chat you are not in');
+  const copy = (await ok(fixture.peer, `/api/chats/${from}/messages/${sent.message.id}/forward`, 'POST', { targetChatId: to })).message;
+  assert.equal(copy.text, 'متن اصلی'); assert.equal(copy.forwardedFrom, 'نیلوفر'); assert.equal(copy.senderId, fixture.peer.user.id);
+  const again = (await ok(fixture.owner, `/api/chats/${to}/messages/${copy.id}/forward`, 'POST', { targetChatId: from })).message;
+  assert.equal(again.forwardedFrom, 'نیلوفر', 'a chain keeps the first source');
+  const file = await (await upload(fixture.owner, from, { kind: 'file', mime: 'text/plain', durationMs: '0', name: 'a.txt' }, new Uint8Array([7, 8, 9]), 'text/plain')).json();
+  const moved = (await ok(fixture.peer, `/api/chats/${from}/messages/${file.message.id}/forward`, 'POST', { targetChatId: to })).message;
+  assert.equal(moved.media.kind, 'file'); assert.equal(moved.text, '📎 a.txt');
+  const bytes = await fixture.mf.dispatchFetch(`${fixture.origin}/api/chats/${to}/media/${moved.id}`, { headers: { Authorization: 'Bearer ' + fixture.owner.token } });
+  assert.deepEqual([...new Uint8Array(await bytes.arrayBuffer())], [7, 8, 9]);
+  const channel = (await ok(fixture.owner, '/api/chats', 'POST', { type: 'channel', title: 'خبرگزاری', visibility: 'public', handle: 'forward_src' })).id;
+  await ok(fixture.peer, `/api/public-channels/${channel}/join`, 'POST');
+  assert.equal((await call(fixture.owner, `/api/chats/${channel}/messages/${sent.message.id}/forward`, 'POST', { targetChatId: to })).status, 404, 'a message from another chat');
+  const post = await socket(fixture.owner, channel);
+  post.ws.send(JSON.stringify({ action: 'send_message', chatId: channel, text: 'خبر', clientMsgId: 'fw-2' }));
+  const posted = await until(() => post.events.find(event => event.event === 'new_message' && event.message.clientMsgId === 'fw-2'), 'the post');
+  assert.equal((await ok(fixture.peer, `/api/chats/${channel}/messages/${posted.message.id}/forward`, 'POST', { targetChatId: to })).message.forwardedFrom, 'خبرگزاری', 'a channel is named, not its admin');
+  assert.equal((await call(fixture.peer, `/api/chats/${to}/messages/${copy.id}/forward`, 'POST', { targetChatId: channel })).status, 403, 'only managers post in a channel');
+});

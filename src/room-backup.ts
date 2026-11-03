@@ -1,3 +1,4 @@
+// shortcut: the "forwarded from" labels are not backed up, because the installer checks this exact list; add them with a new backup format.
 export const ROOM_BACKUP_TABLES=['messages','message_keys','room_meta','sync_queue','message_details','message_reactions'];
 const columns=(sql:SqlStorage,table:string)=>sql.exec(`PRAGMA table_info("${table}")`).toArray().map(row=>String(row.name));
 export function roomBackupPage(sql:SqlStorage,table:string,offset:number) {

@@ -52,7 +52,7 @@ try {
   await other.locator('.message-text').filter({hasText:'کیک تازه'}).waitFor();assert.ok((await other.locator('.reply-quote').textContent()).includes('کیک تازه'));
   await actions(other,'کیک تازه');await other.locator('#react-1').click();await page.locator('.reaction-chip').filter({hasText:'❤️'}).waitFor();
   await actions(page,'کیک تازه');await page.locator('#action-save').click();await page.waitForFunction(()=>document.getElementById('feature-status').textContent.includes('ذخیره'));
-  await page.locator('#btn-close-feature').click();await page.locator('#btn-main-menu').click();await page.locator('#btn-saved').click();await page.locator('.result-card').filter({hasText:'کیک تازه'}).waitFor();await page.locator('#btn-close-feature').click();
+  await page.keyboard.press('Escape');await page.locator('#btn-main-menu').click();await page.locator('#btn-saved').click();await page.locator('.result-card').filter({hasText:'کیک تازه'}).waitFor();await page.locator('#btn-close-feature').click();
   await actions(page,'کیک تازه');await page.locator('#action-pin').click();await page.locator('#btn-pinned-message').waitFor({state:'visible'});
   await page.locator('#btn-message-search').click();await page.locator('#message-search-query').fill('كيك');await page.locator('#message-search-form button[type=submit]').click();await page.locator('#search-hit-0').filter({hasText:'کیک تازه'}).waitFor();await page.locator('#search-hit-0').click();
   await actions(page,'کیک تازه');await page.locator('#action-delete').click();await other.locator('.deleted-message').waitFor();await other.waitForFunction(()=>document.querySelector('.reply-quote').textContent.includes('حذف شده'));
@@ -69,7 +69,7 @@ try {
   for(const width of [320,375,414,768,1280]) {
     await page.setViewportSize({width,height:860});if(width<=768&&!await page.locator('#sidebar').evaluate(el=>el.classList.contains('hidden')))await page.locator('.chat-item').filter({hasText:'گروه روزمره'}).click();await page.locator('#btn-chat-details').click();await page.locator('#rename-title').waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow '+width);
-    const box=await page.locator('.feature-card').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1,'modal width '+width);
+    await page.waitForTimeout(260);const box=await page.locator('.feature-card').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1,'modal width '+width);
     await page.screenshot({path:`.wrangler/phase2-qa/group-${width}.png`,animations:'disabled'});await page.locator('#btn-close-feature').click();
   }
   await page.setViewportSize({width:375,height:820});await page.locator('#btn-back-to-chats').click();await page.locator('#btn-open-search').click();

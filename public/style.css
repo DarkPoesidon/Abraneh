@@ -1323,3 +1323,67 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .language-switch { display:flex; align-items:center; justify-content:center; gap:6px; margin-block-end:14px; color:var(--text-secondary); }
 .language-switch button { min-width:76px; min-height:36px; padding:0 12px; border:1px solid var(--border-color); border-radius:18px; background:transparent; color:var(--text-primary); font:inherit; font-size:.88rem; cursor:pointer; }
 .language-switch button[aria-pressed="true"] { background:var(--accent-color); border-color:var(--accent-color); color:#fff; }
+
+/* Telegram-style message interaction */
+.message-more { width:28px; height:28px; min-width:28px; min-height:28px; }
+@media (pointer:coarse) {
+  .message-more { display:none !important; }
+  .message-bubble { padding-inline-end:14px; touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+}
+.message-bubble { will-change:auto; }
+.message-bubble[data-swiping]::after { content:''; position:absolute; inset-block-start:50%; inset-inline-end:-38px; width:28px; height:28px; margin-block-start:-14px; border-radius:50%; background:var(--pill-bg,#0006) center / 18px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 8 5 12.500l5 4.500M5 12.500h9a5 5 0 0 1 5 5V19'/%3E%3C/svg%3E"); opacity:.55; transition:opacity .12s, transform .12s; }
+.message-bubble[data-swiping="ready"]::after { opacity:1; transform:scale(1.15); }
+#feature-modal.message-menu { align-items:flex-start; justify-content:flex-start; padding:0; background:rgb(0 0 0 / .32); }
+#feature-modal.message-menu .feature-card { position:fixed; width:min(250px,calc(100vw - 20px)); max-width:none; height:auto; max-height:calc(100dvh - 20px); border-radius:14px; overflow:auto; animation:menuIn .14s cubic-bezier(.2,.8,.2,1); box-shadow:0 8px 28px rgb(0 0 0 / .35); }
+#feature-modal.message-menu .modal-header { display:none; }
+#feature-modal.message-menu .modal-body { padding:6px; }
+#feature-modal.message-menu #feature-status:empty { display:none; }
+#feature-modal.message-menu #feature-status { padding:4px 10px 8px; font-size:.8rem; }
+@keyframes menuIn { from { opacity:0; transform:scale(.92); } to { opacity:1; transform:none; } }
+#feature-modal.message-menu .emoji-picker { display:flex; flex-wrap:nowrap; justify-content:space-between; gap:0; padding:2px; margin-block-end:4px; border-bottom:1px solid var(--border-color); }
+#feature-modal.message-menu .emoji-picker button { flex:1 1 0; min-width:0; width:auto; height:40px; padding:0; border:0; border-radius:50%; background:none; font-size:1.25rem; cursor:pointer; transition:transform .1s; }
+#feature-modal.message-menu .emoji-picker button:active { transform:scale(1.25); }
+#feature-modal.message-menu .action-grid { display:flex; flex-direction:column; gap:0; }
+.menu-row { display:flex; align-items:center; gap:14px; width:100%; min-height:44px; padding:0 12px; border:0; border-radius:8px; background:none; color:var(--text-primary); font:inherit; font-size:.92rem; text-align:start; cursor:pointer; }
+.menu-row:hover, .menu-row:focus-visible { background:var(--bg-card,#ffffff12); }
+.menu-row .ui-icon { width:20px; height:20px; flex-shrink:0; opacity:.8; }
+.menu-row.danger-text { color:#ef5350; }
+/* Screens slide in on phones, as Telegram's pages do. */
+@media (max-width:768px) {
+  #feature-modal:not(.message-menu) { padding:0; align-items:stretch; justify-content:stretch; }
+  #feature-modal:not(.message-menu) .feature-card { width:100%; max-width:none; height:100%; max-height:none; border-radius:0; animation:pageIn .2s cubic-bezier(.2,.8,.2,1); }
+  :root[dir="rtl"] #feature-modal:not(.message-menu) .feature-card { animation-name:pageInRtl; }
+  #active-chat-wrapper[style*="flex"] { animation:pageIn .2s cubic-bezier(.2,.8,.2,1); }
+  :root[dir="rtl"] #active-chat-wrapper[style*="flex"] { animation-name:pageInRtl; }
+}
+@keyframes pageIn { from { transform:translateX(28%); opacity:.4; } to { transform:none; opacity:1; } }
+@keyframes pageInRtl { from { transform:translateX(-28%); opacity:.4; } to { transform:none; opacity:1; } }
+/* Loading */
+.skeleton-messages { display:flex; flex-direction:column; gap:10px; margin-top:auto; padding:12px 0; }
+.skeleton-bubble { display:block; height:54px; width:58%; border-radius:17px; background:linear-gradient(100deg,var(--bg-secondary) 40%,var(--bg-card,#ffffff14) 50%,var(--bg-secondary) 60%); background-size:220% 100%; animation:shimmer 1.3s linear infinite; }
+.skeleton-bubble.start { align-self:flex-start; }
+.skeleton-bubble.end { align-self:flex-end; width:44%; }
+@keyframes shimmer { to { background-position:-120% 0; } }
+/* Long lists stay smooth: rows off screen skip layout and paint. */
+.chat-item { content-visibility:auto; contain-intrinsic-size:auto 72px; }
+.archive-button { min-height:44px; }
+.channel-photo + button, .channel-profile #group-photo-remove { align-self:center; }
+
+/* Forward, mentions and links */
+.forward-label { margin-block-end:3px; color:var(--accent-color); font-size:.8rem; }
+.message-bubble.sent .forward-label { color:inherit; opacity:.85; }
+.forward-list { display:flex; flex-direction:column; margin-block-start:10px; }
+.forward-row { display:flex; align-items:center; gap:12px; min-height:56px; padding:6px; border:0; border-radius:10px; background:none; color:var(--text-primary); font:inherit; text-align:start; cursor:pointer; }
+.forward-row:hover, .forward-row:focus-visible { background:var(--bg-card,#ffffff12); }
+.forward-row .avatar { width:42px; height:42px; flex-shrink:0; }
+.forward-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.message-text a { color:inherit; text-decoration:underline; overflow-wrap:anywhere; }
+.message-bubble.received .message-text a { color:var(--accent-color); }
+.mention { color:var(--accent-color); font-weight:500; }
+.message-bubble.sent .mention { color:inherit; text-decoration:underline; }
+.mention-box { width:min(100%,760px); align-self:center; padding-inline:16px; }
+.mention-box[hidden] { display:none; }
+.mention-row { display:flex; align-items:baseline; gap:8px; width:100%; min-height:44px; padding:6px 12px; border:0; background:var(--bg-secondary); color:var(--text-primary); font:inherit; text-align:start; cursor:pointer; }
+.mention-row:first-child { border-start-start-radius:12px; border-start-end-radius:12px; }
+.mention-row:last-child { border-end-start-radius:12px; border-end-end-radius:12px; }
+.mention-row small { color:var(--text-secondary); }

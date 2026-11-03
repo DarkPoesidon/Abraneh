@@ -43,6 +43,7 @@ export interface Chat {
 }
 
 export interface Message {
+  forwardedFrom?: string;
   id: string;
   chatId: string;
   senderId: string;

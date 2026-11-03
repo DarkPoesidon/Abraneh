@@ -62,6 +62,7 @@ export class ChatRoom extends DurableObject<Env> {
         CREATE TABLE IF NOT EXISTS message_details (message_id TEXT PRIMARY KEY,reply_to TEXT,edited_at INTEGER NOT NULL DEFAULT 0,deleted_at INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS message_reactions (message_id TEXT NOT NULL,user_id TEXT NOT NULL,emoji TEXT NOT NULL,PRIMARY KEY(message_id,user_id));
         CREATE TABLE IF NOT EXISTS push_queue (message_id TEXT PRIMARY KEY,chat_id TEXT NOT NULL,after_id TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS message_forwards (message_id TEXT PRIMARY KEY,from_name TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS message_media (message_id TEXT PRIMARY KEY,kind TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,duration_ms INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS media_chunks (message_id TEXT NOT NULL,seq INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(message_id,seq));
       `);
@@ -212,6 +213,14 @@ export class ChatRoom extends DurableObject<Env> {
       });
       await this.ctx.storage.setAlarm(Date.now() + 1000);
       return new Response(null, { status: 204 });
+    }
+    if (url.pathname === '/forward-text' && request.method === 'POST') {
+      const { chatId, userId, displayName, text, from } = await request.json<{ chatId: string; userId: string; displayName: string; text: string; from: string }>();
+      if (!this.withinSendLimit(userId)) return Response.json({ error: 'تعداد پیام‌ها زیاد است؛ یک دقیقه صبر کنید و دوباره تلاش کنید.' }, { status: 429 });
+      const messageId = this.storeMessage({ chatId, userId, displayName }, text, '', null);
+      this.ctx.storage.sql.exec('INSERT INTO message_forwards VALUES (?,?)', messageId, from);
+      await this.ctx.storage.setAlarm(Date.now() + 5000);
+      return Response.json({ message: await this.announceMessage(messageId, chatId) }, { status: 201 });
     }
     if (url.pathname === '/wipe-room' && request.method === 'POST') {
       for (const socket of this.ctx.getWebSockets()) try { socket.close(4003, 'Chat deleted'); } catch {}
@@ -442,6 +451,7 @@ export class ChatRoom extends DurableObject<Env> {
     const replyToId = query.get('replyToId') || null;
     if (replyToId && !await this.materialize(replyToId, chatId)) return refuse('پیام مورد پاسخ پیدا نشد.', 400);
     const messageId = this.storeMessage({ chatId, userId, displayName: query.get('displayName') || 'کاربر' }, query.get('text') || '', clientMsgId, replyToId, { kind: query.get('kind')!, mime: query.get('mime')!, durationMs: Number(query.get('durationMs')), bytes });
+    if (query.get('forwardedFrom')) this.ctx.storage.sql.exec('INSERT INTO message_forwards VALUES (?,?)', messageId, query.get('forwardedFrom'));
     await this.ctx.storage.setAlarm(Date.now() + 5000);
     return Response.json({ message: await this.announceMessage(messageId, chatId) }, { status: 201 });
   }
@@ -472,10 +482,12 @@ export class ChatRoom extends DurableObject<Env> {
     const reactions=this.ctx.storage.sql.exec('SELECT user_id,emoji FROM message_reactions WHERE message_id=?',row.id).toArray();
     const grouped=new Map<string,string[]>(); for(const reaction of reactions) grouped.set(String(reaction.emoji),[...(grouped.get(String(reaction.emoji))||[]),String(reaction.user_id)]);
     const media=this.ctx.storage.sql.exec('SELECT kind,mime,size,duration_ms FROM message_media WHERE message_id=?',row.id).toArray()[0];
+    const forward=this.ctx.storage.sql.exec('SELECT from_name FROM message_forwards WHERE message_id=?',row.id).toArray()[0];
     const parent=details?.reply_to ? this.ctx.storage.sql.exec('SELECT m.*,d.deleted_at FROM messages m LEFT JOIN message_details d ON d.message_id=m.id WHERE m.id=?',details.reply_to).toArray()[0] : null;
     return { id: row.id, chatId, senderId: row.sender_id, senderName: row.sender_name, text: details?.deleted_at ? '' : row.text, createdAt: row.created_at, clientMsgId: row.client_msg_id || '',
       replyToId: details?.reply_to ? String(details.reply_to) : null, replyTo: parent ? {id:String(parent.id),text:parent.deleted_at?'':String(parent.text),senderName:String(parent.sender_name),deleted:!!parent.deleted_at}:null,
       editedAt:Number(details?.edited_at||0),deletedAt:Number(details?.deleted_at||0),revision:Number(details?.revision||0),reactions:details?.deleted_at?[]:[...grouped].map(([emoji,users])=>({emoji,users})),
+      ...(forward&&!details?.deleted_at?{forwardedFrom:String(forward.from_name)}:{}),
       ...(media?{media:{kind:String(media.kind),mime:String(media.mime),size:Number(media.size),durationMs:Number(media.duration_ms)}}:{}) };
   }
 
