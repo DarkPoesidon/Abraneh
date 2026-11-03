@@ -1,0 +1,76 @@
+name: Android app
+on:
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  push:
+    tags: ['android-v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - run: chmod +x gradlew
+      # Pull requests get no secrets, so this build signs with the debug key.
+      - run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+  release:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android
+    env:
+      WIHM_KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
+      WIHM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      WIHM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      WIHM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Restore the signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: printf '%s' "$KEYSTORE" | base64 -d > "$WIHM_KEYSTORE_FILE"
+      - run: chmod +x gradlew
+      - run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+      - name: Check the version and signing key
+        run: |
+          version=$(grep -o 'versionName "[^"]*"' app/build.gradle | cut -d'"' -f2)
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "android-v$version" ]]; then
+            echo "::error::The tag does not match versionName $version"; exit 1
+          fi
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          # Another key would stop every installed app from updating.
+          "$apksigner" verify --print-certs app/build/outputs/apk/release/app-universal-release.apk | grep -q 'SHA-256 digest: 04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99'
+      - name: Publish for the in-app updater
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release-apks
+          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
+            cp "app/build/outputs/apk/release/app-$abi-release.apk" "release-apks/wihm-messenger-$GITHUB_REF_NAME-$abi.apk"
+          done
+          (cd release-apks && sha256sum *.apk > SHA256SUMS.txt)
+          # Never "latest": the server installer downloads the latest release of this repository.
+          gh release create "$GITHUB_REF_NAME" release-apks/* --title "WIHM Android ${GITHUB_REF_NAME#android-v}" --notes "نسخهٔ اندروید پیام‌رسان ابرانه" --latest=false
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$WIHM_KEYSTORE_FILE"

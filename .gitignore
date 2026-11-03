@@ -9,3 +9,7 @@ dist/
 !.env.example
 
 public/secure.bundle.js
+android/keystore.properties
+android/local.properties
+android/app/*.keystore
+*.jks
