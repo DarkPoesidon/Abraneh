@@ -1526,8 +1526,8 @@
     showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>'); const generation=featureGeneration;
     await loadProfile(); if(generation!==featureGeneration) return;
     avatarDraft=profile.avatar||'';
-    const isAndroid = !!window.Android;
-    const notificationSectionHtml = isAndroid ? `
+    const isAndroid = !!window.Android && !window.Android.isDesktop;
+    const notificationSectionHtml = window.Android?.isDesktop ? `<section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">برنامهٔ ویندوز تا وقتی در نوار وظیفه باز است اعلان می‌دهد.</p></section>` : isAndroid ? `
       <section class="feature-section notification-controls">
         <h4>تنظیمات اعلان و فعالیت در پس‌زمینه</h4>
         <p class="session-help">برای دریافت آنی پیام‌ها حتی زمانی که اپلیکیشن کاملاً بسته است یا گوشی به خواب می‌رود (Doze Mode)، موارد زیر را فعال کنید.</p>
@@ -1917,6 +1917,8 @@
   }
   window.addEventListener('hashchange',()=>{invitation=new URLSearchParams(location.hash.slice(1));redeemInvitation().catch(error=>{chatError.textContent=error.message;});});
   api('/api/bootstrap').then(data=>{if(!data)return;byId('registration-help').textContent=data.registration==='invite'?'ثبت‌نام در این سرویس فقط با لینک دعوت مدیر ممکن است.':data.registration==='closed'?'ثبت‌نام فعلاً بسته است؛ با حساب موجود وارد شوید.':'';if(invitation.get('register')){byId('registration-help').textContent='دعوت‌نامهٔ ثبت‌نام دریافت شد. اطلاعات حساب تازه را وارد کنید.';tabRegister.click?.();}}).catch(()=>{});
+  // The Windows app's inbox socket heard a call.
+  window.addEventListener('wihm-check-calls',()=>{if(token)loadChats(true).then(checkIncomingCalls).catch(()=>{});});
   navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='incoming-call'&&token){loadChats(true).then(checkIncomingCalls).catch(()=>{});return;}if(event.data?.type==='open-secure'&&token){openSecure('',event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
 
   // Start app
