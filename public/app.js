@@ -150,8 +150,8 @@
 
   // --- Service Worker Registration ---
   window.WihmUpdates?.init({
-    canReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||document.getElementById('feature-title')?.textContent==='به‌روزرسانی')&&document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
-    prepareReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||document.getElementById('feature-title')?.textContent==='به‌روزرسانی')&&!messageInput.value.trim()&&(!outbox.length||saveOutbox()),
+    canReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||!!document.getElementById('client-update-mode'))&&document.visibilityState==='visible'&&!messageInput.value.trim()&&!outbox.length,
+    prepareReload:()=>!calls?.active()&&(document.getElementById('feature-modal')?.style.display!=='flex'||!!document.getElementById('client-update-mode'))&&composerContext?.mode!=='edit'&&(!outbox.length||saveOutbox()),
   });
 
   // --- PWA Installation Handling ---
