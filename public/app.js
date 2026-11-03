@@ -307,6 +307,7 @@
     userDisplayName.textContent = currentUser.displayName || currentUser.username;
     userUsernameBadge.textContent = `@${currentUser.username}`;
     userAvatar.textContent = (currentUser.displayName || currentUser.username)[0].toUpperCase();
+    byId('nav-avatar').textContent = userAvatar.textContent;
     try { const saved = JSON.parse(localStorage.getItem('cf_msg_drafts_' + currentUser.id) || '[]'); drafts.clear(); for (const row of saved) if (typeof row?.[0] === 'string' && typeof row[1] === 'string') drafts.set(row[0], row[1]); } catch {}
     try {
       const saved = JSON.parse(localStorage.getItem('cf_msg_outbox_' + currentUser.id) || '[]');
@@ -386,21 +387,21 @@
     list.forEach((chat) => {
       const item = document.createElement('button');item.type='button';
       item.dataset.chatId=chat.id;item.title=chat.title||'گفتگو';
-      item.setAttribute('aria-label',(chat.title||'گفتگو')+(chat.unreadCount?'، '+Number(chat.unreadCount).toLocaleString('fa-IR')+' پیام نخوانده':''));
+      item.setAttribute('aria-label',(chat.title||'گفتگو')+(chat.muted?'، '+'بی‌صدا':'')+(chat.unreadCount?'، '+Number(chat.unreadCount).toLocaleString('fa-IR')+' پیام نخوانده':''));
       item.setAttribute('aria-current',activeChat?.id===chat.id?'true':'false');
       item.className = `chat-item ${activeChat?.id === chat.id ? 'active' : ''}`;
 
       const timeStr = chat.lastMessage ? formatTime(chat.lastMessage.createdAt) : '';
-      const lastText = (chat.pinned?'⌖ ':'')+(chat.muted?'بی‌صدا · ':'')+(chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است');
+      const lastText = chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است';
 
       item.innerHTML = `
         <span class="chat-avatar-wrap"><span class="avatar" style="--avatar-hue:${avatarHue(chat.id)}">${avatarHtml(chat.avatar,chat.title)}</span>${chat.unreadCount?`<span class="rail-unread" aria-hidden="true">${Number(chat.unreadCount)>99?'۹۹+':Number(chat.unreadCount).toLocaleString('fa-IR')}</span>`:''}</span>
         <div class="chat-meta">
           <div class="chat-top-row">
-            <span class="chat-title">${chat.isChannel?'<svg class="ui-icon channel-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg>':''}${escapeHtml(chat.title)}</span>
+            <span class="chat-title">${chat.isChannel?'<svg class="ui-icon channel-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg>':''}<span class="chat-title-text">${escapeHtml(chat.title)}</span>${chat.muted?'<svg class="ui-icon chat-state" aria-hidden="true"><use href="#i-mute"/></svg>':''}</span>
             <span class="chat-time">${timeStr}</span>
           </div>
-          <div class="chat-last-msg">${escapeHtml(lastText)}${chat.unreadCount ? `<span class="unread-badge" aria-label="${Number(chat.unreadCount)} پیام نخوانده">${Number(chat.unreadCount).toLocaleString('fa-IR')}</span>` : ''}</div>
+          <div class="chat-last-msg"><span class="chat-preview">${escapeHtml(lastText)}</span>${chat.pinned&&!chat.unreadCount?'<svg class="ui-icon chat-pin" aria-hidden="true"><use href="#i-pin"/></svg>':''}${chat.unreadCount ? `<span class="unread-badge${chat.muted?' muted':''}" aria-label="${Number(chat.unreadCount)} پیام نخوانده">${Number(chat.unreadCount).toLocaleString('fa-IR')}</span>` : ''}</div>
         </div>
       `;
 
@@ -1059,7 +1060,7 @@
     } catch (error) { sessionsError.textContent = error.message; sessionsList.textContent = ''; }
   }
   document.getElementById('btn-sessions').addEventListener('click', () => {closeFeature();sessionsModal.style.display='flex';document.getElementById('btn-close-sessions').focus();loadSessions();});
-  document.getElementById('btn-close-sessions').addEventListener('click',()=>{sessionsModal.style.display='none';document.getElementById('btn-settings').focus();settings().then(()=>document.getElementById('btn-sessions').focus()).catch(featureError);});
+  document.getElementById('btn-close-sessions').addEventListener('click',()=>{sessionsModal.style.display='none';(byId('btn-settings').offsetParent?byId('btn-settings'):byId('nav-settings')).focus();settings().then(()=>document.getElementById('btn-sessions').focus()).catch(featureError);});
   document.getElementById('btn-revoke-others').addEventListener('click', async () => {
     if (!confirm('همهٔ دستگاه‌های دیگر از حساب خارج شوند؟')) return;
     const button = document.getElementById('btn-revoke-others'); button.disabled = true;
@@ -1236,7 +1237,9 @@
   const post = (path,body={}) => api(path,{method:'POST',body:JSON.stringify(body)});
   const patch = (path,body) => api(path,{method:'PATCH',body:JSON.stringify(body)});
   function uiIcon(name) {return `<svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;}
-  function avatarHue(id) {let hash=0;for(const ch of id||'')hash=(hash*31+ch.charCodeAt(0))>>>0;hash^=hash>>>16;hash=Math.imul(hash,0x45d9f3b)>>>0;hash^=hash>>>16;return (hash>>>0)%360;}
+  // Telegram's avatar colors, without its violet.
+  const AVATAR_HUES=[6,24,110,190,207,340];
+  function avatarHue(id) {let hash=0;for(const ch of id||'')hash=(hash*31+ch.charCodeAt(0))>>>0;hash^=hash>>>16;hash=Math.imul(hash,0x45d9f3b)>>>0;hash^=hash>>>16;return AVATAR_HUES[(hash>>>0)%AVATAR_HUES.length];}
   function closeMainMenu(restoreFocus=false) {mainMenu.hidden=true;mainMenuButton.setAttribute('aria-expanded','false');if(restoreFocus)mainMenuButton.focus();}
   function applySidebarLayout() {
     const mobile=window.innerWidth<=768,compact=!mobile&&sidebarCompact;
@@ -1508,7 +1511,7 @@
     if(!channelsMoved){channelsMoved=true;post('/api/channels/migrate').then(result=>{if(result?.migrated)return loadChats(true);}).catch(()=>{channelsMoved=false;});}
     if(byId('btn-menu-admin')){byId('btn-menu-admin').hidden=!row.isServiceAdmin;if(row.isServiceAdmin)refreshAdminBadge();}
     extras?.notice(row).catch(()=>{});
-    userDisplayName.textContent=currentUser.displayName; userAvatar.innerHTML=avatarHtml(row.avatar,currentUser.displayName);
+    userDisplayName.textContent=currentUser.displayName; userAvatar.innerHTML=avatarHtml(row.avatar,currentUser.displayName);byId('nav-avatar').innerHTML=userAvatar.innerHTML;
     localStorage.setItem('cf_msg_user',JSON.stringify(currentUser)); applyAppearance(row.theme||'dark',row.font_size||'normal');
     showNotificationPrompt(); renewPushSubscription();
   }
@@ -1781,6 +1784,7 @@
   async function loadChatDetails(chatId) {
     const sessionToken=token,details=await api(`/api/chats/${chatId}/details`);if(!details?.type||token!==sessionToken)return;
     chatDetails.set(chatId,details);hiddenMessages.set(chatId,new Set(details.hidden||[]));
+    if(activeChat?.id===chatId)suggestMentions();
     if(messagesByChat[chatId]) messagesByChat[chatId]=mergeMessages(messagesByChat[chatId],[]);
     if(details.blocked) deniedChats.add(chatId);else deniedChats.delete(chatId);
     if(activeChat?.id===chatId) {activeChat.role=details.role;activeChat.isChannel=!!details.isChannel;applyChatMode(activeChat);btnAddMembers.style.display=details.type==='group'&&isManager(details)?'inline-flex':'none';renderPin(chatId);renderMessages(messagesByChat[chatId]||[],{keepPosition:true});}
@@ -1801,6 +1805,10 @@
   byId('btn-pinned-message').addEventListener('click',()=>{if(activeChat)jumpToMessage(activeChat.id,chatDetails.get(activeChat.id)?.pinnedMessageId).catch(error=>{chatError.textContent=error.message;});});
   byId('btn-chat-details').addEventListener('click',()=>{if(activeChat)detailsView(activeChat.id).catch(featureError);});
   byId('btn-archive').addEventListener('click',()=>setArchivedView(!archivedView));
+  byId('nav-chats').addEventListener('click',()=>{if(archivedView)setArchivedView(false);chatsList.scrollTop=0;});
+  byId('nav-contacts').addEventListener('click',()=>openSearch('dm'));
+  byId('nav-settings').addEventListener('click',()=>settings().catch(featureError));
+  byId('nav-profile').addEventListener('click',()=>settings().then(()=>editSettings('profile')).catch(featureError));
   byId('btn-saved').addEventListener('click',()=>savedView().catch(featureError));
   async function detailsView(chatId) {
     showFeature('اطلاعات گفتگو','<p>در حال دریافت…</p>');const generation=featureGeneration,details=await loadChatDetails(chatId);if(generation!==featureGeneration)return;

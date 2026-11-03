@@ -22,7 +22,7 @@ try {
   const owner = await open(fixture.owner), peer = await open(fixture.peer, { width: 390, height: 800 });
 
   // Username
-  await peer.locator('#btn-settings').click();
+  await peer.locator('#nav-settings').click();
   await peer.locator('#settings-profile').click();
   await peer.locator('#profile-username').fill('sara_new');
   await peer.locator('#username-form button').click();
@@ -158,7 +158,8 @@ try {
   assert.equal(await owner.locator('.message-text a').last().getAttribute('rel'), 'noopener noreferrer nofollow');
   assert.equal(await owner.locator('.message-text img').count(), 0, 'markup in a message stays text');
   assert.equal(await owner.locator('.message-text .mention').last().innerText(), '@sara');
-  await owner.locator('.message-input').fill('@sa');
+  await owner.locator('.message-input').fill('');
+  await owner.locator('.message-input').pressSequentially('@sa');
   await owner.locator('.mention-row').first().click();
   assert.equal(await owner.locator('.message-input').inputValue(), '@sara_new ');
   await owner.locator('.message-input').fill('');
@@ -177,7 +178,7 @@ try {
   await english.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
   await english.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
   await shot(english, 'english-chat');
-  await english.locator('#btn-settings').click(); await english.locator('#settings-language-row').click(); await english.locator('input[name=app-language][value=en]:checked').waitFor(); await english.waitForTimeout(300); await shot(english, 'english-settings');
+  await english.locator('#btn-settings:visible,#nav-settings:visible').first().click(); await english.locator('#settings-language-row').click(); await english.locator('input[name=app-language][value=en]:checked').waitFor(); await english.waitForTimeout(300); await shot(english, 'english-settings');
   const interfaceText = await english.locator('#feature-modal').innerText();
   const leftover = interfaceText.split('\n').filter(line => /[؀-ۿ]/.test(line) && !/سارا|فارسی|زبان/.test(line));
   assert.deepEqual(leftover, [], 'settings in English');
