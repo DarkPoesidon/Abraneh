@@ -17,11 +17,13 @@ before(async()=>{
  const saved=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Message not acknowledged')),5000);socket.addEventListener('message',e=>{if(JSON.parse(e.data).event==='new_message'){clearTimeout(timer);resolve();}});});socket.send(JSON.stringify({action:'send_message',chatId:room,text:'تاریخچهٔ اصلی برای بازیابی',clientMsgId:'backup-message'}));await saved;
 });
 after(async()=>{socket?.close();await Promise.all([source?.mf.dispose(),target?.mf.dispose()]);});
-test('snapshot requires owner reauthentication, waits for leases and freezes REST/websocket mutations',async()=>{
+test('snapshot requires owner reauthentication, waits for running work and freezes REST/websocket mutations',async()=>{
  assert.equal((await api(source,'/api/service/backup/start',{user:other,body:{password:'backuppass123'}})).status,403);
  assert.equal((await api(source,'/api/service/backup/start',{body:{password:'wrong'}})).status,403);
  const start=await api(source,'/api/service/backup/start',{body:{password:'backuppass123'}});assert.equal(start.status,200);snapshotId=start.data.id;
- let ready=false;for(let i=0;i<50;i++){ready=(await api(source,'/api/service/backup/status?id='+snapshotId)).data.ready;if(ready)break;await wait(20);}assert.ok(ready);
+ assert.equal((await api(source,'/api/service/backup/status?id='+snapshotId)).data.ready,false);assert.equal((await api(source,'/api/service/backup/manifest?id='+snapshotId)).status,409,'running work gets time to finish');
+ await source.db.prepare('UPDATE service_control SET paused_until=paused_until-20000').run();
+ assert.equal((await api(source,'/api/service/backup/status?id='+snapshotId)).data.ready,true);
  assert.equal((await api(source,'/api/chats',{body:{targetUserId:other.user.id}})).status,503);
  const rejected=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Maintenance reply missing')),5000);socket.addEventListener('message',e=>{const event=JSON.parse(e.data);if(event.clientMsgId==='paused-message'){clearTimeout(timer);resolve(event);}});});socket.send(JSON.stringify({action:'send_message',chatId:room,text:'must stay queued',clientMsgId:'paused-message'}));assert.equal((await rejected).retryable,true);
  assert.equal((await source.db.prepare('SELECT count(*) AS n FROM messages').first()).n,1);
@@ -54,4 +56,10 @@ test('actual installer helper restores all D1/DO data into a fresh worker and ne
  assert.equal(await target.db.prepare("SELECT 1 FROM site_settings WHERE key='call_turn'").first(),null,'Restore must not revive paid TURN credentials');
  const login=await api(target,'/api/auth/login',{user:null,body:{username:'backupowner',password:'backuppass123'}});assert.equal(login.status,200,JSON.stringify(login));const history=await api(target,`/api/chats/${room}/messages`,{user:login.data});assert.equal(history.status,200);assert.equal(history.data[0].text,'تاریخچهٔ اصلی برای بازیابی');
  assert.equal((await restoreBackup({api:cloud,accountId:'a'.repeat(32),name:'restored-chat',backup,payloadDir:'dist/WIHM-Installer/payload',fetcher})).restored,true);assert.equal((await api(target,'/api/profile',{user:login.data})).status,200,'Retry after finish must preserve new sessions');
+});
+test('ordinary requests write nothing to track themselves',async()=>{
+ await api(source,'/api/service/backup/cancel?id='+snapshotId,{body:{}});
+ // The tracking table is gone, so a request that still writes to it fails.
+ await source.db.prepare('DROP TABLE service_operations').run();
+ assert.equal((await api(source,'/api/profile')).status,200);
 });

@@ -9,12 +9,15 @@ import { APP_VERSION } from './version.js';
 import { ROOM_BACKUP_TABLES } from './room-backup.js';
 
 const EXCLUDED=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions']);
+const PAUSE=15*60_000,DRAIN=20_000;
+// shortcut: work still running DRAIN after the pause can miss the snapshot; count running work outside D1 if that ever happens.
+const drained=(pausedUntil:number)=>Date.now()>=pausedUntil-PAUSE+DRAIN;
 const valid=(value:unknown):value is string=>typeof value==='string'&&/^[a-z][a-z0-9_]*$/.test(value);
 async function tables(env:Env){const {results}=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND substr(name,1,1)!='_' ORDER BY name").all<{name:string}>();return results.map(row=>row.name).filter(name=>valid(name)&&!EXCLUDED.has(name)&&name!=='wihm_installation');}
 async function snapshot(env:Env,id:string){
-  const state=await env.DB.prepare('SELECT 1 FROM service_control WHERE id=1 AND snapshot_id=? AND paused_until>?').bind(id,Date.now()).first();
+  const state=await env.DB.prepare('SELECT paused_until FROM service_control WHERE id=1 AND snapshot_id=? AND paused_until>?').bind(id,Date.now()).first<any>();
   if(!state)throw new InputError('زمان پشتیبان تمام شده است؛ فایل ناقص را استفاده نکنید و دوباره شروع کنید.',409);
-  if(await env.DB.prepare('SELECT 1 FROM service_operations LIMIT 1').first())throw new InputError('عملیات قبلی هنوز پایان نیافته است؛ کمی صبر کنید.',409);
+  if(!drained(state.paused_until))throw new InputError('عملیات قبلی هنوز پایان نیافته است؛ کمی صبر کنید.',409);
 }
 export async function handleBackup(request:Request,env:Env,auth:JwtPayload) {
   const url=new URL(request.url),path=url.pathname;
@@ -25,7 +28,7 @@ export async function handleBackup(request:Request,env:Env,auth:JwtPayload) {
     const body=await inputJson(request),user=await env.DB.prepare('SELECT salt,password_hash FROM users WHERE id=?').bind(auth.userId).first<any>();
     if(typeof body.password!=='string'||!await verifyPassword(body.password,user.salt,user.password_hash))throw new InputError('رمز فعلی حساب درست نیست.',403);
     await enforceSecondFactor(env,auth.userId,body,403);
-    const id=crypto.randomUUID(),expires=Date.now()+15*60_000;
+    const id=crypto.randomUUID(),expires=Date.now()+PAUSE;
     const changed=await env.DB.prepare('INSERT INTO service_control VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET snapshot_id=excluded.snapshot_id,paused_until=excluded.paused_until WHERE service_control.paused_until<=?').bind(id,expires,Date.now()).run();
     if(!changed.meta.changes)throw new InputError('پشتیبان دیگری در جریان است.',409);
     return jsonResponse({id,expires});
@@ -37,7 +40,7 @@ export async function handleBackup(request:Request,env:Env,auth:JwtPayload) {
   if(path.endsWith('/cancel')&&request.method==='POST'){await env.DB.prepare('DELETE FROM service_control WHERE snapshot_id=?').bind(id).run();return jsonResponse({ok:true});}
   if(path.endsWith('/status')){
     const state=await env.DB.prepare('SELECT paused_until FROM service_control WHERE snapshot_id=? AND paused_until>?').bind(id,Date.now()).first<any>();
-    return jsonResponse({active:!!state,ready:!!state&&!await env.DB.prepare('SELECT 1 FROM service_operations LIMIT 1').first(),expires:state?.paused_until||0});
+    return jsonResponse({active:!!state,ready:!!state&&drained(state.paused_until),expires:state?.paused_until||0});
   }
   await snapshot(env,id);
   if(path.endsWith('/manifest')){

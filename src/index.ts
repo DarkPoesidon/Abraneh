@@ -2,7 +2,7 @@ import { publicChannels, handleChannels, scheduledChannels } from './channels.js
 import { handleCallRequests, userInbox } from './calls.js';
 import { registerNativeDevice } from './push.js';
 import { handleMedia } from './media.js';
-import { beginOperation, withOperation } from './maintenance.js';
+import { withOperation } from './maintenance.js';
 import { handleBackup, publicRestore } from './backup.js';
 import { Env, User, UserRow } from "./types.js";
 import { hashPassword, verifyPassword, generateSalt, hasJwtSecret } from "./auth.js";
