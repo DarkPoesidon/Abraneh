@@ -1,0 +1,101 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.wihm.messenger'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.wihm.messenger"
+        minSdk 24
+        targetSdk 34
+        versionCode 8
+        versionName "1.7.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // The key never lives in this public repository. CI reads it from secrets, and a local build
+    // from the ignored android/keystore.properties. Without either, builds use the debug key.
+    def keystoreProperties = new Properties()
+    def keystoreFile = rootProject.file('keystore.properties')
+    if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProperties.load(it) }
+    def signingValue = { String property, String environment -> System.getenv(environment) ?: keystoreProperties.getProperty(property) }
+    def storePath = signingValue('storeFile', 'WIHM_KEYSTORE_FILE')
+
+    signingConfigs {
+        release {
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword signingValue('storePassword', 'WIHM_KEYSTORE_PASSWORD')
+                keyAlias signingValue('keyAlias', 'WIHM_KEY_ALIAS')
+                keyPassword signingValue('keyPassword', 'WIHM_KEY_PASSWORD')
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig storePath ? signingConfigs.release : signingConfigs.debug
+        }
+        // The release build, shrunk the same way, that the emulator test can drive on a local server.
+        qa {
+            initWith release
+            debuggable true
+            matchingFallbacks = ['release']
+        }
+        debug {
+            minifyEnabled false
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            universalApk true
+        }
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'androidx.test:core:1.6.1'
+}

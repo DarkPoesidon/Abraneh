@@ -1,0 +1,14 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+app/build/
+release-apks/
+wihm-messenger-v1.4.1.apk
+wihm-messenger-v1.4.2.apk
+wihm-messenger-v1.4.3.apk
