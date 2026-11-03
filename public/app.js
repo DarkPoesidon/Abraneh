@@ -1433,6 +1433,16 @@
     bind('channel-add-people',()=>{closeFeature();btnAddMembers.click();});
     bind('channel-created-done',()=>closeFeature());
   }
+  const ROW_ICONS={'pref-mute':'bell','pref-pin':'pin','pref-archive':'archive','group-add-members':'users','group-invites':'forward','channel-edit':'edit','channel-admins':'shield','channel-subscribers':'users','report-chat':'flag','delete-chat':'trash','leave-group':'logout'};
+  const ROW_PAGES=['group-add-members','group-invites','channel-edit','channel-admins','channel-subscribers'];
+  function decorateRows() {
+    for(const [id,icon] of Object.entries(ROW_ICONS)) {
+      const row=byId(id);if(!row?.insertAdjacentHTML)continue;
+      row.insertAdjacentHTML('afterbegin',uiIcon(icon));
+      const chevron=row.querySelector('.row-chevron'),page=ROW_PAGES.includes(id);
+      if(chevron&&!page)chevron.remove();else if(!chevron&&page)row.insertAdjacentHTML('beforeend','<svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>');
+    }
+  }
   function channelInfo(chat,details) {
     const chatId=chat.id,manage=isManager(details),owner=details.role==='owner',count=Number(details.memberCount||0).toLocaleString('fa-IR')+' مشترک',link=details.handle?location.origin+'/#channel='+details.handle:'';
     const row=(id,title,value='')=>`<button id="${id}" class="settings-row" type="button"><span><strong>${title}</strong>${value?`<small>${value}</small>`:''}</span><svg class="ui-icon row-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>`;
@@ -1445,6 +1455,7 @@
     const gone=async()=>{denyChat(chatId);activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='flex';sidebar.classList.remove('hidden');closeFeature();await loadChats(true);};
     bind('pref-mute',async()=>{await patch(`/api/chats/${chatId}/preferences`,{muted:!chat.muted});chat.muted=!chat.muted;await loadChats(true);if(activeChat?.id===chatId)applyChatMode(activeChat);channelInfo(chat,details);});
     bind('channel-copy-link',async()=>{await navigator.clipboard.writeText(link);byId('feature-status').textContent='لینک کپی شد.';});
+    decorateRows();
     bind('channel-edit',()=>channelEdit(chat,details));bind('group-invites',()=>invitesView(chatId));
         const savePhoto=async avatar=>{await patch(`/api/chats/${chatId}/group`,{action:'photo',avatar});await loadChats(true);if(activeChat?.id===chatId)chatHeaderAvatar.innerHTML=avatarHtml(avatar,chat.title);byId('feature-status').textContent='عکس ذخیره شد.';};
         bindPhoto('group-photo',async photo=>{byId('group-photo-remove').hidden=false;await savePhoto(photo).catch(featureError);});
@@ -1705,8 +1716,8 @@
       if(Math.abs(dx)>8||Math.abs(dy)>8)clearTimeout(timer);
       if(start.sideways===null&&(Math.abs(dx)>8||Math.abs(dy)>8))start.sideways=Math.abs(dx)>Math.abs(dy);
       if(!start.sideways||selected.size||!canPost(chat()))return;
-      // The swipe moves away from the side messages are read from: left in English, right in Persian.
-      const direction=document.documentElement.dir==='rtl'?1:-1,pull=Math.max(0,dx*direction);
+      // Always to the left, as in Telegram, since own messages sit on the right in every language.
+      const direction=-1,pull=Math.max(0,dx*direction);
       event.preventDefault();offset=Math.min(pull,SWIPE*1.4);
       bubble.style.transform=`translateX(${offset*direction}px)`;
       if(offset>=SWIPE&&bubble.dataset.swiping!=='ready'){bubble.dataset.swiping='ready';navigator.vibrate?.(8);}else if(offset<SWIPE&&offset>0)bubble.dataset.swiping='pull';
@@ -1825,6 +1836,7 @@
     const blocks=group?[]:await api('/api/blocks'),ownBlock=blocks.some(row=>row.id===chat.partnerId);
     showFeature(chat.title,`<div class="channel-profile">${group&&manage?photoPicker('group-photo',details.avatar):`<div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chatId)}">${avatarHtml(group?details.avatar:chat.avatar,chat.title)}</div>`}<h4>${escapeHtml(chat.title)}</h4>${group?`<p class="session-help">${Number(details.memberCount||details.members.length).toLocaleString('fa-IR')} عضو · نقش شما: ${memberRole(details.role)}</p>`:''}${group&&manage?`<button id="group-photo-remove" class="quiet-button" type="button" ${details.avatar?'':'hidden'}>حذف عکس</button>`:''}</div><div class="settings-list"><button id="pref-mute" class="settings-row" type="button"><span><strong>اعلان‌ها</strong><small>${chat.muted?'خاموش':'روشن'}</small></span></button><button id="pref-pin" class="settings-row" type="button"><span><strong>${chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو'}</strong></span></button><button id="pref-archive" class="settings-row" type="button"><span><strong>${chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'}</strong></span></button>${group&&manage?'<button id="group-add-members" class="settings-row" type="button"><span><strong>افزودن عضو</strong></span></button><button id="group-invites" class="settings-row" type="button"><span><strong>لینک‌های دعوت</strong></span></button>':''}</div>
       ${group?`${manage?`<form id="rename-form" class="feature-form"><label>نام ${noun}<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام ${noun}</button></form>`:''}<section class="feature-section"><h4>${channel?(manage?'مشترکان':'مدیران'):'اعضا'}</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${memberRole(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><div class="button-row"><button id="leave-group" class="quiet-button danger-text">خروج از ${noun}</button>${!manage?`<button id="report-chat" class="quiet-button danger-text" type="button">گزارش ${noun}</button>`:''}${owner?`<button id="delete-chat" class="quiet-button danger-text" type="button">حذف ${noun}</button>`:''}</div><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row"><button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button><button id="delete-dm" class="quiet-button danger-text" type="button">حذف گفتگو</button></div></div>`}`);
+    decorateRows();
     for(const [id,key] of [['pref-archive','archived'],['pref-mute','muted'],['pref-pin','pinned']]) bind(id,async()=>{await patch(`/api/chats/${chatId}/preferences`,{[key]:!chat[key]});await loadChats(true);await detailsView(chatId);});
     if(group) {
       if(manage) {bind('group-add-members',()=>{closeFeature();btnAddMembers.click();});byId('rename-title').value=chat.title;bind('rename-form',async()=>{await patch(`/api/chats/${chatId}/group`,{action:'rename',title:byId('rename-title').value});await loadChats(true);activeChatTitle.textContent=chats.find(c=>c.id===chatId)?.title||chat.title;byId('feature-status').textContent='نام ذخیره شد.';},'submit');bind('group-invites',()=>invitesView(chatId));

@@ -1512,7 +1512,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 * { scrollbar-width:thin; scrollbar-color:var(--bg-input) transparent; }
 
 /* The swipe icon is a separate thing from the tail it replaces. */
-.message-bubble.group-last[data-swiping]::after { left:auto; right:auto; inset-inline-end:-38px; }
+.message-bubble[data-swiping]::after,.message-bubble.sent.group-last[data-swiping]::after,.message-bubble.received.group-last[data-swiping]::after { inset-inline:auto; left:auto; right:-38px; }
 /* A name or preview in the other language keeps its own punctuation, and stays on the row's side. */
 .chat-preview,.chat-title-text,.message-sender,#composer-label small,#composer-label strong,.reply-quote span,.reply-quote strong { unicode-bidi:plaintext; }
 :root[dir="ltr"] .chat-preview,:root[dir="ltr"] .chat-title-text,:root[dir="ltr"] .message-sender,:root[dir="ltr"] #composer-label small,:root[dir="ltr"] #composer-label strong,:root[dir="ltr"] .reply-quote span,:root[dir="ltr"] .reply-quote strong { text-align:left; }
