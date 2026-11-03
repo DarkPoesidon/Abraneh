@@ -3,7 +3,7 @@ const byId = id => document.getElementById(id);
 window.wihmSetup.load().then(({ strings, language, server, proxy, error }) => {
   document.documentElement.lang = language;
   document.documentElement.dir = strings.dir;
-  for (const [id, key] of [['title', 'title'], ['intro', 'intro'], ['server-label', 'server'], ['proxy-label', 'useProxy'], ['type-label', 'proxyType'], ['host-label', 'host'], ['port-label', 'port'], ['proxy-help', 'proxyHelp'], ['connect', 'connect']]) byId(id).textContent = strings[key];
+  for (const [id, key] of [['title', 'title'], ['intro', 'intro'], ['server-label', 'server'], ['proxy-label', 'useProxy'], ['type-label', 'proxyType'], ['host-label', 'host'], ['port-label', 'port'], ['proxy-help', 'proxyHelp'], ['connect', 'connect'], ['back', 'back']]) byId(id).textContent = strings[key];
   byId('server').value = server;
   byId('use-proxy').checked = proxy.enabled === true;
   byId('proxy-type').value = proxy.type || 'socks5';
@@ -11,7 +11,11 @@ window.wihmSetup.load().then(({ strings, language, server, proxy, error }) => {
   byId('proxy-port').value = proxy.port || '';
   byId('proxy-fields').hidden = !byId('use-proxy').checked;
   byId('error').textContent = error;
+  // Only a saved server has somewhere to go back to, and nothing typed here is kept.
+  byId('back').hidden = !server;
 });
+
+byId('back').addEventListener('click', () => window.wihmSetup.back());
 
 byId('use-proxy').addEventListener('change', () => { byId('proxy-fields').hidden = !byId('use-proxy').checked; });
 

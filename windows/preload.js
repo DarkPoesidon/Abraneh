@@ -5,6 +5,7 @@ if (location.protocol === 'file:') {
   contextBridge.exposeInMainWorld('wihmSetup', {
     load: () => ipcRenderer.invoke('setup-load'),
     connect: input => ipcRenderer.invoke('setup-connect', input),
+    back: () => ipcRenderer.send('setup-back'),
   });
 } else if (ipcRenderer.sendSync('is-server-origin', location.origin)) {
   const PING_MS = 2 * 60_000;

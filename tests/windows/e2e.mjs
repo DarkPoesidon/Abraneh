@@ -68,6 +68,27 @@ try {
   await (await browserWindow()).evaluate(window => window.show());
   await page.waitForFunction(() => window.wihmAppHidden === false);
 
+  // The app's own settings reach the proxy, and Back leaves without saving.
+  const address = page.url();
+  await page.locator('#btn-main-menu').click();
+  assert.match(await page.locator('#btn-menu-server').innerText(), /پروکسی|proxy/i);
+  await page.locator('#btn-menu-server').click();
+  await page.locator('#use-proxy').waitFor();
+  await page.locator('#use-proxy').check();
+  await page.locator('#connect').click();
+  await page.waitForFunction(() => document.getElementById('error').textContent);
+  await page.locator('#back').click();
+  await page.waitForURL(url => url.origin === fixture.origin);
+  await page.locator('.chat-item').first().waitFor();
+  assert.equal(new URL(page.url()).origin, new URL(address).origin);
+  await page.locator('#btn-main-menu').click();
+  await page.locator('#btn-menu-server').click();
+  await page.locator('#use-proxy').waitFor();
+  assert.equal(await page.locator('#use-proxy').isChecked(), false, 'Back must not save the proxy');
+  await page.locator('#back').click();
+  await page.locator('.chat-item').first().waitFor();
+  console.log('ok: settings reach the proxy, and Back saves nothing');
+
   // Other sites never open inside the app.
   const before = page.url();
   await page.evaluate(() => { location.href = 'https://example.org/'; }).catch(() => {});
