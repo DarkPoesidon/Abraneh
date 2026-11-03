@@ -8,10 +8,10 @@ android {
 
     defaultConfig {
         applicationId "com.wihm.messenger"
-        minSdk 24
+        minSdk 21
         targetSdk 34
-        versionCode 8
-        versionName "1.7.0"
+        versionCode 9
+        versionName "1.7.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -84,8 +84,10 @@ android {
     }
 
     lint {
+        // Only the check that protects old Android versions fails the build.
+        checkOnly 'NewApi'
         checkReleaseBuilds false
-        abortOnError false
+        abortOnError true
     }
 }
 

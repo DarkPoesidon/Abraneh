@@ -54,6 +54,9 @@
     <string name="download_failed">Could not download the file.</string>
     <string name="no_file_picker">No app to choose a file with</string>
     <string name="service_turned_on">Background message service is on</string>
+    <string name="webview_old_title">WebView is out of date</string>
+    <string name="webview_old_message">This phone\'s Android System WebView is too old to run the messenger, and the screen may stay blank. Please update it.</string>
+    <string name="webview_update">Update</string>
     <string name="service_turned_off">Background service is off</string>
     <string name="battery_free">Status: ✅ no battery restriction (the service runs without interruption)</string>
     <string name="battery_limited">Status: ⚠️ battery optimization is on (tap the button below to get messages while asleep)</string>

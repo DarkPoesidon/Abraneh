@@ -182,6 +182,7 @@ public class MainActivity extends AppCompatActivity {
         if (currentServerUrl == null || currentServerUrl.trim().isEmpty()) {
             openServerConfig();
         } else {
+            WebViewCheck.warnIfOld(this);
             loadServer(currentServerUrl);
         }
 

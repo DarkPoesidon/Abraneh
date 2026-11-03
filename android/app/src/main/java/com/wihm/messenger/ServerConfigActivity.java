@@ -53,6 +53,7 @@ public class ServerConfigActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_server_config);
+        WebViewCheck.warnIfOld(this);
 
         editServerUrl = findViewById(R.id.edit_server_url);
         btnPasteUrl = findViewById(R.id.btn_paste_url);

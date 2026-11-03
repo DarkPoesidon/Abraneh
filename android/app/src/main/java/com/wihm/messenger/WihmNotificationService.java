@@ -11,6 +11,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -137,7 +139,9 @@ public class WihmNotificationService extends Service {
                 });
             }
         };
-        getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(networkCallback);
+        ConnectivityManager connectivity = ContextCompat.getSystemService(this, ConnectivityManager.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) connectivity.registerDefaultNetworkCallback(networkCallback);
+        else connectivity.registerNetworkCallback(new NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), networkCallback);
     }
 
     private void createBackgroundNotificationChannel() {
@@ -148,7 +152,7 @@ public class WihmNotificationService extends Service {
             channel.enableVibration(false);
             channel.setShowBadge(false);
             channel.setSound(null, null);
-            getSystemService(NotificationManager.class).createNotificationChannel(channel);
+            ContextCompat.getSystemService(this, NotificationManager.class).createNotificationChannel(channel);
         }
     }
 
@@ -198,7 +202,7 @@ public class WihmNotificationService extends Service {
     }
 
     private void showStatus(boolean online) {
-        getSystemService(NotificationManager.class).notify(FOREGROUND_SERVICE_ID, statusNotification(online));
+        ContextCompat.getSystemService(this, NotificationManager.class).notify(FOREGROUND_SERVICE_ID, statusNotification(online));
     }
 
     private SharedPreferences prefs() {
@@ -366,13 +370,15 @@ public class WihmNotificationService extends Service {
 
     private void scheduleTick() {
         // Not exact, because exact alarms need a permission and the socket tolerates a late ping.
-        getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + TICK_MS, tickIntent());
+        AlarmManager alarms = ContextCompat.getSystemService(this, AlarmManager.class);
+        long at = SystemClock.elapsedRealtime() + TICK_MS;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, tickIntent());
+        else alarms.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, tickIntent());
     }
 
     private void acquireWakeLock() {
         if (wakeLock == null) {
-            wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WIHM:Inbox");
+            wakeLock = ContextCompat.getSystemService(this, PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WIHM:Inbox");
         }
         wakeLock.acquire(PONG_TIMEOUT_MS + 2000);
     }
@@ -440,8 +446,8 @@ public class WihmNotificationService extends Service {
         stopped = true;
         handler.removeCallbacksAndMessages(null);
         endCall(false);
-        getSystemService(ConnectivityManager.class).unregisterNetworkCallback(networkCallback);
-        getSystemService(AlarmManager.class).cancel(tickIntent());
+        ContextCompat.getSystemService(this, ConnectivityManager.class).unregisterNetworkCallback(networkCallback);
+        ContextCompat.getSystemService(this, AlarmManager.class).cancel(tickIntent());
         if (socket != null) socket.cancel();
         socket = null;
         executor.shutdown();

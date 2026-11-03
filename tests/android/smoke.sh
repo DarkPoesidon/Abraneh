@@ -1,0 +1,17 @@
+#!/bin/sh
+# Installs and opens the app on the running emulator, and fails if Android rejects or crashes it.
+# Usage: smoke.sh <apk> <screenshot.png>
+set -eu
+PACKAGE=com.wihm.messenger
+adb install -r "$1"
+adb logcat -c
+adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+sleep 20
+adb exec-out screencap -p > "$2"
+adb logcat -d > smoke-logcat.txt
+if grep -A12 'FATAL EXCEPTION' smoke-logcat.txt | grep -q "$PACKAGE"; then
+  grep -A25 'FATAL EXCEPTION' smoke-logcat.txt
+  exit 1
+fi
+adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|mFocusedActivity' | grep -q "$PACKAGE"
+echo "ok: $PACKAGE runs on API $(adb shell getprop ro.build.version.sdk | tr -d '\r')"

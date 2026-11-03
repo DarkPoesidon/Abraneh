@@ -17,6 +17,7 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.Person;
+import androidx.core.content.ContextCompat;
 
 /** The ringing side of a call: the ringtone, the vibration and the notification that opens the call screen. */
 final class IncomingCall {
@@ -80,7 +81,7 @@ final class IncomingCall {
                 .setStyle(NotificationCompat.CallStyle.forIncomingCall(
                         new Person.Builder().setName(caller).setImportant(true).build(), decline, answer))
                 .build();
-        context.getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, notification);
+        ContextCompat.getSystemService(context, NotificationManager.class).notify(NOTIFICATION_ID, notification);
         startSound(context);
     }
 
@@ -91,14 +92,14 @@ final class IncomingCall {
         } catch (RuntimeException e) {
             Log.w(TAG, "Could not stop the ring", e);
         }
-        context.getSystemService(NotificationManager.class).cancel(NOTIFICATION_ID);
+        ContextCompat.getSystemService(context, NotificationManager.class).cancel(NOTIFICATION_ID);
         context.sendBroadcast(new Intent(IncomingCallActivity.ACTION_CLOSE).setPackage(context.getPackageName()));
     }
 
     private void startSound(Context context) {
         // A phone that can't play this ringtone must still show the call.
         try {
-            int mode = context.getSystemService(AudioManager.class).getRingerMode();
+            int mode = ContextCompat.getSystemService(context, AudioManager.class).getRingerMode();
             if (mode == AudioManager.RINGER_MODE_SILENT) return;
             vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
             if (vibrator != null && vibrator.hasVibrator()) {
@@ -130,6 +131,6 @@ final class IncomingCall {
         channel.setSound(null, null);
         channel.enableVibration(false);
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        context.getSystemService(NotificationManager.class).createNotificationChannel(channel);
+        ContextCompat.getSystemService(context, NotificationManager.class).createNotificationChannel(channel);
     }
 }

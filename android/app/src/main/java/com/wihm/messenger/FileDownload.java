@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.widget.Toast;
+import androidx.annotation.RequiresApi;
 import androidx.core.content.FileProvider;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -54,6 +55,7 @@ final class FileDownload {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private static Uri toMediaStore(Context context, InputStream in, String name, String mime) throws IOException {
         ContentResolver resolver = context.getContentResolver();
         ContentValues values = new ContentValues();

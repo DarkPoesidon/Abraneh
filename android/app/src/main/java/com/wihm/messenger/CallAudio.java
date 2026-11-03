@@ -5,6 +5,7 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.PowerManager;
+import androidx.annotation.RequiresApi;
 import java.util.List;
 
 /** Chooses where a call is heard, since a web page can't. Turns the screen off at the ear, as phone calls do. */
@@ -49,6 +50,7 @@ final class CallAudio {
     }
 
     /** A connected headset takes priority over the earpiece, as it does for phone calls. */
+    @RequiresApi(Build.VERSION_CODES.S)
     private static AudioDeviceInfo pick(List<AudioDeviceInfo> devices, boolean speaker) {
         int[] order = speaker
                 ? new int[]{AudioDeviceInfo.TYPE_BUILTIN_SPEAKER}

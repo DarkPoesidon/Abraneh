@@ -5,8 +5,19 @@ import java.net.URI;
 /** Pure URL and version rules, kept free of Android types so they can be unit tested. */
 final class UrlRules {
     private static final String ANDROID_TAG_PREFIX = "android-v";
+    // The web client's secure bundle is built for es2022, which needs Chrome 94.
+    private static final int MIN_WEBVIEW = 94;
 
     private UrlRules() {
+    }
+
+    /** version is a WebView versionName such as 94.0.4606.61. An unreadable one is not treated as old. */
+    static boolean webViewTooOld(String version) {
+        try {
+            return Integer.parseInt(version.split("\\.")[0]) < MIN_WEBVIEW;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** A plain string prefix would accept https://server.example.evil.com for https://server.example. */
