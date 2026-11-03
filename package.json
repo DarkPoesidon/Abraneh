@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-messenger",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "type": "module",
   "scripts": {
     "installer:build": "node scripts/build-installer.mjs",

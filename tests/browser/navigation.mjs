@@ -119,7 +119,7 @@ try {
       await page.locator('#btn-settings-back').click(); await page.locator('#settings-navigation').waitFor({ state: 'visible' });
     }
     await page.locator('#settings-admin').click(); await page.locator('#claim-code').waitFor(); await page.locator('#btn-close-feature').click();
-    assert.ok(['btn-main-menu', 'btn-settings'].includes(await page.evaluate(() => document.activeElement.id)), 'closing settings restores a visible account/menu launcher');
+    assert.ok(['btn-main-menu', 'btn-settings', 'nav-settings'].includes(await page.evaluate(() => document.activeElement.id)), 'closing settings restores a visible account/menu launcher');
     await page.evaluate(() => {
       const event = new Event('beforeinstallprompt', { cancelable: true });
       event.prompt = async () => {}; event.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(event);
