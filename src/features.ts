@@ -231,7 +231,7 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
     check(await chatAccess(env,invite.chat_id,userId),'دعوت منقضی، لغو یا مصرف شده است یا ظرفیت پر شده است.',403);
     return jsonResponse({chatId:invite.chat_id});
   }
-  const match=path.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/(details|preferences|group|invites|leave|delete|search|messages\/([a-zA-Z0-9_-]+)\/(edit|delete|hide|reaction|save|pin))$/);
+  const match=path.match(/^\/api\/chats\/([a-zA-Z0-9_-]+)\/(details|preferences|group|invites|leave|delete|search|messages\/([a-zA-Z0-9_-]+)\/(edit|delete|hide|reaction|save|pin|forward))$/);
   if (!match) return null;
   const chatId=match[1],action=match[2],messageId=match[3],messageAction=match[4];
   const access=await requireChat(env,chatId,userId);
@@ -329,6 +329,28 @@ export async function handleFeatures(request: Request, env: Env, auth: Identity,
       const room=env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(chatId));
       const response=await room.fetch('https://internal/message-action',{method:'POST',body:JSON.stringify({...body,actor:userId,sessionId:auth.sid,chatId,messageId,action:messageAction})});
       return jsonResponse(await response.json(),response.status);
+    }
+    if (messageAction==='forward') {
+      check(validId(body.targetChatId),'گفتگوی مقصد معتبر نیست.');
+      check(await allowRequest(env,'forward',userId,60,60_000),'هدایت پیام زیاد است؛ یک دقیقه صبر کنید.',429);
+      const target=await chatAccess(env,body.targetChatId,userId);
+      check(target,'به گفتگوی مقصد دسترسی ندارید.',403);
+      check(!await isBlocked(env,body.targetChatId,userId),'این گفتگوی خصوصی مسدود است.',403);
+      check(!target.isChannel||manager(target.role),'در کانال فقط مدیران می‌توانند پست بگذارند.',403);
+      const source=env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(chatId)),destination=env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(body.targetChatId));
+      const [original]=await (await source.fetch('https://internal/message-snapshot',{method:'POST',body:JSON.stringify({ids:[messageId],chatId})})).json<any[]>();
+      check(original&&!original.deletedAt,'پیام پیدا نشد.',404);
+      // A chain of forwards keeps naming the first source, and a channel is named instead of its admin.
+      const from=String(original.forwardedFrom||(access.isChannel?access.title:original.senderName)).slice(0,100);
+      if (original.media) {
+        const stored=await source.fetch('https://room/media?id='+encodeURIComponent(messageId));check(stored.ok,'این پیام دیگر در دسترس نیست.',404);
+        const upload=new URL('https://room/media-upload');
+        for (const [name,value] of Object.entries({chatId:body.targetChatId,userId,displayName:auth.displayName,kind:original.media.kind,mime:original.media.mime,durationMs:String(original.media.durationMs),clientMsgId:'',replyToId:'',text:original.text,forwardedFrom:from})) upload.searchParams.set(name,value);
+        const moved=await destination.fetch(upload.toString(),{method:'POST',body:await stored.arrayBuffer()});
+        return jsonResponse(await moved.json(),moved.status);
+      }
+      const sent=await destination.fetch('https://internal/forward-text',{method:'POST',body:JSON.stringify({chatId:body.targetChatId,userId,displayName:auth.displayName,text:original.text,from})});
+      return jsonResponse(await sent.json(),sent.status);
     }
     const exists=await env.DB.prepare('SELECT 1 FROM messages WHERE chat_id=? AND id=?').bind(chatId,messageId).first(); check(exists,'پیام هنوز در حال همگام‌سازی است؛ دوباره تلاش کنید.',409);
     if (messageAction==='hide') { await env.DB.prepare('INSERT OR IGNORE INTO message_hidden VALUES (?,?,?)').bind(messageId,chatId,userId).run(); return jsonResponse({ok:true}); }

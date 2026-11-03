@@ -129,6 +129,45 @@ try {
   assert.equal(await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').count(), 0, 'it stays gone after a reload');
   console.log('ok: delete a chat');
 
+  // Touch: long press opens the floating menu, and a sideways swipe replies.
+  const touchContext = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true, serviceWorkers: 'block', locale: 'fa-IR' });
+  await touchContext.addInitScript(account => { localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); }, fixture.owner);
+  const touch = await touchContext.newPage(); await touch.goto(fixture.origin);
+  await touch.locator('.chat-item[data-chat-id="design-team"]').click();
+  const received = touch.locator('.message-bubble.received').first(); await received.waitFor();
+  assert.equal(await touch.locator('.message-more').first().isVisible(), false, 'no dots button on a phone');
+  const cdp = await touchContext.newCDPSession(touch), box = await received.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+  const fingers = (type, px, py) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: px, y: py }] });
+  await fingers('touchStart', x, y); await touch.waitForTimeout(600); await fingers('touchEnd', x, y);
+  await touch.locator('#feature-modal.message-menu #action-reply').waitFor();
+  await touch.waitForTimeout(250); await shot(touch, 'message-menu-touch');
+  const menuBox = await touch.locator('.feature-card').boundingBox();
+  assert.ok(menuBox.width <= 250 && menuBox.y >= 0 && menuBox.y + menuBox.height <= 800, 'the menu floats on screen: ' + JSON.stringify(menuBox));
+  await touch.mouse.click(5, 795); await touch.locator('#feature-modal.message-menu').waitFor({ state: 'detached' }).catch(() => {});
+  await touch.waitForFunction(() => document.querySelector('#feature-modal').style.display === 'none');
+  const fresh2 = await received.boundingBox(), sx = fresh2.x + 30, sy = fresh2.y + fresh2.height / 2;
+  await fingers('touchStart', sx, sy); for (let step = 1; step <= 8; step++) await fingers('touchMove', sx + step * 12, sy); await fingers('touchEnd', sx + 96, sy);
+  await touch.locator('#composer-context:not([hidden])').waitFor();
+  console.log('ok: long press and swipe to reply');
+  await touchContext.close();
+
+  // Links stay safe, and forwarding is reachable from the menu.
+  await owner.reload(); await owner.locator('.chat-item[data-chat-id="design-team"]').click();
+  await owner.locator('.message-input').fill('ببین https://example.org/a?b=1&c=2 و <img src=x onerror=alert(1)> @sara'); await owner.keyboard.press('Enter');
+  await owner.locator('.message-text a[href="https://example.org/a?b=1&c=2"]').waitFor();
+  assert.equal(await owner.locator('.message-text a').last().getAttribute('rel'), 'noopener noreferrer nofollow');
+  assert.equal(await owner.locator('.message-text img').count(), 0, 'markup in a message stays text');
+  assert.equal(await owner.locator('.message-text .mention').last().innerText(), '@sara');
+  await owner.locator('.message-input').fill('@sa');
+  await owner.locator('.mention-row').first().click();
+  assert.equal(await owner.locator('.message-input').inputValue(), '@sara_new ');
+  await owner.locator('.message-input').fill('');
+  await owner.locator('.message-bubble').last().click({ button: 'right', position: { x: 4, y: 4 } }); await owner.locator('#action-forward').click();
+  await owner.locator('#forward-query').fill('خبرنامه'); await owner.locator('.forward-row').first().click();
+  await owner.locator('.forward-label').last().waitFor();
+  assert.match(await owner.locator('.forward-label').last().innerText(), /هدایت‌شده از/);
+  console.log('ok: links, mentions and forwarding');
+
   // English
   const english = await open(fixture.peer, { width: 1200, height: 850 }, 'en');
   assert.equal(await english.evaluate(() => document.documentElement.dir), 'ltr');
