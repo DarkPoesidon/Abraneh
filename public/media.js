@@ -170,7 +170,7 @@
       function evict() {
         for (const [id, note] of notes) {
           if (notes.size <= CACHED_NOTES) return;
-          if (note.player && !note.player.paused) continue;
+          if (note.isConnected || (note.player && !note.player.paused)) continue;
           if (note.player) URL.revokeObjectURL(note.player.src);
           if (note.url) URL.revokeObjectURL(note.url);
           notes.delete(id);
