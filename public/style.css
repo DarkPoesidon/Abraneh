@@ -1083,7 +1083,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .65); }
   --accent-color:#7765d8; --accent-hover:#6a58cc; --accent-text:#a99df0;
   --text-primary:#ffffff; --text-secondary:#aaaaaa; --text-muted:#8a8a8a;
   --msg-sent:#6a5acb; --msg-received:#212121; --border-color:#303030;
-  --online-color:#0ac630; --danger-color:#ff6b6b; --meta-sent:#e6e1ff; --meta-received:#aaaaaa; --tick-read:#ffffff;
+  --online-color:#0ac630; --danger-color:#ff6b6b; --meta-sent:#f3f0ff; --meta-received:#aaaaaa; --tick-read:#ffffff;
   --chat-wallpaper:radial-gradient(circle at 15% 20%,rgb(119 101 216 / .10),transparent 45%),radial-gradient(circle at 85% 80%,rgb(32 140 160 / .10),transparent 45%),#0f0f0f;
   --pill-bg:rgb(255 255 255 / .12); --pill-text:#fff;
 }
@@ -1146,7 +1146,7 @@ body { font-size:16px; }
 .message-bubble.sent.group-last::after { inset-inline-start:-8px; clip-path:polygon(0 0,100% 100%,0 100%); }
 .message-bubble.received.group-last::after { inset-inline-end:-8px; clip-path:polygon(100% 0,100% 100%,0 100%); }
 .message-sender { color:hsl(var(--avatar-hue,205) 70% 62%); font-size:.87rem; font-weight:500; margin-bottom:2px; }
-[data-theme="light"] .message-sender { color:hsl(var(--avatar-hue,205) 70% 36%); }
+[data-theme="light"] .message-sender { color:hsl(var(--avatar-hue,205) 70% 28%); }
 .message-text { display:inline; white-space:pre-wrap; overflow-wrap:anywhere; unicode-bidi:plaintext; }
 /* Time and ticks sit on the last line of the text when they fit, otherwise on a line of their own. */
 .message-footer { float:inline-end; min-height:0; margin-block:5px -3px; margin-inline-start:12px; gap:3px; }
@@ -1319,7 +1319,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .settings-list { border-top:1px solid var(--border-color); }
 .settings-list .settings-row { min-height:54px; background:transparent; }
 .settings-list .settings-row span { display:flex; flex-direction:column; gap:2px; }
-.settings-list #delete-chat strong, .settings-list #leave-group strong, .settings-list #report-chat strong { color:#ef5350; }
+.settings-list #delete-chat strong, .settings-list #leave-group strong, .settings-list #report-chat strong { color:var(--danger-color); }
 .language-switch { display:flex; align-items:center; justify-content:center; gap:6px; margin-block-end:14px; color:var(--text-secondary); }
 .language-switch button { min-width:76px; min-height:36px; padding:0 12px; border:1px solid var(--border-color); border-radius:18px; background:transparent; color:var(--text-primary); font:inherit; font-size:.88rem; cursor:pointer; }
 .language-switch button[aria-pressed="true"] { background:var(--accent-color); border-color:var(--accent-color); color:#fff; }
@@ -1347,7 +1347,7 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .menu-row { display:flex; align-items:center; gap:14px; width:100%; min-height:44px; padding:0 12px; border:0; border-radius:8px; background:none; color:var(--text-primary); font:inherit; font-size:.92rem; text-align:start; cursor:pointer; }
 .menu-row:hover, .menu-row:focus-visible { background:var(--bg-card,#ffffff12); }
 .menu-row .ui-icon { width:20px; height:20px; flex-shrink:0; opacity:.8; }
-.menu-row.danger-text { color:#ef5350; }
+.menu-row.danger-text { color:var(--danger-color); }
 /* Screens slide in on phones, as Telegram's pages do. */
 @media (max-width:768px) {
   #feature-modal:not(.message-menu) { padding:0; align-items:stretch; justify-content:stretch; }
@@ -1401,3 +1401,17 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 @media (max-width:768px) {
   dialog.call-dialog { width:100%; max-width:none; height:100dvh; max-height:none; min-height:0; margin:0; border-radius:0; padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom)); }
 }
+/* Composer details and selection mode, as in Telegram. */
+.composer-context #composer-label { display:flex; flex-direction:column; min-width:0; }
+.composer-context #composer-label strong { color:var(--accent-text); font-size:.85rem; }
+.composer-context #composer-label strong,.composer-context #composer-label small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.composer-context #composer-label small { color:var(--text-secondary); font-size:.8rem; }
+.message-input { overflow-y:auto; resize:none; }
+.selection-bar { display:flex; align-items:center; gap:8px; width:min(100%,760px); align-self:center; padding:6px 16px 14px; }
+.selection-bar[hidden] { display:none; }
+.selection-label { flex:1; color:var(--text-primary); }
+.messages-container.selecting ~ .chat-input-area,.messages-container.selecting ~ .composer-context { display:none; }
+.messages-container.selecting .message-bubble { cursor:pointer; -webkit-user-select:none; user-select:none; }
+.messages-container.selecting .message-more { display:none; }
+.message-bubble.selected { box-shadow:0 0 0 2px var(--accent-color); }
+.message-bubble.selected::before { content:'✓'; position:absolute; inset-block-start:-6px; inset-inline-start:-6px; z-index:1; display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--accent-color); color:#fff; font-size:12px; line-height:1; }
