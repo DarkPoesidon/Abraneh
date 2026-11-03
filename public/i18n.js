@@ -441,6 +441,7 @@
     'تنظیمات ذخیره شد.': 'Settings saved.',
     'تنظیمات را از آدرس اصلی پیام‌رسان باز کنید و همان آدرس را ثبت کنید.': 'Open settings from the messenger\'s main address and save that address.',
     'تنظیمات سرور': 'Server settings',
+    'سرور و پروکسی': 'Server and proxy',
     'تنظیمات شبکه معتبر نیست.': 'The network settings are invalid.',
     'تنظیمات نصب قبلی معتبر نیست.': 'The previous install settings are invalid.',
     'تنظیمات نمایش ذخیره شد.': 'Visibility settings saved.',
