@@ -106,6 +106,36 @@
     'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.': 'A direct connection failed; a restricted network may need a TURN server.',
     'ارتباط موقتاً قطع است؛ دوباره تلاش کنید.': 'Temporarily disconnected; try again.',
     'ارسال': 'Send',
+    'نام گروه': 'Group name',
+    'ذخیرهٔ نام گروه': 'Save group name',
+    'خروج از گروه': 'Leave group',
+    'گزارش گروه': 'Report group',
+    'حذف گروه': 'Delete group',
+    'تعلیق گروه': 'Suspend group',
+    'جستجوی گروه': 'Search groups',
+    'گروهی پیدا نشد.': 'No groups found.',
+    'این گروه و همهٔ پیام‌ها و فایل‌هایش برای همیشه حذف شود؟': 'Delete this group and all its messages and files forever?',
+    'از گروه خارج می‌شوید؟ دسترسی شما به تاریخچهٔ آن هم قطع می‌شود.': 'Leave this group? You also lose access to its history.',
+    'نام کانال': 'Channel name',
+    'ذخیرهٔ نام کانال': 'Save channel name',
+    'خروج از کانال': 'Leave channel',
+    'گزارش کانال': 'Report channel',
+    'حذف کانال': 'Delete channel',
+    'تعلیق کانال': 'Suspend channel',
+    'جستجوی کانال': 'Search channels',
+    'کانالی پیدا نشد.': 'No channels found.',
+    'این کانال و همهٔ پیام‌ها و فایل‌هایش برای همیشه حذف شود؟': 'Delete this channel and all its messages and files forever?',
+    'از کانال خارج می‌شوید؟ دسترسی شما به تاریخچهٔ آن هم قطع می‌شود.': 'Leave this channel? You also lose access to its history.',
+    'ضبط پیام صوتی': 'Record a voice message',
+    'ضبط پیام تصویری': 'Record a video message',
+    'جابه‌جایی در پیام صوتی': 'Seek in the voice message',
+    'جابه‌جایی در پیام تصویری': 'Seek in the video message',
+    'فعال‌کردن حساب': 'Enable account',
+    'غیرفعال‌کردن حساب': 'Disable account',
+    'دریافت تاریخچهٔ گفتگو': 'Download chat history',
+    'دریافت داده‌های سرویس': 'Download service data',
+    'عمومی ·': 'Public ·',
+    'خصوصی ·': 'Private ·',
     'تماس در جریان است. بعد از پایان تماس دوباره این دکمه را بزنید.': 'A call is in progress. Press this button again after the call ends.',
     'اول این پنجره را ببندید و دوباره به‌روزرسانی را بزنید.': 'Close this window first, then press update again.',
     'در حال ویرایش پیام هستید. ویرایش را ذخیره یا لغو کنید و دوباره این دکمه را بزنید.': 'You are editing a message. Save or cancel the edit, then press this button again.',
@@ -116,7 +146,7 @@
     'نسخهٔ جدید هنوز فعال نشد. برنامه را کامل ببندید و دوباره باز کنید.': 'The new version is not active yet. Fully close the app and open it again.',
     'نسخهٔ سرور: ': 'Server version: ',
     'پیام‌رسان روی این دستگاه': 'Messenger on this device',
-    'در حالت «با تأیید من» نسخهٔ جدید فقط با تأیید شما نصب می‌شود. حالت خودکار تا پایان نوشتن یا ارسال پیام صبر می‌کند.': 'With “With my approval”, a new version only installs when you approve it. Automatic mode waits until you finish typing or sending.',
+    'در حالت «با تأیید من» نسخهٔ جدید فقط با تأیید شما نصب می‌شود. حالت خودکار تا پایان نوشتن یا ارسال پیام صبر می‌کند.': 'In “With my approval” mode, a new version only installs when you approve it. Automatic mode waits until you finish typing or sending.',
     'به‌روزرسانی سرور به این نسخه کامل شد. نسخهٔ این دستگاه را هم بررسی کنید.': 'The server finished updating to this version. Check this device too.',
     'سرور آخرین نسخه را دارد.': 'The server has the latest version.',
     'تماس یا ویرایش پیام در جریان است؛ بعد از پایان آن دوباره دریافت نسخه را بزنید.': 'A call or a message edit is in progress. Get the new version again after it ends.',
@@ -804,7 +834,6 @@
     'غیرفعال': 'Disabled',
     'غیرفعال شود؟ همهٔ نشست‌های آن بسته می‌شود.': 'be disabled? All its sessions are closed.',
     'غیرفعال‌کردن': 'Disable',
-    'غیرفعال‌کردن حساب': 'Disable account',
     'غیرفعال‌کردن رمزساز': 'Turn off authenticator',
     'غیرفعال‌کردن، دسترسی و نشست‌ها را می‌بندد؛ پیام‌ها حذف نمی‌شوند. فعال‌کردن دوباره به ورود تازه نیاز دارد.': 'Disabling closes access and sessions; messages are not deleted. Enabling again requires signing in again.',
     'فایل این پیام معتبر نیست.': 'This message\'s file is invalid.',
@@ -826,7 +855,6 @@
     'فعال‌کردن اعلان': 'Turn on notifications',
     'فعال‌کردن اعلان انجام نشد.': 'Could not turn on notifications.',
     'فعال‌کردن پیدا شدن بین سرورها': 'Turn on finding across servers',
-    'فعال‌کردن حساب': 'Enable account',
     'فعال‌کردن و دریافت کدهای بازیابی': 'Turn on and get recovery codes',
     'فعلاً نه': 'Not now',
     'فقط آدرس اصلی HTTPS همین پیام‌رسان را بدون مسیر وارد کنید.': 'Enter only this messenger\'s main HTTPS address, with no path.',
@@ -881,7 +909,6 @@
     'کانال‌های ربات که برداشته‌اید': 'Bot channels you removed',
     'کانال‌های عمومی': 'Public channels',
     'کانال‌های من': 'My channels',
-    'کانالی پیدا نشد.': 'No channels found.',
     'کپی کدها': 'Copy codes',
     'کپی لینک': 'Copy link',
     'کپی لینک کانال': 'Copy channel link',
@@ -1063,8 +1090,6 @@
     'نام کاربری فقط می‌تواند شامل حروف انگلیسی، اعداد و خط زیر (_) باشد.': 'A username can only have English letters, digits and underscores.',
     'نام کاربری مخاطب مورد نظر را جستجو کنید...': 'Search for a contact\'s username...',
     'نام کاربری یا رمز عبور اشتباه است.': 'Wrong username or password.',
-    'نام کانال': 'Channel name',
-    'نام گروه': 'Group name',
     'نام گفتگو': 'Chat name',
     'نام نمایشی': 'Display name',
     'نام نمایشی باید بین ۱ تا ۱۰۰ کاراکتر باشد.': 'A display name must be 1 to 100 characters.',
@@ -1248,9 +1273,6 @@
     'خاموش': 'Off',
     'ویرایش کانال': 'Edit channel',
     'نام، عکس، توضیح و نوع کانال': 'Name, photo, description and type',
-    'گزارش کانال': 'Report channel',
-    'حذف کانال': 'Delete channel',
-    'خروج از کانال': 'Leave channel',
     'از کانال خارج می‌شوید؟': 'Leave this channel?',
     'این کانال و همهٔ پست‌ها و فایل‌هایش برای همیشه حذف شود؟': 'Delete this channel and all its posts and files forever?',
     'برداشتن مدیریت': 'Remove admin',
@@ -1308,11 +1330,52 @@
   const WORDS = new RegExp('(?<![\\u0600-\\u06ff\\u200c])(?:' + keys.map(escape).join('|') + ')(?![\\u0600-\\u06ff\\u200c])', 'g');
   const DIGITS = '۰۱۲۳۴۵۶۷۸۹';
   const tidy = text => text.replace(/[۰-۹]/g, digit => DIGITS.indexOf(digit)).replace(/٬/g, ',').replace(/،/g, ',').replace(/؛/g, ';').replace(/؟/g, '?').replace(/[«»]/g, '"').replace(/←/g, '→');
+
+  // Text the code builds from a value. Word by word it reads wrongly, as "2 Member" or "Save name Group".
+  const number = text => text.replace(/[۰-۹]/g, digit => DIGITS.indexOf(digit)).replace(/٬/g, ',');
+  const count = (text, one) => { const n = number(text); return n + ' ' + one + (n === '1' ? '' : 's'); };
+  const N = '([\\d۰-۹,٬]+)';
+  // always: also inside places that hold what people wrote, because the whole string is the app's own.
+  const PATTERNS = [
+    [new RegExp('^' + N + ' عضو · نقش شما: (.+)$'), (n, role) => count(n, 'member') + ' · Your role: ' + translate(role), true],
+    [new RegExp(N + ' پیام نخوانده'), (n, whole) => whole.replace(new RegExp(N + ' پیام نخوانده'), () => count(n, 'unread message')).replace(/،/g, ',')],
+    [new RegExp('^' + N + ' مشترک'), (n, whole) => whole.replace(new RegExp('^' + N + ' مشترک'), () => count(n, 'subscriber')), true],
+    [new RegExp('^· ' + N + ' عضو · ' + N + ' پیام$'), (m, p) => '· ' + count(m, 'member') + ' · ' + count(p, 'message')],
+    [new RegExp('^· ' + N + ' گزارش باز$'), n => '· ' + number(n) + ' open report' + (number(n) === '1' ? '' : 's')],
+    [new RegExp('^· ' + N + ' کد بازیابی باقی مانده$'), n => '· ' + count(n, 'recovery code') + ' left'],
+    [new RegExp('^' + N + ' پیام در صف محلی · ' + N + ' در صف سرور · ' + N + ' پیام منتظر تأیید$'), (a, b, c) => number(a) + ' queued here · ' + number(b) + ' queued on the server · ' + count(c, 'message') + ' awaiting approval'],
+    [/^(.+) در حال نوشتن$/, name => name + ' is typing'],
+    [/^مالکیت به «(.+)» منتقل شود؟ شما مدیر می‌مانید و دیگر نمی‌توانید مالک را حذف کنید\.$/, name => 'Transfer ownership to "' + name + '"? You stay an admin, and can no longer remove the owner.'],
+    [/^مالکیت به «(.+)» منتقل شود؟$/, name => 'Transfer ownership to "' + name + '"?'],
+    [/^«(.+)» از (گروه|کانال) حذف شود؟$/, (name, kind) => 'Remove "' + name + '" from the ' + (kind === 'کانال' ? 'channel' : 'group') + '?'],
+    [/^عضو کانال «(.+)» می‌شوید؟$/, name => 'Join the channel "' + name + '"?'],
+    [/^«(.+)» و همهٔ پیام‌ها و فایل‌هایش برای همیشه حذف شود؟$/, name => 'Delete "' + name + '" and all its messages and files forever?'],
+    [/^کلید «(.+)» حذف شود؟ ورود با رمز عبور همچنان ممکن است\.$/, name => 'Delete the key "' + name + '"? Signing in with a password still works.'],
+    [/^حساب @(.+) غیرفعال شود؟ همهٔ نشست‌های آن بسته می‌شود\.$/, name => 'Disable the account @' + name + '? All its sessions will close.'],
+    [/^سرور به نسخهٔ (.+) به‌روزرسانی شود؟$/, version => 'Update the server to version ' + version + '?'],
+    [/^نسخهٔ (.+) برای سرور آماده است\. به‌روزرسانی شود؟$/, version => 'Version ' + version + ' is ready for the server. Update it?'],
+    [/^نسخهٔ (.*) برای این دستگاه آماده است\. دریافت شود؟$/, version => 'Version ' + version + ' is ready for this device. Get it?'],
+    [/^در حال (.+)… حتی با بستن این صفحه، کار روی کلادفلر ادامه پیدا می‌کند\.$/, step => translate(step) + '… This continues on Cloudflare even if you close this page.'],
+    [/^تعلیق‌شده در (.+)$/, rest => 'Suspended on ' + rest],
+    [/^⌖ پیام سنجاق‌شده · (.*)$/s, text => '⌖ Pinned message · ' + (EN[text] || text), true],
+    [/^پاسخ به (.+)$/, name => 'Reply to ' + name, true],
+    [/^تأیید دعوت امن از (.+)$/, name => 'Approve the secure invitation from ' + name],
+    [/^(.+) · امن آزمایشی$/, name => name + ' · Secure (experimental)'],
+    [/^دریافت فایل (.+)$/, name => 'Download file ' + name],
+    [/^نمایش تصویر (.+)$/, name => 'View image ' + name],
+    [/^در حال ضبط پیام (صوتی|تصویری) · (.+)$/, (kind, time) => 'Recording a ' + (kind === 'صوتی' ? 'voice' : 'video') + ' message · ' + number(time)],
+    [/^پخش پیام (صوتی|تصویری) · (.+)$/, (kind, time) => 'Play the ' + (kind === 'صوتی' ? 'voice' : 'video') + ' message · ' + number(time)],
+  ];
   const seen = new Map();
   function translate(text, exactOnly = false) {
     if (!text || !FA.test(text)) return text;
     const trimmed = text.trim(), lead = text.slice(0, text.indexOf(trimmed)), tail = text.slice(text.indexOf(trimmed) + trimmed.length);
     if (Object.hasOwn(EN, trimmed)) return lead + EN[trimmed] + tail;
+    for (const [pattern, write, always] of PATTERNS) {
+      if (exactOnly && !always) continue;
+      const match = trimmed.match(pattern);
+      if (match) return lead + write(...match.slice(1), trimmed) + tail;
+    }
     if (exactOnly) return text;
     if (seen.has(text)) return seen.get(text);
     const result = tidy(text.replace(WORDS, match => EN[match]));

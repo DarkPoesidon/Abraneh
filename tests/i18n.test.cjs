@@ -42,3 +42,36 @@ test('signed-in people stay in Persian, and choosing English makes the page left
   assert.match(source, /root\.dir = 'ltr'/);
   assert.match(readFileSync('public/index.html', 'utf8'), /<script src="\/i18n\.js"><\/script>[\s\S]*<\/head>/, 'it must run before the page is drawn');
 });
+
+// Runs the real translator, with only what it needs from a page.
+function englishTranslator() {
+  const documentElement = { nodeType: 0 };
+  const window = { WihmI18n: {}, alert() {}, confirm() {}, prompt() {} };
+  const context = { window, localStorage: { getItem: key => key === 'wihm_language' ? 'en' : null, setItem() {} }, navigator: { languages: ['en'] }, location: { reload() {} }, document: { documentElement, addEventListener() {} }, MutationObserver: class { observe() {} }, Node: {}, NodeFilter: {}, console };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  return window.WihmI18n.translate;
+}
+test('text built from values reads as English, not word by word', () => {
+  const translate = englishTranslator();
+  const cases = {
+    '۲ عضو · نقش شما: مالک': '2 members · Your role: Owner',
+    '1 عضو · نقش شما: عضو': '1 member · Your role: Member',
+    'ذخیرهٔ نام گروه': 'Save group name',
+    'ذخیرهٔ نام کانال': 'Save channel name',
+    'نام گروه': 'Group name',
+    'خروج از کانال': 'Leave channel',
+    'تیم طراحی، ۳ پیام نخوانده': 'تیم طراحی, 3 unread messages',
+    '۱ پیام نخوانده': '1 unread message',
+    '۵ مشترک': '5 subscribers',
+    'sara در حال نوشتن': 'sara is typing',
+    'مالکیت به «سارا» منتقل شود؟': 'Transfer ownership to "سارا"?',
+    '«سارا» از گروه حذف شود؟': 'Remove "سارا" from the group?',
+    'سرور به نسخهٔ 1.7.14 به‌روزرسانی شود؟': 'Update the server to version 1.7.14?',
+    'پاسخ به سارا احمدی': 'Reply to سارا احمدی',
+    '⌖ پیام سنجاق‌شده · از گروه خارج شو': '⌖ Pinned message · از گروه خارج شو',
+    'دریافت فایل گزارش گروه.pdf': 'Download file گزارش گروه.pdf',
+    'ضبط پیام صوتی': 'Record a voice message',
+  };
+  for (const [fa, en] of Object.entries(cases)) assert.equal(translate(fa), en);
+});

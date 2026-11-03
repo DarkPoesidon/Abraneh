@@ -42,7 +42,7 @@ test('management endpoints require the owner and return bounded statistics witho
   assert.equal((await api(0,path,{user:null})).status,401);
   assert.equal((await api(0,path,{user:servers[0].member})).status,403);
  }
- const overview=await api(0,'/api/service/overview');assert.equal(overview.status,200);assert.equal(overview.data.counts.users,2);assert.equal(overview.data.version,'1.7.13');assert.equal(overview.data.backupAvailable,true);assert.equal(overview.data.encryption,'legacy-transport;experimental-mls');
+ const overview=await api(0,'/api/service/overview');assert.equal(overview.status,200);assert.equal(overview.data.counts.users,2);assert.equal(overview.data.version,'1.7.14');assert.equal(overview.data.backupAvailable,true);assert.equal(overview.data.encryption,'legacy-transport;experimental-mls');
  const listed=await api(0,'/api/service/users');assert.equal(listed.data.users.length,2);assert.ok(!JSON.stringify(listed.data).includes('password'));assert.ok(!JSON.stringify(listed.data).includes('salt'));
 });
 test('disabling a user immediately revokes existing REST and websocket access, blocks new logins and survives re-enabling old tokens',async()=>{

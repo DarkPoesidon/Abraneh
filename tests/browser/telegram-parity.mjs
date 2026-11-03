@@ -145,8 +145,8 @@ try {
   assert.ok(menuBox.width <= 250 && menuBox.y >= 0 && menuBox.y + menuBox.height <= 800, 'the menu floats on screen: ' + JSON.stringify(menuBox));
   await touch.mouse.click(5, 795); await touch.locator('#feature-modal.message-menu').waitFor({ state: 'detached' }).catch(() => {});
   await touch.waitForFunction(() => document.querySelector('#feature-modal').style.display === 'none');
-  const fresh2 = await received.boundingBox(), sx = fresh2.x + 30, sy = fresh2.y + fresh2.height / 2;
-  await fingers('touchStart', sx, sy); for (let step = 1; step <= 8; step++) await fingers('touchMove', sx + step * 12, sy); await fingers('touchEnd', sx + 96, sy);
+  const fresh2 = await received.boundingBox(), sx = fresh2.x + fresh2.width - 20, sy = fresh2.y + fresh2.height / 2;
+  await fingers('touchStart', sx, sy); for (let step = 1; step <= 8; step++) await fingers('touchMove', sx - step * 12, sy); await fingers('touchEnd', sx - 96, sy);
   await touch.locator('#composer-context:not([hidden])').waitFor();
   console.log('ok: long press and swipe to reply');
   await touchContext.close();
