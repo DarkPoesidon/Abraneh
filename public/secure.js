@@ -274,6 +274,10 @@ export async function createSecureClient({address,storage,request,lock=(_name,fn
       await request('/api/secure/blocks','POST',{address:thread.peer});
       for(const session of Object.values(state.sessions))if(session.peer===thread.peer)delete state.sessions[session.id];
       delete state.threads[threadId];state.pending=state.pending.filter(item=>item.envelope.from!==thread.peer);await save(state);});},
+    // Your own view of a chat: pinning and archiving stay on this device, and the server never learns them.
+    async setPrefs(threadId,prefs){return exclusive(async()=>{const state=await load(),thread=state.threads[threadId];if(!thread)fail('گفتگوی امن پیدا نشد.');for(const key of ['pinned','shelved'])if(key in prefs)thread[key]=!!prefs[key];await save(state);});},
+    // Removes this device's copy. Sessions stay, so a later message simply starts the chat again.
+    async forgetThread(threadId){return exclusive(async()=>{const state=await load();delete state.threads[threadId];await save(state);});},
     async contactCode(who){const state=await load();return safetyCode(contactKeys(state,who));},
     async verifyContact(who){return exclusive(async()=>{const state=await load();(state.verified||={})[who]=await safetyCode(contactKeys(state,who));await save(state);});},
     async acceptKeyChange(who){return exclusive(async()=>{const state=await load(),list=state.keyChanges?.[who];if(!list)fail('تغییری در انتظار نیست.');

@@ -44,7 +44,7 @@ try{
   // An offline send stays queued and goes out later.
   await a.route('**/api/secure/send',route=>route.abort());await a.locator('#message-input').fill('بدون اینترنت');await a.locator('#btn-send-message').click();await bubble(a,'بدون اینترنت').waitFor();await a.unroute('**/api/secure/send');
   // Details and settings.
-  await a.locator('#btn-chat-details').click();await a.locator('#secure-safety').click();const code=await a.locator('.secure-code').innerText();assert.match(code,/^\d{4}( \d{4}){5}$/);await a.locator('#secure-same').click();await a.locator('#btn-close-feature').waitFor();
+  await a.locator('#active-chat-title').click();await a.locator('#secure-safety').click();const code=await a.locator('.secure-code').innerText();assert.match(code,/^\d{4}( \d{4}){5}$/);await a.locator('#secure-same').click();await a.locator('#btn-close-feature').waitFor();
   for(const page of [a,b])assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no sideways scroll');
   await a.context().close();await b.context().close();results.push({width,passed:true});
  }
