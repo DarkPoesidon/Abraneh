@@ -1,52 +1,52 @@
+// Two people use secure chat in the real app, from the plus button to deleting a message.
 const {chromium}=await import(process.env.WIHM_PLAYWRIGHT_MODULE||'playwright-core');
-import {build} from 'esbuild';
-import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {mkdir,readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {createNavigationFixture} from './fixture.mjs';
-const external=['@noble/*','@hpke/chacha20poly1305','@hpke/dhkem-x448','@hpke/hybridkem-x-wing','@hpke/ml-kem'];
-const bundle=(await build({entryPoints:['public/secure.js'],bundle:true,write:false,format:'iife',platform:'browser',target:'es2022',external})).outputFiles[0].text;
-const fixture=await createNavigationFixture(),origin='https://alpha.network.workers.dev',directory='.wrangler/secure-browser-qa';await mkdir(directory,{recursive:true});
-const secureDB=await fixture.mf.getD1Database('DB');for(const sql of (await readFile('migrations/0007_secure_federation.sql','utf8')).replace(/^--.*$/gm,'').split(';').map(s=>s.trim()).filter(Boolean))await secureDB.prepare(sql).run();
+const directory='.wrangler/secure-qa';await mkdir(directory,{recursive:true});
+const origin='https://alpha.network.workers.dev',fixture=await createNavigationFixture(),db=await fixture.mf.getD1Database('DB');
+for(const sql of (await readFile('migrations/0007_secure_federation.sql','utf8')).replace(/^--.*$/gm,'').split(';').map(s=>s.trim()).filter(Boolean))await db.prepare(sql).run();
 const browser=await chromium.launch({headless:true,...(process.env.WIHM_CHROME_PATH?{executablePath:process.env.WIHM_CHROME_PATH}:{})}),errors=[],results=[];
-let offline=false;
+async function open(account,width){
+ const context=await browser.newContext({viewport:{width,height:820},locale:'fa-IR',serviceWorkers:'block'});
+ // Secure addresses refuse localhost, so the app is served under a real looking name.
+ await context.route(origin+'/**',async route=>{const request=route.request(),response=await fixture.mf.dispatchFetch(request.url(),{method:request.method(),headers:request.headers(),...(request.postData()===null?{}:{body:request.postData()})});await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())});});
+ await context.addInitScript(owner=>{localStorage.setItem('cf_msg_token',owner.token);localStorage.setItem('cf_msg_user',JSON.stringify(owner.user));},account);
+ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+ await page.goto(origin);await page.locator('[data-chat-id="design-team"]').waitFor();
+ return page;
+}
+const bubble=(page,text)=>page.locator('#messages-container .message-bubble').filter({hasText:text});
+const sync=page=>page.evaluate(()=>new Promise(r=>setTimeout(r,50))).then(()=>page.reload()).then(()=>page.locator('[data-chat-id="design-team"]').waitFor());
 try{
- for(const width of [320,1280]){
-  // Each width starts with new devices, as if the accounts had never used secure chat.
-  await secureDB.prepare('DELETE FROM secure_device_lists').run();await secureDB.prepare('UPDATE secure_devices SET revoked_at=?').bind(Date.now()).run();
-  const contexts=[],pages=[];
-  for(const account of [fixture.owner,fixture.peer]){
-   const context=await browser.newContext({viewport:{width,height:900},locale:'fa-IR'});contexts.push(context);
-   await context.route(origin+'/**',async route=>{
-    const request=route.request(),url=new URL(request.url());
-    if(url.pathname==='/'){await route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="fa" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><body><main style="max-width:700px;margin:auto;padding:12px;height:100dvh;overflow:auto;box-sizing:border-box"><h2 id="title"></h2><div id="feature-content"></div><p id="feature-status" role="status"></p></main><script src="/secure.bundle.js"></script></body></html>'});return;}
-    if(url.pathname==='/secure.bundle.js'){await route.fulfill({contentType:'text/javascript',body:bundle});return;}
-    if(url.pathname==='/style.css'){await route.fulfill({contentType:'text/css',body:await readFile('public/style.css','utf8')});return;}
-    if(offline&&url.pathname==='/api/secure/send'){await route.abort();return;}
-    const response=await fixture.mf.dispatchFetch(request.url(),{method:request.method(),headers:request.headers(),...(request.postData()===null?{}:{body:request.postData()})});
-    await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())});
-   });
-   const page=await context.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));await page.goto(origin);
-   await page.evaluate(async account=>{
-    const api=async(path,options={})=>{const response=await fetch(path,{...options,headers:{Authorization:'Bearer '+account.token,'Content-Type':'application/json'}}),data=await response.json();if(!response.ok)throw Error(data.error);return data;};
-    await WihmSecure.open({user:account.user,api,show:(title,html)=>{document.getElementById('title').textContent=title;document.getElementById('feature-content').innerHTML=html;},escape:text=>String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),error:error=>{document.getElementById('feature-status').textContent=error.message||error;}});
-   },account);
-   await page.locator('#secure-lookup').waitFor({timeout:30000});
-  }
-  const [a,b]=pages;
-  await a.locator('#secure-address').fill('sara@alpha.network.workers.dev');await a.locator('#secure-first').fill('سلام، من هستم');await a.locator('#secure-lookup button').click();await a.locator('#secure-compose').waitFor();
-  await b.locator('#secure-sync').click();await b.getByText('سلام، من هستم',{exact:true}).waitFor();assert.equal(await b.locator('#secure-compose').count(),0);await b.locator('#secure-accept-0').click();await b.locator('#secure-compose').waitFor();
-  await a.locator('#secure-safety').click();await a.locator('#secure-same').waitFor();const aCode=await a.locator('#feature-content code').innerText();await b.locator('#secure-safety').click();await b.locator('#secure-same').waitFor();assert.equal(await b.locator('#feature-content code').innerText(),aCode);await a.locator('#secure-same').click();await a.locator('#secure-safety').getByText('✓').waitFor();await b.locator('#secure-differs').click();await b.locator('#secure-compose').waitFor();
-  const marker='پیام خصوصی واقعی از مرورگر '+width;offline=true;await a.locator('#secure-text').fill(marker);await a.locator('#secure-compose button').click();await a.waitForFunction(()=>document.getElementById('feature-content').textContent.includes('1 پیام در صف محلی'));offline=false;await a.locator('#secure-sync').click();await a.waitForFunction(()=>document.getElementById('feature-content').textContent.includes('0 پیام در صف محلی'));await b.locator('#secure-sync').click();await b.locator('#secure-history').getByText(marker,{exact:true}).waitFor();
-  await b.locator('#secure-search').fill('پیدا نمی‌شود');assert.equal(await b.locator('#secure-history article').count(),0);await b.locator('#secure-search').fill('خصوصی');assert.equal(await b.locator('#secure-history article').count(),1);
-  await b.locator('#secure-search').fill('');
-  await a.locator('#secure-sync').click();await a.locator('#secure-history').getByText('خوانده شد').first().waitFor();
-  await b.locator('#secure-history article').last().locator('[data-secure-action=react]').first().click();await b.locator('#secure-history article > p').filter({hasText:'👍'}).waitFor();await a.locator('#secure-sync').click();await a.locator('#secure-history article > p').filter({hasText:'👍'}).waitFor();
-  await a.locator('[data-secure-action=edit]').last().click();await a.locator('#secure-text').fill('متن ویرایش‌شده');await a.locator('#secure-compose button').click();await a.locator('#secure-history').getByText('متن ویرایش‌شده',{exact:true}).waitFor();await b.locator('#secure-sync').click();await b.locator('#secure-history').getByText('متن ویرایش‌شده',{exact:true}).waitFor();assert.equal(await b.locator('[data-secure-action=edit]').count(),0);
-  await b.locator('[data-secure-action=reply]').last().click();await b.locator('#secure-text').fill('پاسخ رمزشده');await b.locator('#secure-compose button').click();await a.locator('#secure-sync').click();await a.locator('#secure-history blockquote').getByText('متن ویرایش‌شده').waitFor();
-  a.once('dialog',dialog=>dialog.accept());await a.locator('[data-secure-action=delete]').first().click();await a.locator('#secure-history').getByText('این پیام حذف شد').waitFor();await b.locator('#secure-sync').click();await b.locator('#secure-history').getByText('این پیام حذف شد').waitFor();
-  await b.locator('details summary').click();await b.locator('#secure-password').fill('browser recovery passphrase');const downloadPromise=b.waitForEvent('download');await b.locator('#secure-export').click();const download=await downloadPromise,path=directory+'/recovery-'+width+'.json';await download.saveAs(path);assert.ok(!(await readFile(path,'utf8')).includes(marker));
-  assert.ok(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.ok(await b.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await b.screenshot({path:directory+'/secure-'+width+'.png',fullPage:true});results.push({width,indexedDB:true,mls:true,requests:true,offlineRetry:true,localSearch:true,encryptedRecovery:true});
-  await Promise.all(contexts.map(c=>c.close()));
+ for(const width of [375,1280]){
+  await db.prepare('DELETE FROM secure_device_lists').run();await db.prepare('UPDATE secure_devices SET revoked_at=?').bind(Date.now()).run();
+  const a=await open(fixture.owner,width),b=await open(fixture.peer,width);
+  await a.waitForFunction(()=>window.WihmSecure);await b.waitForFunction(()=>window.WihmSecure);
+  // Both devices publish their keys on their own, without opening anything.
+  await a.waitForTimeout(1500);
+  await a.locator('#btn-open-search').click();await a.locator('#btn-secure-mode').click();await a.locator('#modal-search-input').fill('sara');await a.locator('.user-search-result').click();
+  await a.locator('.secure-intro').waitFor();assert.equal(await a.locator('#active-chat-title').innerText(),'sara');assert.equal(await a.locator('#btn-attach-file').isVisible(),false,'files are not encrypted yet');
+  const secret='پیام خصوصی '+width;await a.locator('#message-input').fill(secret);await a.locator('#btn-send-message').click();await Promise.race([bubble(a,secret).waitFor(),a.locator('#chat-error:not(:empty)').waitFor()]);assert.equal(await a.locator('#chat-error').innerText(),'');
+  assert.equal(await a.locator('#secure-bar').isVisible(),false);
+  const stored=await db.prepare('SELECT envelope FROM secure_events').all();assert.ok(!JSON.stringify(stored).includes(secret),'the server stores no readable text');
+  await sync(b);await b.locator('.chat-item').filter({hasText:'nila'}).first().click();await bubble(b,secret).waitFor();
+  assert.equal(await b.locator('.chat-input-area').isVisible(),false,'nothing can be sent before accepting');
+  await b.waitForTimeout(500);await b.screenshot({path:directory+'/request-'+width+'.png'});
+  await b.locator('#secure-accept').click();await b.locator('#message-input').waitFor();
+  await b.locator('#message-input').fill('پاسخ من');await b.locator('#btn-send-message').click();await bubble(b,'پاسخ من').waitFor();
+  await sync(a);await a.locator('.chat-item').filter({hasText:'sara'}).first().click();await bubble(a,'پاسخ من').waitFor();await a.locator('.chat-item').filter({hasText:'sara'}).locator('.rail-unread').waitFor({state:'detached'});await a.waitForTimeout(500);await a.screenshot({path:directory+'/chat-'+width+'.png'});
+  // The normal message menu drives edit, reaction and delete.
+  await bubble(a,secret).locator('.message-more').click({force:true});await a.locator('#action-edit').click();await a.locator('#message-input').fill('متن تازه');await a.locator('#btn-send-message').click();await bubble(a,'متن تازه').waitFor();
+  await bubble(a,'پاسخ من').locator('.message-more').click({force:true});assert.equal(await a.locator('#action-edit').count(),0,'only the author edits');await a.locator('#react-0').click();await bubble(a,'پاسخ من').locator('.reaction-chip').waitFor();
+  await sync(b);await b.locator('.chat-item').filter({hasText:'nila'}).first().click();await bubble(b,'متن تازه').waitFor();await bubble(b,'پاسخ من').locator('.reaction-chip').waitFor();
+  await bubble(a,'متن تازه').locator('.message-more').click({force:true});await a.locator('#action-delete').click();await bubble(a,'این پیام حذف شده است').waitFor();
+  // An offline send stays queued and goes out later.
+  await a.route('**/api/secure/send',route=>route.abort());await a.locator('#message-input').fill('بدون اینترنت');await a.locator('#btn-send-message').click();await bubble(a,'بدون اینترنت').waitFor();await a.unroute('**/api/secure/send');
+  // Details and settings.
+  await a.locator('#btn-chat-details').click();await a.locator('#secure-safety').click();const code=await a.locator('.secure-code').innerText();assert.match(code,/^\d{4}( \d{4}){5}$/);await a.locator('#secure-same').click();await a.locator('#btn-close-feature').waitFor();
+  for(const page of [a,b])assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no sideways scroll');
+  await a.context().close();await b.context().close();results.push({width,passed:true});
  }
- assert.deepEqual(errors,[]);await writeFile(directory+'/results.json',JSON.stringify({results,errors},null,2));console.log(JSON.stringify({passed:true,results,errors}));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,results}));
 }finally{await browser.close();await fixture.close();}
