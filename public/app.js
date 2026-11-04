@@ -15,6 +15,12 @@
       renderFilteredChats();await window.WihmSecure.refresh?.();
     }catch(e){console.warn('Secure sync:',e.message);}})();secureRequest=task;try{await task;}finally{if(secureRequest===task)secureRequest=null;}
   }
+  // A person on this server is addressed by name, like someone on another server.
+  async function startSecureWith(username){
+    if(!confirm('گفتگوی امن با @'+username+' شروع شود؟'))return;
+    const {address}=await api('/api/secure/identity');
+    await openSecure(username+'@'+address.split('@')[1]);
+  }
   async function openSecure(initialAddress='',threadId=''){
     if(!currentUser)return;
     const session=token;
@@ -110,6 +116,7 @@
   const searchResultsList = document.getElementById('search-results-list');
   const searchModalTitle = document.getElementById('search-modal-title');
   const btnGroupMode = document.getElementById('btn-group-mode');
+  const btnSecureMode = document.getElementById('btn-secure-mode');
   const groupTitleInput = document.getElementById('group-title-input');
   const btnSaveGroup = document.getElementById('btn-save-group');
   const selectedMembersText = document.getElementById('selected-members');
@@ -1109,7 +1116,9 @@
     groupTitleInput.hidden = mode !== 'group';
     btnGroupMode.hidden = mode === 'members';
     btnGroupMode.textContent = mode === 'group' ? 'گفتگوی خصوصی' : 'ساخت گروه';
-    searchModalTitle.textContent = mode === 'members' ? 'افزودن عضو به گروه' : mode === 'group' ? 'ساخت گروه جدید' : 'شروع گفتگوی جدید';
+    btnSecureMode.hidden = mode === 'members';
+    btnSecureMode.textContent = mode === 'secure' ? 'گفتگوی خصوصی' : 'گفتگوی امن جدید';
+    searchModalTitle.textContent = mode === 'members' ? 'افزودن عضو به گروه' : mode === 'group' ? 'ساخت گروه جدید' : mode === 'secure' ? 'گفتگوی امن جدید' : 'شروع گفتگوی جدید';
     updateMemberSelection();
     searchResultsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 12px;">نام کاربری مخاطب مورد نظر را جستجو کنید...</div>';
     modalSearchInput.focus();
@@ -1117,6 +1126,7 @@
 
   btnOpenSearch.addEventListener('click', () => openSearch());
   btnGroupMode.addEventListener('click', () => openSearch(searchMode === 'group' ? 'dm' : 'group'));
+  btnSecureMode.addEventListener('click', () => openSearch(searchMode === 'secure' ? 'dm' : 'secure'));
   btnAddMembers.addEventListener('click', async () => {
     if (activeChat?.type !== 'group') return;
     const chatId = activeChat.id;
@@ -1150,7 +1160,7 @@
 
     searchDebounce = setTimeout(async () => {
       try {
-        if(searchMode==='dm'&&q.includes('@')&&q.replace(/^@/,'').includes('@')){
+        if((searchMode==='dm'||searchMode==='secure')&&q.includes('@')&&q.replace(/^@/,'').includes('@')){
           const remote=await post('/api/network/lookup',{address:q});
           if(version!==searchVersion)return;
           searchResultsList.innerHTML=`<button type="button" id="remote-start-chat" class="settings-row"><span>${escapeHtml(remote.displayName)}<small dir="ltr">${escapeHtml(remote.address)}</small></span><span>گفتگو</span></button>`;
@@ -1184,10 +1194,15 @@
             <div style="font-size: 0.75rem; color: var(--text-secondary);">@${escapeHtml(user.username)}</div>
           </div>
         </div>
-        <button type="button" class="install-btn" style="font-size: 0.8rem; padding: 4px 10px;">${searchMode === 'dm' ? 'گفتگو' : existingMembers.has(user.id) ? 'عضو گروه' : selectedMembers.has(user.id) ? 'انتخاب شد ✓' : 'انتخاب'}</button>
+        <button type="button" class="install-btn" style="font-size: 0.8rem; padding: 4px 10px;">${searchMode === 'dm' ? 'گفتگو' : searchMode === 'secure' ? 'گفتگوی امن' : existingMembers.has(user.id) ? 'عضو گروه' : selectedMembers.has(user.id) ? 'انتخاب شد ✓' : 'انتخاب'}</button>
       `;
 
       row.addEventListener('click', async () => {
+        if (searchMode === 'secure') {
+          searchModal.style.display = 'none';
+          try { await startSecureWith(user.username); } catch (err) { alert(err.message); }
+          return;
+        }
         if (searchMode !== 'dm') {
           if (existingMembers.has(user.id)) return;
           if (selectedMembers.has(user.id)) selectedMembers.delete(user.id);
@@ -1217,7 +1232,7 @@
   }
 
   function updateMemberSelection() {
-    btnSaveGroup.hidden = searchMode === 'dm';
+    btnSaveGroup.hidden = searchMode === 'dm' || searchMode === 'secure';
     btnSaveGroup.disabled = selectedMembers.size === 0;
     btnSaveGroup.textContent = `${searchMode === 'members' ? 'افزودن اعضا' : 'ساخت گروه'} (${selectedMembers.size})`;
     selectedMembersText.textContent = [...selectedMembers.values()].map(user => user.displayName || user.username).join('، ');
@@ -1858,7 +1873,7 @@
     if(channel)return channelInfo(chat,details);
     const blocks=group?[]:await api('/api/blocks'),ownBlock=blocks.some(row=>row.id===chat.partnerId);
     showFeature(chat.title,`<div class="channel-profile">${group&&manage?photoPicker('group-photo',details.avatar):`<div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chatId)}">${avatarHtml(group?details.avatar:chat.avatar,chat.title)}</div>`}<h4>${escapeHtml(chat.title)}</h4>${group?`<p class="session-help">${Number(details.memberCount||details.members.length).toLocaleString('fa-IR')} عضو · نقش شما: ${memberRole(details.role)}</p>`:''}${group&&manage?`<button id="group-photo-remove" class="quiet-button" type="button" ${details.avatar?'':'hidden'}>حذف عکس</button>`:''}</div><div class="settings-list"><button id="pref-mute" class="settings-row" type="button"><span><strong>اعلان‌ها</strong><small>${chat.muted?'خاموش':'روشن'}</small></span></button><button id="pref-pin" class="settings-row" type="button"><span><strong>${chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو'}</strong></span></button><button id="pref-archive" class="settings-row" type="button"><span><strong>${chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'}</strong></span></button>${group&&manage?'<button id="group-add-members" class="settings-row" type="button"><span><strong>افزودن عضو</strong></span></button><button id="group-invites" class="settings-row" type="button"><span><strong>لینک‌های دعوت</strong></span></button>':''}</div>
-      ${group?`${manage?`<form id="rename-form" class="feature-form"><label>نام ${noun}<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام ${noun}</button></form>`:''}<section class="feature-section"><h4>${channel?(manage?'مشترکان':'مدیران'):'اعضا'}</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${memberRole(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><div class="button-row"><button id="leave-group" class="quiet-button danger-text">خروج از ${noun}</button>${!manage?`<button id="report-chat" class="quiet-button danger-text" type="button">گزارش ${noun}</button>`:''}${owner?`<button id="delete-chat" class="quiet-button danger-text" type="button">حذف ${noun}</button>`:''}</div><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row"><button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button><button id="delete-dm" class="quiet-button danger-text" type="button">حذف گفتگو</button></div></div>`}`);
+      ${group?`${manage?`<form id="rename-form" class="feature-form"><label>نام ${noun}<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام ${noun}</button></form>`:''}<section class="feature-section"><h4>${channel?(manage?'مشترکان':'مدیران'):'اعضا'}</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${memberRole(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><div class="button-row"><button id="leave-group" class="quiet-button danger-text">خروج از ${noun}</button>${!manage?`<button id="report-chat" class="quiet-button danger-text" type="button">گزارش ${noun}</button>`:''}${owner?`<button id="delete-chat" class="quiet-button danger-text" type="button">حذف ${noun}</button>`:''}</div><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row">${chat.partnerUsername?'<button id="secure-user" class="quiet-button">شروع گفتگوی امن</button>':''}<button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button><button id="delete-dm" class="quiet-button danger-text" type="button">حذف گفتگو</button></div></div>`}`);
     decorateRows();
     for(const [id,key] of [['pref-archive','archived'],['pref-mute','muted'],['pref-pin','pinned']]) bind(id,async()=>{await patch(`/api/chats/${chatId}/preferences`,{[key]:!chat[key]});await loadChats(true);await detailsView(chatId);});
     if(group) {
@@ -1873,6 +1888,7 @@
       });
       bind('leave-group',async()=>{if(!confirm(`از ${noun} خارج می‌شوید؟ دسترسی شما به تاریخچهٔ آن هم قطع می‌شود.`))return;await post(`/api/chats/${chatId}/leave`);denyChat(chatId);activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='flex';sidebar.classList.remove('hidden');closeFeature();await loadChats(true);});
     } else {
+      bind('secure-user',()=>startSecureWith(chat.partnerUsername));
       bind('block-user',async()=>{if(!ownBlock&&!confirm('پیام خصوصی با این مخاطب مسدود شود؟'))return;await api('/api/blocks',{method:ownBlock?'DELETE':'POST',body:JSON.stringify({userId:chat.partnerId})});if(ownBlock){deniedChats.delete(chatId);connectWebSocket(chatId);}else denyChat(chatId);await loadChats(true);await detailsView(chatId);});
       bind('report-user',()=>reportForm(chat.partnerId));
       bind('delete-dm',()=>deleteChatForm(chat));

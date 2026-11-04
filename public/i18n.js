@@ -106,6 +106,10 @@
     'ارتباط مستقیم برقرار نشد؛ شبکهٔ محدود ممکن است به سرور TURN نیاز داشته باشد.': 'A direct connection failed; a restricted network may need a TURN server.',
     'ارتباط موقتاً قطع است؛ دوباره تلاش کنید.': 'Temporarily disconnected; try again.',
     'ارسال': 'Send',
+    'گفتگوی امن جدید': 'New secure chat',
+    'شروع گفتگوی امن': 'Start secure chat',
+    'گفتگوی امن با @': 'Start a secure chat with @',
+    'شروع شود؟': '?',
     'گفتگوی امن': 'Secure chat',
     'پیام‌ها فقط روی دستگاه شما و مخاطب باز می‌شوند. این بخش آزمایشی است و ممیزی مستقل نشده است.': 'Messages open only on your devices and your contact\'s. This is experimental and has no independent audit.',
     'این کد را با کدی که روی دستگاه قبلی‌تان در «هویت این دستگاه» نوشته شده مقایسه کنید.': 'Compare this code with the one under "Device identity" on your earlier device.',
@@ -1416,6 +1420,7 @@
   const N = '([\\d۰-۹,٬]+)';
   // always: also inside places that hold what people wrote, because the whole string is the app's own.
   const PATTERNS = [
+    [/^گفتگوی امن با @(\S+) شروع شود؟$/, who => 'Start a secure chat with @' + who + '?', true],
     [/^کد امنیتی (\S+) عوض شده است\. (.+)$/, who => 'The security code of ' + who + ' changed. They may have reinstalled the app. If you are unsure, ask them another way.', true],
     [/^مخاطب (\S+) دستگاه تازه‌ای به حساب خود افزوده است\.$/, who => 'Contact ' + who + ' added a new device to their account.', true],
     [new RegExp('^' + N + ' عضو · نقش شما: (.+)$'), (n, role) => count(n, 'member') + ' · Your role: ' + translate(role), true],
