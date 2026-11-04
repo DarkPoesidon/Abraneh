@@ -1532,3 +1532,12 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .secure-bar .button-row > * { flex:1; }
 .secure-bar[hidden] { display:none; }
 .secure-code { display:block; font-size:1.15rem; text-align:center; overflow-wrap:anywhere; padding:12px 0; }
+
+/* Telegram's profile layout. */
+.profile-actions { display:flex; gap:8px; margin:0 0 12px; }
+.profile-action { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 4px; border:0; border-radius:12px; background:var(--bg-tertiary,rgb(255 255 255 / .06)); color:var(--text-primary); font:inherit; font-size:.8rem; cursor:pointer; }
+.profile-action:hover { background:var(--hover-bg,rgb(255 255 255 / .1)); }
+.profile-card { display:flex; flex-direction:column; gap:2px; padding:12px 16px; margin-bottom:12px; border-radius:12px; background:var(--bg-tertiary,rgb(255 255 255 / .06)); }
+.profile-card small { color:var(--text-secondary); }
+.profile-rows { padding:4px; gap:0; }
+.chat-header-title, #chat-header-avatar { cursor:pointer; }

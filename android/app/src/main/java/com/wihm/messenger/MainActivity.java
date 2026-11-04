@@ -836,6 +836,7 @@ public class MainActivity extends AppCompatActivity {
             public void handleOnBackPressed() {
                 // Query webview to see if a modal is open or active chat is open
                 String checkJs = "(function() {" +
+                        "  if (window.wihmBack) return window.wihmBack() ? 'modal_closed' : 'none';" +
                         "  const modals = document.querySelectorAll('.modal-overlay');" +
                         "  for (const m of modals) {" +
                         "    if (m.style.display !== 'none' && !m.hidden) {" +
@@ -851,17 +852,12 @@ public class MainActivity extends AppCompatActivity {
                         "  return 'none';" +
                         "})();";
 
-                webView.evaluateJavascript(checkJs, value -> {
+                webView.evaluateJavascript("window.wihmNativeBack=true;" + checkJs, value -> {
                     if ("\"modal_closed\"".equals(value) || "\"chat_closed\"".equals(value)) {
                         // Handled inside page
                         return;
                     }
-                    if (webView.canGoBack()) {
-                        webView.goBack();
-                    } else {
-                        // Double tap or minimize
-                        moveTaskToBack(true);
-                    }
+                    moveTaskToBack(true);
                 });
             }
         });

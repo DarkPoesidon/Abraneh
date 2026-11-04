@@ -74,7 +74,7 @@ try {
       await page.locator('[data-chat-id="design-team"]').click();
       assert.equal(await page.locator('#message-input').inputValue(), 'پیش‌نویس موبایل');
       await screenshot(page, `chat-${width}`);
-      await page.locator('#btn-chat-details').click(); await page.locator('#group-add-members').waitFor();
+      await page.locator('#active-chat-title').click(); await page.locator('#group-add-members').waitFor();
       await page.locator('#group-add-members').click(); await page.locator('#search-modal').waitFor({ state: 'visible' });
       assert.ok((await page.locator('#search-modal-title').textContent()).includes('افزودن عضو'));
       await page.locator('#btn-close-modal').click();

@@ -65,7 +65,7 @@ try {
   assert.equal(await peer.locator('.message-sender').count(), 0, 'posts show no author');
   await peer.waitForFunction(() => /مشترک/.test(document.querySelector('#status-text').textContent));
   assert.equal(await owner.locator('.message-bubble.sent').count(), 0, 'posts sit on one side, even for the owner');
-  await owner.locator('#btn-chat-details').click(); await owner.locator('#channel-edit').waitFor(); await shot(owner, 'channel-info');
+  await owner.locator('#active-chat-title').click(); await owner.locator('#channel-edit').waitFor(); await shot(owner, 'channel-info');
   await owner.locator('#channel-edit').click(); await owner.locator('#edit-channel-description').fill('خبرهای تازه'); await shot(owner, 'channel-edit');
   await owner.locator('#channel-edit-form button[type=submit]').click(); await owner.locator('.channel-about', { hasText: 'خبرهای تازه' }).waitFor();
   await owner.locator('#feature-modal .icon-btn[aria-label*="بستن"], #btn-close-feature').first().click();
@@ -122,7 +122,7 @@ try {
   // Deleting a private chat from the list, for this side only.
   await owner.reload(); await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').waitFor();
   await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').click({ button: 'right' });
-  await owner.locator('#delete-for-everyone').waitFor(); await shot(owner, 'delete-chat');
+  await owner.locator('#menu-delete').click(); await owner.locator('#delete-for-everyone').waitFor(); await shot(owner, 'delete-chat');
   await owner.locator('#delete-chat-form button[type=submit]').click();
   await owner.locator('.chat-item[data-chat-id="fixture-chat-0"]').waitFor({ state: 'detached' });
   await owner.reload(); await owner.locator('.chat-item').first().waitFor();

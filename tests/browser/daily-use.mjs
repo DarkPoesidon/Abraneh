@@ -63,11 +63,11 @@ try {
   await page.locator('#registration-invites').click();await page.locator('#invite-form button').click();await page.locator('#invite-link').waitFor({state:'visible'});assert.ok((await page.locator('#invite-link').inputValue()).includes('#register='));
   await page.locator('#btn-close-feature').click();
   console.log('Stage: group picker');await page.locator('#btn-open-search').click();await page.locator('#btn-group-mode').click();await page.locator('#group-title-input').fill('گروه دوستان');await page.locator('#modal-search-input').fill('sara');await page.locator('.user-search-result').waitFor();await page.locator('.user-search-result').click();console.log('Stage: save group');await page.locator('#btn-save-group').click();await page.locator('#active-chat-title').filter({hasText:'گروه دوستان'}).waitFor();
-  await page.locator('#btn-chat-details').click();await page.locator('#rename-title').fill('گروه روزمره');await page.locator('#rename-form button').click();await page.locator('#active-chat-title').filter({hasText:'گروه روزمره'}).waitFor();
+  await page.locator('#active-chat-title').click();await page.locator('#rename-title').fill('گروه روزمره');await page.locator('#rename-form button').click();await page.locator('#active-chat-title').filter({hasText:'گروه روزمره'}).waitFor();
   await page.locator('#group-invites').click();await page.locator('#invite-form button').click();await page.locator('#invite-link').waitFor({state:'visible'});assert.ok((await page.locator('#invite-link').inputValue()).includes('#join='));await page.locator('#btn-close-feature').click();
   await send(page,'سلام گروه؛ امکانات تازه آمادهٔ بررسی است.');
   for(const width of [320,375,414,768,1280]) {
-    await page.setViewportSize({width,height:860});if(width<=768&&!await page.locator('#sidebar').evaluate(el=>el.classList.contains('hidden')))await page.locator('.chat-item').filter({hasText:'گروه روزمره'}).click();await page.locator('#btn-chat-details').click();await page.locator('#rename-title').waitFor();
+    await page.setViewportSize({width,height:860});if(width<=768&&!await page.locator('#sidebar').evaluate(el=>el.classList.contains('hidden')))await page.locator('.chat-item').filter({hasText:'گروه روزمره'}).click();await page.locator('#active-chat-title').click();await page.locator('#rename-title').waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow '+width);
     await page.waitForTimeout(260);const box=await page.locator('.feature-card').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1,'modal width '+width);
     await page.screenshot({path:`.wrangler/phase2-qa/group-${width}.png`,animations:'disabled'});await page.locator('#btn-close-feature').click();

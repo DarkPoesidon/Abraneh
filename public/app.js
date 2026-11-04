@@ -10,7 +10,7 @@
   const secureTitle=peer=>peer.endsWith('@'+secureAddress.split('@')[1])?peer.split('@')[0]:peer;
   function listSecure(view){
     secureView=view;
-    secureItems=view.threads.map(t=>{const last=t.messages.at(-1);return {id:t.id,threadId:t.id,secure:true,type:'dm',peer:t.peer,title:secureTitle(t.peer),request:!!t.request,readOnly:!!t.archived,verified:!!t.verified,lastMessage:last&&{...last,text:last.deleted?'این پیام حذف شده است':last.text},updatedAt:last?.createdAt||0,unreadCount:t.request?1:t.messages.filter(m=>m.from!==secureAddress&&!m.read&&!m.deleted).length};});
+    secureItems=view.threads.map(t=>{const last=t.messages.at(-1);return {id:t.id,threadId:t.id,secure:true,type:'dm',peer:t.peer,title:secureTitle(t.peer),request:!!t.request,readOnly:!!t.archived,verified:!!t.verified,pinned:!!t.pinned,archived:!!t.shelved,lastMessage:last&&{...last,text:last.deleted?'این پیام حذف شده است':last.text},updatedAt:last?.createdAt||0,unreadCount:t.request?1:t.messages.filter(m=>m.from!==secureAddress&&!m.read&&!m.deleted).length};});
     if(activeChat?.secure){const fresh=secureItems.find(row=>row.id===activeChat.id);if(fresh)activeChat=fresh;paintSecure();}
     renderFilteredChats();
   }
@@ -39,7 +39,7 @@
     else if(pendingDevice)bar.innerHTML=`<p><bdi>${escapeHtml(chat.title)}</bdi> از دستگاه تازه‌ای پیام فرستاده است.</p><div class="button-row"><button id="secure-new-device" class="btn-primary" type="button">بررسی دستگاه</button></div>`;
     const act=(id,work)=>byId(id)?.addEventListener('click',async()=>{try{await work();await loadSecure(true);}catch(e){chatError.textContent=e.message;}});
     act('secure-accept',async()=>{await (await secureClient()).acceptRequest(chat.id);});
-    byId('secure-reject')?.addEventListener('click',async()=>{if(!confirm('این درخواست رد و فرستنده مسدود شود؟'))return;try{await (await secureClient()).rejectRequest(chat.id);closeSecureChat();await loadSecure(false);}catch(e){chatError.textContent=e.message;}});
+    byId('secure-reject')?.addEventListener('click',async()=>{if(!confirm('این درخواست رد و فرستنده مسدود شود؟'))return;try{await (await secureClient()).rejectRequest(chat.id);closeActiveChat();await loadSecure(false);}catch(e){chatError.textContent=e.message;}});
     act('secure-keychange',async()=>{await (await secureClient()).acceptKeyChange(chat.peer);});
     byId('secure-new-device')?.addEventListener('click',async()=>compareSecure('دستگاه تازهٔ مخاطب','این کد را با کد روی دستگاه تازهٔ مخاطب مقایسه کنید.',await window.WihmSecure.safetyCode([pendingDevice.senderKey]),async()=>{await (await secureClient()).trust(pendingDevice.from,pendingDevice.fromDevice,pendingDevice.senderKey,await window.WihmSecure.fingerprint(pendingDevice.senderKey));closeFeature();await loadSecure(true);}));
     applyChatMode(chat);
@@ -48,8 +48,7 @@
     messagesByChat[chat.id]=list;renderMessages(list,{keepPosition:true});
     if(thread&&!chat.request&&!chat.readOnly&&document.visibilityState!=='hidden'&&chat.unreadCount)secureClient().then(client=>client.markRead(chat.id)).then(()=>loadSecure(false)).catch(()=>{});
   }
-  function closeSecureChat(){activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='';sidebar.classList.remove('hidden');}
-  function openSecureChat(chat){
+    function openSecureChat(chat){
     activeChat=chat;openingChatId=null;cancelComposer();renderFilteredChats();typingBar.textContent='';chatError.textContent='';clearSelection();
     messageInput.value=drafts.get(chat.id)||'';syncComposer();btnFirstUnread.hidden=true;btnAddMembers.style.display='none';byId('btn-pinned-message').hidden=true;btnLoadOlder.hidden=true;
     if(window.innerWidth<=768)sidebar.classList.add('hidden');
@@ -93,10 +92,15 @@
     bind('secure-same',same);bind('secure-differs',()=>{byId('feature-status').textContent='تأیید نشد. اگر کد یکسان نیست، در این گفتگو چیز محرمانه‌ای ننویسید.';});
   }
   async function secureDetails(chat){
-    const profile=`<div class="channel-profile"><div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chat.peer)}">${avatarHtml(chat.avatar,chat.title)}</div><h4><bdi>${escapeHtml(chat.title)}</bdi></h4><p class="session-help" dir="ltr">${escapeHtml(chat.peer)}</p></div>`;
-    showFeature('گفتگوی امن',`${profile}<p class="session-help">پیام‌های این گفتگو روی دستگاه شما رمز می‌شوند و فقط دستگاه مخاطب آن‌ها را باز می‌کند. برای اطمینان کامل، کد امنیتی را با مخاطب مقایسه کنید. این بخش هنوز ممیزی مستقل نشده است و در نسخهٔ وب، صاحب سرور کد برنامه را در اختیار دارد.</p><div class="button-row">${chat.draft?'':`<button id="secure-safety" class="quiet-button" type="button">${chat.verified?'کد امنیتی بررسی شده ✓':'بررسی کد امنیتی'}</button>`}<button id="secure-block" class="quiet-button danger-text" type="button">مسدودکردن</button></div>`);
+    showFeature('گفتگوی امن',profileHtml(chat,{status:'رمزگذاری سرتاسری',address:chat.peer,actions:profileAction('profile-message',uiIcon('chats'),'پیام')+(chat.draft?'':profileAction('secure-safety',uiIcon('shield'),chat.verified?'کد بررسی شده ✓':'کد امنیتی')),
+      rows:(chat.draft?'':profileRow('secure-pin','pin',chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو')+profileRow('secure-archive','archive',chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'))+profileRow('secure-block','hide','مسدودکردن مخاطب',true)+(chat.draft?'':profileRow('secure-delete','trash','حذف گفتگو',true))})+'<p class="session-help">پیام‌های این گفتگو روی دستگاه شما رمز می‌شوند و فقط دستگاه مخاطب آن‌ها را باز می‌کند. برای اطمینان کامل، کد امنیتی را با مخاطب مقایسه کنید. این بخش هنوز ممیزی مستقل نشده است و در نسخهٔ وب، صاحب سرور کد برنامه را در اختیار دارد.</p>');
+    bind('profile-message',()=>{closeFeature();messageInput.focus?.();});
     bind('secure-safety',async()=>{const client=await secureClient();compareSecure('کد امنیتی','این کد را با کد روی دستگاه مخاطب مقایسه کنید، مثلاً حضوری یا در تماس. اگر یکسان باشد، کسی میان شما نیست.',await client.contactCode(chat.peer),async()=>{await client.verifyContact(chat.peer);await loadSecure(false);closeFeature();});});
+    const pref=async changes=>{await (await secureClient()).setPrefs(chat.id,changes);await loadSecure(false);await secureDetails(activeChat);};
+    bind('secure-pin',()=>pref({pinned:!chat.pinned}));
+    bind('secure-archive',()=>pref({shelved:!chat.archived}));
     bind('secure-block',async()=>{if(!confirm('این مخاطب مسدود شود؟ دیگر پیام امن او به شما نمی‌رسد.'))return;await api('/api/secure/blocks',{method:'POST',body:JSON.stringify({address:chat.peer})});closeFeature();});
+    bind('secure-delete',async()=>{if(!confirm('این گفتگو از این دستگاه پاک شود؟ پیام‌های روی دستگاه مخاطب پاک نمی‌شوند.'))return;await (await secureClient()).forgetThread(chat.id);closeActiveChat();closeFeature();await loadSecure(false);});
   }
   async function openSecure(){
     if(!currentUser)return;
@@ -483,7 +487,7 @@
 
   function renderFilteredChats() {
     const q = chatFilterInput.value.trim().toLowerCase();
-    renderChats([...chats,...(archivedView?[]:secureItems)].filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)));
+    renderChats([...chats,...secureItems].filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.updatedAt || 0) - (a.updatedAt || 0)));
   }
 
   function renderChats(list) {
@@ -515,8 +519,13 @@
       `;
 
       // Right click or a long press, as in Telegram.
-      item.addEventListener('contextmenu',event=>{if(chat.secure)return;event.preventDefault();(chat.type==='dm'?deleteChatForm(chat):detailsView(chat.id)).catch(featureError);});
-      item.addEventListener('click', () => {if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');if(!chat.secure)reportReceipt(chat.id);return;}return openChat(chat);});
+      // Right click or a long press opens the chat's menu, as in Telegram.
+      let pressTimer=0,pressed=false;
+      const openMenu=()=>{if(featureModal.classList?.contains('message-menu'))return;chatMenu(chat,item.getBoundingClientRect?.());};
+      item.addEventListener('contextmenu',event=>{event.preventDefault();openMenu();});
+      item.addEventListener('touchstart',()=>{pressed=false;pressTimer=setTimeout(()=>{pressed=true;navigator.vibrate?.(10);openMenu();},450);},{passive:true});
+      for(const name of ['touchmove','touchend','touchcancel'])item.addEventListener(name,()=>clearTimeout(pressTimer),{passive:true});
+      item.addEventListener('click', event => {if(pressed){pressed=false;event.preventDefault();return;}if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');if(!chat.secure)reportReceipt(chat.id);return;}return openChat(chat);});
       chatsList.appendChild(item);
     });
   }
@@ -594,9 +603,35 @@
     if (activeChat?.id === chat.id) reportReceipt(chat.id);
   }
 
-  btnBackToChats.addEventListener('click', () => {
-    sidebar.classList.remove('hidden');
-  });
+  // Leaving a chat really closes it, so its messages stop counting as read.
+  function closeActiveChat() {
+    if (activeChat && !activeChat.secure) disconnectWebSocket(!!calls?.active());
+    activeChat = null; openingChatId = null; cancelComposer(); clearSelection();
+    activeChatWrapper.style.display = 'none'; emptyState.style.display = 'flex'; sidebar.classList.remove('hidden');
+    renderFilteredChats();
+  }
+  btnBackToChats.addEventListener('click', closeActiveChat);
+  // The Android back key and browser back both come here. It closes the top layer and returns false when nothing is left, as in Telegram.
+  function wihmBack() {
+    const dialog = document.querySelector?.('dialog[open]');
+    if (dialog && !calls?.active()) { dialog.close(); return true; }
+    if (!mainMenu.hidden) { closeMainMenu(true); return true; }
+    if (selected.size) { clearSelection(); return true; }
+    if (featureModal.style.display === 'flex') {
+      const settingsBack = byId('btn-settings-back'), pageBack = featureContent.querySelector?.('[id$="-back"]:not([hidden])');
+      if (settingsBack && !settingsBack.hidden) settingsBack.click(); else if (pageBack) pageBack.click(); else closeFeature();
+      return true;
+    }
+    if (sessionsModal.style.display === 'flex') { byId('btn-close-sessions').click(); return true; }
+    if (searchModal.style.display === 'flex') { byId('btn-close-modal').click(); return true; }
+    if (activeChat) { closeActiveChat(); return true; }
+    if (archivedView) { setArchivedView(false); return true; }
+    if (chatFilterInput.value) { chatFilterInput.value = ''; renderFilteredChats(); return true; }
+    return false;
+  }
+  window.wihmBack = wihmBack;
+  // One extra history entry lets browser back reach the app first.
+  if (globalThis.history && !window.wihmNativeBack) { history.pushState?.({ wihm: true }, ''); window.addEventListener?.('popstate', () => { if (wihmBack()) history.pushState({ wihm: true }, ''); else history.back(); }); }
 
   // --- Load Messages History ---
   async function loadMessages(chatId, { older = false, catchUp = false } = {}) {
@@ -1394,7 +1429,7 @@
   function placeMessageMenu(rect) {
     featureModal.classList?.add('message-menu');
     const card=featureModal.querySelector?.('.feature-card');if(!card||!rect)return;
-    const box=card.getBoundingClientRect(),gap=8,edge=10;
+    const measured=card.getBoundingClientRect(),box={width:card.offsetWidth||measured.width,height:card.offsetHeight||measured.height},gap=8,edge=10;
     const top=rect.bottom+gap+box.height<=innerHeight-edge?rect.bottom+gap:Math.max(edge,rect.top-gap-box.height);
     // The menu opens from whichever side the message sits on, in any language.
     const left=Math.min(Math.max(edge,rect.left+rect.width/2>innerWidth/2?rect.right-box.width:rect.left),innerWidth-box.width-edge);
@@ -1661,7 +1696,7 @@
   }
   window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>applyAppearance(profile.theme,profile.font_size));
   byId('btn-settings').addEventListener('click',()=>{closeMainMenu();settings().catch(featureError);});
-  byId('btn-settings-back').addEventListener('click',()=>settings().catch(featureError));
+  byId('btn-settings-back').addEventListener('click',()=>{if(byId('btn-settings-back').hidden)closeFeature();else settings().catch(featureError);});
   async function editSettings(section='profile') {
     showFeature('تنظیمات','<p class="session-help">در حال دریافت…</p>'); const generation=featureGeneration;
     await loadProfile(); if(generation!==featureGeneration) return;
@@ -1943,13 +1978,51 @@
     button.hidden=!pin||!!hiddenMessages.get(chatId)?.has(pin);button.textContent=pin?`⌖ پیام سنجاق‌شده · ${msg?(msg.deletedAt?'پیام حذف شده':msg.text.slice(0,90)):'نمایش پیام'}`:'';
   }
   byId('btn-pinned-message').addEventListener('click',()=>{if(activeChat)jumpToMessage(activeChat.id,chatDetails.get(activeChat.id)?.pinnedMessageId).catch(error=>{chatError.textContent=error.message;});});
-  byId('btn-chat-details').addEventListener('click',()=>{if(activeChat)detailsView(activeChat.id).catch(featureError);});
+  byId('btn-chat-details').addEventListener('click',event=>{if(activeChat)chatMenu(activeChat,event.currentTarget.getBoundingClientRect?.());});
+  // Tapping the name or photo opens the profile, as in Telegram.
+  for(const part of [chatHeaderAvatar,activeChatTitle.parentElement])part?.addEventListener?.('click',()=>{if(activeChat)detailsView(activeChat.id).catch(featureError);});
   byId('btn-archive').addEventListener('click',()=>setArchivedView(!archivedView));
   byId('nav-chats').addEventListener('click',()=>{if(archivedView)setArchivedView(false);chatsList.scrollTop=0;});
   byId('nav-contacts').addEventListener('click',()=>openSearch('dm'));
   byId('nav-settings').addEventListener('click',()=>settings().catch(featureError));
   byId('nav-profile').addEventListener('click',()=>settings().then(()=>editSettings('profile')).catch(featureError));
   byId('btn-saved').addEventListener('click',()=>savedView().catch(featureError));
+  // The menu behind a long press on a chat and the three dots inside one.
+  function chatMenu(chat,rect) {
+    const row=(id,icon,label,danger)=>`<button id="${id}" class="menu-row${danger?' danger-text':''}" type="button">${uiIcon(icon)}<span>${label}</span></button>`,inside=activeChat?.id===chat.id;
+    const secure=!!chat.secure,dm=chat.type==='dm'&&!secure,group=chat.type==='group'&&!chat.isChannel;
+    showFeature(chat.title,`<div class="action-grid">${row('menu-info','user',dm||secure?'مشاهدهٔ پروفایل':'اطلاعات گفتگو')}${inside&&!secure?row('menu-search','search','جستجو'):''}${row('menu-pin','pin',chat.pinned?'برداشتن سنجاق':'سنجاق')}${secure?'':row('menu-mute',chat.muted?'bell':'mute',chat.muted?'روشن‌کردن اعلان':'بی‌صدا کردن')}${row('menu-archive','archive',chat.archived?'خارج‌کردن از آرشیو':'آرشیو')}${(dm&&!chat.blocked)||secure?row('menu-block','hide','مسدودکردن کاربر',true):''}${dm||secure?row('menu-delete','trash','حذف گفتگو',true):''}</div>`);
+    placeMessageMenu(rect);
+    const prefs=async changes=>{if(secure){await (await secureClient()).setPrefs(chat.id,{...(changes.pinned!==undefined?{pinned:changes.pinned}:{}),...(changes.archived!==undefined?{shelved:changes.archived}:{})});await loadSecure(false);}else{await patch(`/api/chats/${chat.id}/preferences`,changes);await loadChats(true);}closeFeature();};
+    bind('menu-info',async()=>{if(inside)await detailsView(chat.id);else{closeFeature();await openChat(chat);await detailsView(chat.id);}});
+    bind('menu-search',()=>{closeFeature();byId('btn-message-search').click();});
+    bind('menu-pin',()=>prefs({pinned:!chat.pinned}));
+    bind('menu-mute',()=>prefs({muted:!chat.muted}));
+    bind('menu-archive',()=>prefs({archived:!chat.archived}));
+    bind('menu-block',async()=>{if(!confirm('این مخاطب مسدود شود؟'))return;if(secure)await api('/api/secure/blocks',{method:'POST',body:JSON.stringify({address:chat.peer})});else{await api('/api/blocks',{method:'POST',body:JSON.stringify({userId:chat.partnerId})});denyChat(chat.id);await loadChats(true);}closeFeature();});
+    bind('menu-delete',async()=>{if(!secure)return deleteChatForm(chat);if(!confirm('این گفتگو از این دستگاه پاک شود؟ پیام‌های روی دستگاه مخاطب پاک نمی‌شوند.'))return;await (await secureClient()).forgetThread(chat.id);if(activeChat?.id===chat.id)closeActiveChat();closeFeature();await loadSecure(false);});
+  }
+  // Telegram's profile: the photo and name, four quick actions, then the details.
+  function profileHtml(chat,{status='',address='',actions='',rows=''}) {
+    return `<div class="channel-profile"><div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chat.peer||chat.id)}">${avatarHtml(chat.avatar,chat.title)}</div><h4><bdi>${escapeHtml(chat.title)}</bdi></h4>${status?`<p class="session-help">${escapeHtml(status)}</p>`:''}</div><div class="profile-actions">${actions}</div>${address?`<div class="profile-card"><strong dir="ltr">${escapeHtml(address)}</strong><small>نشانی کاربر</small></div>`:''}<div class="profile-card profile-rows">${rows}</div>`;
+  }
+  const profileAction=(id,icon,label)=>`<button id="${id}" class="profile-action" type="button">${icon}<span>${label}</span></button>`;
+  const profileRow=(id,icon,label,danger)=>`<button id="${id}" class="menu-row${danger?' danger-text':''}" type="button">${uiIcon(icon)}<span>${label}</span></button>`;
+  const PHONE_ICON='<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.800 19.800 0 0 1-8.600-3 19.500 19.500 0 0 1-6-6 19.800 19.800 0 0 1-3-8.700A2 2 0 0 1 4.100 2h3a2 2 0 0 1 2 1.700c.1 1 .4 1.900.7 2.800a2 2 0 0 1-.5 2.100L8.100 9.900a16 16 0 0 0 6 6l1.300-1.300a2 2 0 0 1 2.100-.4c.9.300 1.800.6 2.800.7a2 2 0 0 1 1.700 2Z"/></svg>',VIDEO_ICON='<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>';
+  function dmProfile(chat,ownBlock) {
+    const inside=activeChat?.id===chat.id;
+    showFeature(chat.title,profileHtml(chat,{status:chat.blocked?'مسدود':'',address:chat.partnerUsername?'@'+chat.partnerUsername:'',
+      actions:profileAction('profile-message',uiIcon('chats'),'پیام')+profileAction('pref-mute',uiIcon(chat.muted?'bell':'mute'),chat.muted?'صدادار':'بی‌صدا')+(inside?profileAction('profile-call',PHONE_ICON,'تماس')+profileAction('profile-video',VIDEO_ICON,'تصویری'):''),
+      rows:(chat.partnerUsername?profileRow('secure-user','shield','شروع گفتگوی امن'):'')+profileRow('pref-pin','pin',chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو')+profileRow('pref-archive','archive',chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو')+profileRow('block-user','hide',ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب',true)+profileRow('report-user','flag','گزارش مزاحمت',true)+profileRow('delete-dm','trash','حذف گفتگو',true)}));
+    const chatId=chat.id;
+    bind('profile-message',async()=>{closeFeature();if(!inside)await openChat(chat);messageInput.focus?.();});
+    for(const [id,video] of [['profile-call',false],['profile-video',true]])bind(id,async()=>{closeFeature();await calls?.start(video);});
+    for(const [id,key] of [['pref-archive','archived'],['pref-mute','muted'],['pref-pin','pinned']])bind(id,async()=>{await patch(`/api/chats/${chatId}/preferences`,{[key]:!chat[key]});await loadChats(true);if(activeChat?.id===chatId)applyChatMode(activeChat);await detailsView(chatId);});
+    bind('secure-user',()=>startSecureWith(chat.partnerUsername));
+    bind('block-user',async()=>{if(!ownBlock&&!confirm('پیام خصوصی با این مخاطب مسدود شود؟'))return;await api('/api/blocks',{method:ownBlock?'DELETE':'POST',body:JSON.stringify({userId:chat.partnerId})});if(ownBlock){deniedChats.delete(chatId);connectWebSocket(chatId);}else denyChat(chatId);await loadChats(true);await detailsView(chatId);});
+    bind('report-user',()=>reportForm(chat.partnerId));
+    bind('delete-dm',()=>deleteChatForm(chat));
+  }
   async function detailsView(chatId) {
     if(activeChat?.secure)return secureDetails(activeChat);
     showFeature('اطلاعات گفتگو','<p>در حال دریافت…</p>');const generation=featureGeneration,details=await loadChatDetails(chatId);if(generation!==featureGeneration)return;
@@ -1957,6 +2030,7 @@
     const group=details.type==='group',manage=isManager(details),owner=details.role==='owner',channel=!!details.isChannel,noun=channel?'کانال':'گروه',memberRole=role=>channel&&role==='member'?'مشترک':roleName(role);
     if(channel)return channelInfo(chat,details);
     const blocks=group?[]:await api('/api/blocks'),ownBlock=blocks.some(row=>row.id===chat.partnerId);
+    if(!group)return dmProfile(chat,ownBlock);
     showFeature(chat.title,`<div class="channel-profile">${group&&manage?photoPicker('group-photo',details.avatar):`<div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chatId)}">${avatarHtml(group?details.avatar:chat.avatar,chat.title)}</div>`}<h4>${escapeHtml(chat.title)}</h4>${group?`<p class="session-help">${Number(details.memberCount||details.members.length).toLocaleString('fa-IR')} عضو · نقش شما: ${memberRole(details.role)}</p>`:''}${group&&manage?`<button id="group-photo-remove" class="quiet-button" type="button" ${details.avatar?'':'hidden'}>حذف عکس</button>`:''}</div><div class="settings-list"><button id="pref-mute" class="settings-row" type="button"><span><strong>اعلان‌ها</strong><small>${chat.muted?'خاموش':'روشن'}</small></span></button><button id="pref-pin" class="settings-row" type="button"><span><strong>${chat.pinned?'برداشتن سنجاق گفتگو':'سنجاق گفتگو'}</strong></span></button><button id="pref-archive" class="settings-row" type="button"><span><strong>${chat.archived?'خارج‌کردن از آرشیو':'آرشیو گفتگو'}</strong></span></button>${group&&manage?'<button id="group-add-members" class="settings-row" type="button"><span><strong>افزودن عضو</strong></span></button><button id="group-invites" class="settings-row" type="button"><span><strong>لینک‌های دعوت</strong></span></button>':''}</div>
       ${group?`${manage?`<form id="rename-form" class="feature-form"><label>نام ${noun}<input id="rename-title" class="form-input" required maxlength="100"></label><button class="quiet-button" type="submit">ذخیرهٔ نام ${noun}</button></form>`:''}<section class="feature-section"><h4>${channel?(manage?'مشترکان':'مدیران'):'اعضا'}</h4><div id="group-member-list">${details.members.map((member,i)=>`<div class="member-row"><div class="avatar">${avatarHtml(member.avatar,member.displayName)}</div><div class="member-name"><strong>${escapeHtml(member.displayName)}</strong><small dir="ltr">@${escapeHtml(member.username)}</small><small>${memberRole(member.role)}</small></div><div class="member-actions">${member.id!==currentUser.id&&member.role!=='owner'&&manage?`${owner?`<button id="member-role-${i}" class="quiet-button">${member.role==='admin'?'عضو عادی':'مدیر شود'}</button><button id="member-transfer-${i}" class="quiet-button">انتقال مالکیت</button>`:''}${owner||member.role==='member'?`<button id="member-remove-${i}" class="quiet-button danger-text">حذف عضو</button>`:''}`:''}</div></div>`).join('')}</div></section><div class="button-row"><button id="leave-group" class="quiet-button danger-text">خروج از ${noun}</button>${!manage?`<button id="report-chat" class="quiet-button danger-text" type="button">گزارش ${noun}</button>`:''}${owner?`<button id="delete-chat" class="quiet-button danger-text" type="button">حذف ${noun}</button>`:''}</div><p class="session-help">مالک باید پیش از خروج مالکیت را به یکی از اعضا منتقل کند. حذف عضو، دسترسی او به تاریخچهٔ سرور و اتصال زنده را قطع می‌کند؛ نسخهٔ کپی‌شده روی دستگاه او قابل پس‌گرفتن نیست.</p>`:`<div class="feature-section">${details.members.filter(m=>m.id!==currentUser.id).map(m=>`<p><strong>${escapeHtml(m.displayName)}</strong> <bdi>@${escapeHtml(m.username)}</bdi></p><p class="session-help">${escapeHtml(m.about||'')}</p>`).join('')}<p class="session-help">مسدودکردن، پیام خصوصی را از هر دو سمت می‌بندد و روی گروه مشترک اثر ندارد.</p><div class="button-row">${chat.partnerUsername?'<button id="secure-user" class="quiet-button">شروع گفتگوی امن</button>':''}<button id="block-user" class="quiet-button danger-text">${ownBlock?'رفع مسدودیت':'مسدودکردن مخاطب'}</button><button id="report-user" class="quiet-button danger-text">گزارش مزاحمت</button><button id="delete-dm" class="quiet-button danger-text" type="button">حذف گفتگو</button></div></div>`}`);
     decorateRows();
@@ -1972,11 +2046,6 @@
         bind('member-remove-'+i,async()=>{if(!confirm(`«${member.displayName}» از ${noun} حذف شود؟`))return;await patch(`/api/chats/${chatId}/group`,{action:'remove',userId:member.id});await detailsView(chatId);});
       });
       bind('leave-group',async()=>{if(!confirm(`از ${noun} خارج می‌شوید؟ دسترسی شما به تاریخچهٔ آن هم قطع می‌شود.`))return;await post(`/api/chats/${chatId}/leave`);denyChat(chatId);activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='flex';sidebar.classList.remove('hidden');closeFeature();await loadChats(true);});
-    } else {
-      bind('secure-user',()=>startSecureWith(chat.partnerUsername));
-      bind('block-user',async()=>{if(!ownBlock&&!confirm('پیام خصوصی با این مخاطب مسدود شود؟'))return;await api('/api/blocks',{method:ownBlock?'DELETE':'POST',body:JSON.stringify({userId:chat.partnerId})});if(ownBlock){deniedChats.delete(chatId);connectWebSocket(chatId);}else denyChat(chatId);await loadChats(true);await detailsView(chatId);});
-      bind('report-user',()=>reportForm(chat.partnerId));
-      bind('delete-dm',()=>deleteChatForm(chat));
     }
   }
   async function deleteChatForm(chat) {

@@ -114,6 +114,18 @@ try {
   await until(() => shell('dumpsys deviceidle whitelist').includes(PACKAGE), 8000, 'the battery exemption');
   await until(() => topActivity().includes('MainActivity'), 8000, 'the app to return after the dialog');
   ok('login asks for the battery exemption once, and the app returns');
+
+  // The back key closes one layer at a time, and leaves the app from the chat list.
+  const inApp = () => topActivity().includes(PACKAGE), back = () => shell('input keyevent KEYCODE_BACK');
+  const settingsOpen = () => evaluateInApp("document.getElementById('feature-modal').style.display==='flex'");
+  await evaluateInApp("document.getElementById('nav-settings').click()");
+  await until(settingsOpen, 5000, 'settings to open');
+  back(); await until(async () => !await settingsOpen(), 5000, 'back to close settings');
+  assert.ok(inApp(), 'closing settings must stay in the app');
+  await sleep(500); assert.equal(await settingsOpen(), false, 'settings must not open again');
+  back(); await until(() => !inApp(), 5000, 'back on the chat list to leave the app');
+  shell('monkey -p ' + PACKAGE + ' -c android.intent.category.LAUNCHER 1'); await until(inApp, 8000, 'the app to come back');
+  ok('the back key closes settings, then leaves the app');
   shot('01-signed-in');
 
   home(); await sleep(2000);
