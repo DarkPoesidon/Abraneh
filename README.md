@@ -48,17 +48,20 @@
 ## امکانات
 
 - **گفتگو:** پاسخ، ویرایش، حذف، واکنش، هدایت، انتخاب چند پیام، اشاره با `@` و جستجوی فارسی.
+- **گفتگوی امن:** گفتگوی خصوصی رمزگذاری‌شدهٔ سرتاسری از دکمهٔ «+»، در همان صفحهٔ چت، با درخواست و قبول، کد امنیتی و پشتیبانی از چند دستگاه. فعلاً فقط متن دارد و آزمایشی است.
 - **گروه و کانال:** نقش‌های مالک، مدیر و عضو، دعوت قابل لغو، کانال عمومی و خصوصی، و جستجو و عضویت در کانال‌های سرورهای دیگر.
 - **تماس و رسانه:** تماس صوتی و تصویری، پیام صوتی و تصویری، و ارسال تصویر و فایل.
 - **برنامه‌ها:** وب، اندروید و ویندوز، با اعلان حتی وقتی پنجرهٔ برنامه بسته است.
-- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، و طراحی نزدیک به تلگرام.
-- **مدیریت:** پنل مدیر، گزارش مزاحمت، ثبت‌نام آزاد یا دعوتی، پشتیبان و بازگردانی.
+- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، طراحی نزدیک به تلگرام، منوی گفتگو با نگه‌داشتن انگشت، و دکمهٔ بک مثل برنامه‌های استاندارد.
+- **مدیریت:** پنل مدیر، گزارش مزاحمت، ثبت‌نام آزاد یا دعوتی، لینک بازیابی رمز برای کاربران، پشتیبان و بازگردانی.
 - **شبکه:** پشتیبانی از پروکسی SOCKS5 و HTTP در برنامه‌های اندروید و ویندوز.
 
 ## امنیت
 
 - پیام‌های گفتگوهای عادی و گروه‌ها **رمزگذاری سرتاسری ندارند** و در حساب کلادفلر صاحب سرور ذخیره می‌شوند. پس فقط از سروری استفاده کنید که به صاحبش اعتماد دارید.
-- گفتگوی دو دستگاهِ تأییدشده از MLS آزمایشی استفاده می‌کند، و کتابخانهٔ آن هنوز ممیزی مستقل امنیتی ندارد.
+- **گفتگوی امن** با MLS رمز می‌شود و سرور متن پیام‌ها را ندارد، ولی می‌بیند چه کسی، چه زمانی و با چه کسی پیام داده است.
+- گفتگوی امن هنوز **آزمایشی** است، چون کتابخانهٔ آن و این پیاده‌سازی ممیزی مستقل امنیتی ندارند.
+- در اولین تماس، بدون مقایسهٔ کد امنیتی، سرور در تئوری می‌تواند میان دو نفر قرار بگیرد. در نسخهٔ وب و اپ‌هایی که صفحه را از سرور می‌گیرند هم، صاحب سرور کد برنامه را در اختیار دارد.
 - برای گزارش آسیب‌پذیری، موضوع را به‌صورت خصوصی از [Security Advisories](https://github.com/DarkPoesidon/WIHM-Cloudflare/security/advisories/new) بفرستید.
 
 ## مجوز
@@ -85,6 +88,6 @@
 | **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) |
 | **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) |
 
-Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Experimental MLS encryption between two verified devices has not had an independent audit.
+Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Secure chats start from the plus button and use MLS for text. They are experimental and have had no independent audit. Without comparing the security code, a server could sit between two people at first contact, and the app's code comes from the server.
 
 Licensed under [PolyForm Noncommercial 1.0.0](LICENSE): free for noncommercial use, and commercial use needs separate permission. Not affiliated with Telegram.
