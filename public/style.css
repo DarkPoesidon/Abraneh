@@ -1517,3 +1517,18 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
 .chat-preview,.chat-title-text,.message-sender,#composer-label small,#composer-label strong,.reply-quote span,.reply-quote strong { unicode-bidi:plaintext; }
 :root[dir="ltr"] .chat-preview,:root[dir="ltr"] .chat-title-text,:root[dir="ltr"] .message-sender,:root[dir="ltr"] #composer-label small,:root[dir="ltr"] #composer-label strong,:root[dir="ltr"] .reply-quote span,:root[dir="ltr"] .reply-quote strong { text-align:left; }
 :root[dir="rtl"] .chat-preview,:root[dir="rtl"] .chat-title-text,:root[dir="rtl"] .message-sender,:root[dir="rtl"] #composer-label small,:root[dir="rtl"] #composer-label strong,:root[dir="rtl"] .reply-quote span,:root[dir="rtl"] .reply-quote strong { text-align:right; }
+
+/* Secure chat uses the normal chat screen, and only adds what tells it apart. */
+.secure-mark { width:15px; height:15px; color:var(--success-color,#4fae4e); vertical-align:-2px; margin-inline-end:4px; }
+.is-secure .chat-header-title::before { content:""; display:inline-block; width:14px; height:14px; margin-inline-end:6px; vertical-align:-1px; background:var(--success-color,#4fae4e); -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z'/%3E%3C/svg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z'/%3E%3C/svg%3E") center/contain no-repeat; }
+.is-secure .status-dot { display:none; }
+.is-secure .media-attach, .is-secure .media-record, .is-secure #btn-message-search, .is-secure .call-launch { display:none; }
+.secure-intro { margin:auto; max-width:300px; padding:16px 20px; text-align:center; font-size:.9rem; color:var(--text-primary); background:var(--bg-secondary); border-radius:12px; }
+.secure-intro strong { display:block; margin-bottom:8px; }
+.secure-intro p { margin:4px 0 0; color:var(--text-secondary); }
+.secure-bar { width:min(100%,760px); align-self:center; padding:12px 16px max(12px,env(safe-area-inset-bottom)); background:var(--bg-secondary); border-top:1px solid var(--border-color); }
+.secure-bar p { margin:0 0 8px; font-size:.9rem; }
+.secure-bar .button-row { display:flex; gap:8px; }
+.secure-bar .button-row > * { flex:1; }
+.secure-bar[hidden] { display:none; }
+.secure-code { display:block; font-size:1.15rem; text-align:center; overflow-wrap:anywhere; padding:12px 0; }

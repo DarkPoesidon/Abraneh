@@ -4,27 +4,104 @@
   let token = localStorage.getItem('cf_msg_token') || '';
   let currentUser = null;
   let secureItems=[],securePoll=null,secureRequest=null;
+  const secureClient=async()=>(await window.WihmSecure.connect(api,currentUser)).client;
+  let secureView=null,secureAddress='';
+  // People on this server appear by name, and people elsewhere by their full address.
+  const secureTitle=peer=>peer.endsWith('@'+secureAddress.split('@')[1])?peer.split('@')[0]:peer;
+  function listSecure(view){
+    secureView=view;
+    secureItems=view.threads.map(t=>{const last=t.messages.at(-1);return {id:t.id,threadId:t.id,secure:true,type:'dm',peer:t.peer,title:secureTitle(t.peer),request:!!t.request,readOnly:!!t.archived,verified:!!t.verified,lastMessage:last&&{...last,text:last.deleted?'این پیام حذف شده است':last.text},updatedAt:last?.createdAt||0,unreadCount:t.request?1:t.messages.filter(m=>m.from!==secureAddress&&!m.read&&!m.deleted).length};});
+    if(activeChat?.secure){const fresh=secureItems.find(row=>row.id===activeChat.id);if(fresh)activeChat=fresh;paintSecure();}
+    renderFilteredChats();
+  }
+  async function loadSecure(sync){
+    if(!token||!currentUser||!window.WihmSecure)return;
+    const owner=currentUser,session=token,{client,who}=await window.WihmSecure.connect(api,owner);secureAddress=who;
+    if(sync)await client.sync();
+    const view=await client.view();if(token===session)listSecure(view);
+  }
   async function refreshSecure(){
-    if(!token||!currentUser||!window.WihmSecure||secureRequest)return;
-    const owner=currentUser,session=token;
-    const task=(async()=>{try{
-      const {client}=await window.WihmSecure.connect(api,owner);if(token!==session)return;
-      await client.sync();const view=await client.view();if(token!==session)return;
-      secureItems=view.threads.map(t=>({id:t.id,threadId:t.id,secure:true,title:t.peer,lastMessage:t.messages.at(-1),updatedAt:t.messages.at(-1)?.createdAt||0,...(t.request?{unreadCount:1}:{})}));
-      for(const e of view.pending.filter(e=>e.kind==='welcome'))if(!secureItems.some(t=>t.id===e.thread))secureItems.push({id:e.thread,threadId:e.thread,secure:true,title:e.from,lastMessage:{text:'دعوت گفتگو · منتظر تأیید دستگاه',createdAt:Date.now()},updatedAt:Date.now(),unreadCount:1});
-      renderFilteredChats();await window.WihmSecure.refresh?.();
-    }catch(e){console.warn('Secure sync:',e.message);}})();secureRequest=task;try{await task;}finally{if(secureRequest===task)secureRequest=null;}
+    if(secureRequest)return;
+    const task=loadSecure(true).catch(e=>console.warn('Secure sync:',e.message));secureRequest=task;try{await task;}finally{if(secureRequest===task)secureRequest=null;}
+  }
+  // Maps a stored secure message onto the shape the normal bubbles draw.
+  function secureMessage(m,thread,chat){
+    const sender=id=>id===secureAddress?currentUser.id:id,name=id=>id===secureAddress?currentUser.displayName:chat.title,quoted=m.replyTo&&thread.messages.find(row=>row.id===m.replyTo),byEmoji=new Map();
+    for(const [who,emoji] of Object.entries(m.reactions||{}))byEmoji.set(emoji,[...(byEmoji.get(emoji)||[]),sender(who)]);
+    return {id:m.id,chatId:thread.id,senderId:sender(m.from),senderName:name(m.from),text:m.text,createdAt:m.createdAt,deletedAt:m.deleted?m.createdAt:0,editedAt:m.edited?m.createdAt:0,reactions:[...byEmoji].map(([emoji,users])=>({emoji,users})),replyTo:quoted?{id:quoted.id,senderName:name(quoted.from),text:quoted.text,deleted:!!quoted.deleted}:null,secureStatus:{read:'خوانده شد',delivered:'تحویل شد','server-queued':'ارسال شد','local-queued':'در صف این دستگاه'}[m.delivery]||'ارسال شد'};
+  }
+  function paintSecure(){
+    const chat=activeChat,thread=secureView?.threads.find(row=>row.id===chat.id),pendingDevice=secureView?.pending.find(e=>e.kind==='welcome'&&e.from===chat.peer&&thread&&!thread.request),keyChanged=secureView?.keyChanges.includes(chat.peer);
+    const bar=byId('secure-bar');
+    bar.hidden=!(chat.request||keyChanged||pendingDevice);
+    if(chat.request)bar.innerHTML=`<p><bdi>${escapeHtml(chat.title)}</bdi> می‌خواهد با شما گفتگوی امن داشته باشد.</p><div class="button-row"><button id="secure-accept" class="btn-primary" type="button">قبول</button><button id="secure-reject" class="quiet-button danger-text" type="button">رد و مسدودکردن</button></div>`;
+    else if(keyChanged)bar.innerHTML=`<p>کد امنیتی <bdi>${escapeHtml(chat.title)}</bdi> عوض شده است. شاید برنامه را دوباره نصب کرده باشد. اگر مطمئن نیستید، از راه دیگری از او بپرسید.</p><div class="button-row"><button id="secure-keychange" class="btn-primary" type="button">پذیرش و ادامه</button></div>`;
+    else if(pendingDevice)bar.innerHTML=`<p><bdi>${escapeHtml(chat.title)}</bdi> از دستگاه تازه‌ای پیام فرستاده است.</p><div class="button-row"><button id="secure-new-device" class="btn-primary" type="button">بررسی دستگاه</button></div>`;
+    const act=(id,work)=>byId(id)?.addEventListener('click',async()=>{try{await work();await loadSecure(true);}catch(e){chatError.textContent=e.message;}});
+    act('secure-accept',async()=>{await (await secureClient()).acceptRequest(chat.id);});
+    byId('secure-reject')?.addEventListener('click',async()=>{if(!confirm('این درخواست رد و فرستنده مسدود شود؟'))return;try{await (await secureClient()).rejectRequest(chat.id);closeSecureChat();await loadSecure(false);}catch(e){chatError.textContent=e.message;}});
+    act('secure-keychange',async()=>{await (await secureClient()).acceptKeyChange(chat.peer);});
+    byId('secure-new-device')?.addEventListener('click',async()=>compareSecure('دستگاه تازهٔ مخاطب','این کد را با کد روی دستگاه تازهٔ مخاطب مقایسه کنید.',await window.WihmSecure.safetyCode([pendingDevice.senderKey]),async()=>{await (await secureClient()).trust(pendingDevice.from,pendingDevice.fromDevice,pendingDevice.senderKey,await window.WihmSecure.fingerprint(pendingDevice.senderKey));closeFeature();await loadSecure(true);}));
+    applyChatMode(chat);
+    if(!thread&&!chat.draft)return;
+    const list=(thread?.messages||[]).map(m=>secureMessage(m,thread,chat));
+    messagesByChat[chat.id]=list;renderMessages(list,{keepPosition:true});
+    if(thread&&!chat.request&&!chat.readOnly&&document.visibilityState!=='hidden'&&chat.unreadCount)secureClient().then(client=>client.markRead(chat.id)).then(()=>loadSecure(false)).catch(()=>{});
+  }
+  function closeSecureChat(){activeChat=null;activeChatWrapper.style.display='none';emptyState.style.display='';sidebar.classList.remove('hidden');}
+  function openSecureChat(chat){
+    activeChat=chat;openingChatId=null;cancelComposer();renderFilteredChats();typingBar.textContent='';chatError.textContent='';clearSelection();
+    messageInput.value=drafts.get(chat.id)||'';syncComposer();btnFirstUnread.hidden=true;btnAddMembers.style.display='none';byId('btn-pinned-message').hidden=true;btnLoadOlder.hidden=true;
+    if(window.innerWidth<=768)sidebar.classList.add('hidden');
+    emptyState.style.display='none';activeChatWrapper.style.display='flex';
+    activeChatTitle.textContent=chat.title;chatHeaderAvatar.innerHTML=avatarHtml(chat.avatar,chat.title);chatHeaderAvatar.style.setProperty?.('--avatar-hue',avatarHue(chat.peer));
+    disconnectWebSocket();statusIndicatorDot.className='status-dot';statusText.textContent='رمزگذاری سرتاسری';
+    paintSecure();messageInput.focus?.();
+  }
+  async function sendSecure(text){
+    const chat=activeChat,context=composerContext;
+    if(text.length>8000){chatError.textContent='پیام باید بین یک تا ۸۰۰۰ حرف باشد.';return;}
+    btnSendMessage.disabled=true;chatError.textContent='';
+    try{
+      const client=await secureClient();
+      if(chat.draft){const id=await client.invite(chat.peer,text);await loadSecure(false);activeChat=secureItems.find(row=>row.id===id)||activeChat;paintSecure();drafts.delete(chat.id);}
+      else if(context?.mode==='edit')await client.edit(chat.id,context.message.id,text);
+      else await client.send(chat.id,text,context?.mode==='reply'?context.message.id:null);
+      cancelComposer();messageInput.value='';syncComposer();
+      await loadSecure(false);
+    }catch(e){chatError.textContent=e.message;}
+    finally{btnSendMessage.disabled=false;}
+  }
+  async function openSecureAddress(address,title){
+    await loadSecure(false);
+    const existing=secureItems.find(row=>row.peer===address);
+    openChat(existing||{id:'draft:'+address,secure:true,draft:true,type:'dm',peer:address,title:title||secureTitle(address)});
   }
   // A person on this server is addressed by name, like someone on another server.
   async function startSecureWith(username){
     if(!confirm('گفتگوی امن با @'+username+' شروع شود؟'))return;
-    const {address}=await api('/api/secure/identity');
-    await openSecure(username+'@'+address.split('@')[1]);
+    const {address}=await api('/api/secure/identity');secureAddress=address;
+    await openSecureAddress(username+'@'+address.split('@')[1]);
   }
-  async function openSecure(initialAddress='',threadId=''){
+  async function openSecureThread(id){
+    await loadSecure(true);
+    const conversation=secureView?.threadOfSession[id]||id,chat=secureItems.find(row=>row.id===conversation);
+    if(chat)openChat(chat);
+  }
+  function compareSecure(title,help,code,same){
+    showFeature(title,`<p class="session-help">${help}</p><code class="secure-code" dir="ltr">${escapeHtml(code)}</code><div class="button-row"><button id="secure-same" class="btn-primary" type="button">یکسان است</button><button id="secure-differs" class="quiet-button" type="button">یکسان نیست</button></div>`);
+    bind('secure-same',same);bind('secure-differs',()=>{byId('feature-status').textContent='تأیید نشد. اگر کد یکسان نیست، در این گفتگو چیز محرمانه‌ای ننویسید.';});
+  }
+  async function secureDetails(chat){
+    const profile=`<div class="channel-profile"><div class="avatar channel-profile-photo" style="--avatar-hue:${avatarHue(chat.peer)}">${avatarHtml(chat.avatar,chat.title)}</div><h4><bdi>${escapeHtml(chat.title)}</bdi></h4><p class="session-help" dir="ltr">${escapeHtml(chat.peer)}</p></div>`;
+    showFeature('گفتگوی امن',`${profile}<p class="session-help">پیام‌های این گفتگو روی دستگاه شما رمز می‌شوند و فقط دستگاه مخاطب آن‌ها را باز می‌کند. برای اطمینان کامل، کد امنیتی را با مخاطب مقایسه کنید. این بخش هنوز ممیزی مستقل نشده است و در نسخهٔ وب، صاحب سرور کد برنامه را در اختیار دارد.</p><div class="button-row">${chat.draft?'':`<button id="secure-safety" class="quiet-button" type="button">${chat.verified?'کد امنیتی بررسی شده ✓':'بررسی کد امنیتی'}</button>`}<button id="secure-block" class="quiet-button danger-text" type="button">مسدودکردن</button></div>`);
+    bind('secure-safety',async()=>{const client=await secureClient();compareSecure('کد امنیتی','این کد را با کد روی دستگاه مخاطب مقایسه کنید، مثلاً حضوری یا در تماس. اگر یکسان باشد، کسی میان شما نیست.',await client.contactCode(chat.peer),async()=>{await client.verifyContact(chat.peer);await loadSecure(false);closeFeature();});});
+    bind('secure-block',async()=>{if(!confirm('این مخاطب مسدود شود؟ دیگر پیام امن او به شما نمی‌رسد.'))return;await api('/api/secure/blocks',{method:'POST',body:JSON.stringify({address:chat.peer})});closeFeature();});
+  }
+  async function openSecure(){
     if(!currentUser)return;
     const session=token;
-    try{await window.WihmSecure.open({api,post,show:(title,html)=>{if(token===session)return showFeature(title,html);},error:featureError,escape:escapeHtml,user:currentUser,initialAddress,threadId});}catch(e){if(token===session)featureError(e);}
+    try{await window.WihmSecure.open({api,show:(title,html)=>{if(token===session)return showFeature(title,html);},error:featureError,escape:escapeHtml,user:currentUser});}catch(e){if(token===session)featureError(e);}
   }
   try { currentUser = JSON.parse(localStorage.getItem('cf_msg_user') || 'null'); } catch { /* Start a new session. */ }
   let chats = [];
@@ -347,9 +424,10 @@
     } catch { outbox = []; chatError.textContent = 'خواندن صف پیام‌های این دستگاه انجام نشد.'; }
     for (const item of outbox) addPending(item);
     loadProfile().catch(() => {});
-    const secureLaunch=new URLSearchParams(location.search||'').get('secure');if(secureLaunch&&/^[a-f0-9-]{36}$/.test(secureLaunch)){openSecure('',secureLaunch);history.replaceState(null,'',location.pathname);}
+    const secureLaunch=new URLSearchParams(location.search||'').get('secure');if(secureLaunch&&/^[a-f0-9-]{36}$/.test(secureLaunch)){openSecureThread(secureLaunch);history.replaceState(null,'',location.pathname);}
     refreshSecure();
-    if(!securePoll)securePoll=setInterval(()=>{if(document.visibilityState!=='hidden')refreshSecure();},15000);
+    // An open secure chat has no socket, so it checks more often. Each check writes one rate limit row.
+    let secureTicks=0;if(!securePoll)securePoll=setInterval(()=>{if(document.visibilityState!=='hidden'&&(activeChat?.secure||++secureTicks%3===0))refreshSecure();},5000);
     redeemInvitation().catch(error => { chatError.textContent=error.message; });
     loadChats().then(()=>{checkIncomingCalls();const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
     if (!chatPollInterval) chatPollInterval = setInterval(() => {
@@ -385,7 +463,7 @@
       renderFilteredChats();
       for(const chat of chats) if(chat.blocked&&!deniedChats.has(chat.id)) denyChat(chat.id,false);
       for(const item of outbox) if(!chats.some(chat=>chat.id===item.chatId)&&!deniedChats.has(item.chatId)) denyChat(item.chatId,false);
-      if (activeChat) {
+      if (activeChat&&!activeChat.secure) {
         const updated = chats.find(c => c.id === activeChat.id);
         if (updated) {
           activeChat = updated;
@@ -396,7 +474,7 @@
           }
           refreshReceipts(updated.id);
           reportReceipt(updated.id);
-        } else if(!deniedChats.has(activeChat.id)) denyChat(activeChat.id,false);
+        } else if(!activeChat.secure&&!deniedChats.has(activeChat.id)) denyChat(activeChat.id,false);
       }
     } catch (err) {
       if (token === sessionToken) console.error('Failed to load chats:', err);
@@ -429,7 +507,7 @@
         <span class="chat-avatar-wrap"><span class="avatar" style="--avatar-hue:${avatarHue(chat.id)}">${avatarHtml(chat.avatar,chat.title)}</span>${chat.unreadCount?`<span class="rail-unread" aria-hidden="true">${Number(chat.unreadCount)>99?'۹۹+':Number(chat.unreadCount).toLocaleString('fa-IR')}</span>`:''}</span>
         <div class="chat-meta">
           <div class="chat-top-row">
-            <span class="chat-title">${chat.isChannel?'<svg class="ui-icon channel-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg>':''}<span class="chat-title-text">${escapeHtml(chat.title)}</span>${chat.muted?'<svg class="ui-icon chat-state" aria-hidden="true"><use href="#i-mute"/></svg>':''}</span>
+            <span class="chat-title">${chat.secure?'<svg class="ui-icon secure-mark" aria-label="گفتگوی امن" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>':''}${chat.isChannel?'<svg class="ui-icon channel-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg>':''}<span class="chat-title-text">${escapeHtml(chat.title)}</span>${chat.muted?'<svg class="ui-icon chat-state" aria-hidden="true"><use href="#i-mute"/></svg>':''}</span>
             <span class="chat-time">${timeStr}</span>
           </div>
           <div class="chat-last-msg"><span class="chat-preview">${escapeHtml(lastText)}</span>${chat.pinned&&!chat.unreadCount?'<svg class="ui-icon chat-pin" aria-hidden="true"><use href="#i-pin"/></svg>':''}${chat.unreadCount ? `<span class="unread-badge${chat.muted?' muted':''}" aria-label="${Number(chat.unreadCount)} پیام نخوانده">${Number(chat.unreadCount).toLocaleString('fa-IR')}</span>` : ''}</div>
@@ -438,7 +516,7 @@
 
       // Right click or a long press, as in Telegram.
       item.addEventListener('contextmenu',event=>{if(chat.secure)return;event.preventDefault();(chat.type==='dm'?deleteChatForm(chat):detailsView(chat.id)).catch(featureError);});
-      item.addEventListener('click', () => {if(chat.secure)return openSecure('',chat.threadId);if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');reportReceipt(chat.id);return;}return openChat(chat);});
+      item.addEventListener('click', () => {if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');if(!chat.secure)reportReceipt(chat.id);return;}return openChat(chat);});
       chatsList.appendChild(item);
     });
   }
@@ -461,13 +539,16 @@
     if (composerArea) activeChatWrapper.classList.toggle('is-channel', !!chat.isChannel);
     messageInput.placeholder = chat.isChannel ? 'پیام همگانی…' : 'پیام';
     if (chat.isChannel && ws?.readyState === WebSocket.OPEN) statusText.textContent = channelStatus(chat);
-    if (composerArea) composerArea.hidden = reader;
+    activeChatWrapper.classList?.toggle?.('is-secure', !!chat.secure);
+    if (!chat.secure && byId('secure-bar')) byId('secure-bar').hidden = true;
+    if (composerArea) composerArea.hidden = reader || !!chat.request || !!chat.readOnly;
     channelFooter.hidden = !reader;
     channelMute.textContent = chat.muted ? 'روشن‌کردن اعلان' : 'بی‌صدا کردن';
   }
 
   // --- Open Chat & Connect WebSocket ---
   async function openChat(chat, preserveCall = false) {
+    if (chat.secure) return openSecureChat(chat);
     activeChat = chat;
     openingChatId = chat.id;
     cancelComposer();
@@ -604,7 +685,7 @@
     if (!msgList || !msgList.length) {
       rendered.clear(); renderedChat = null;
       messagesContainer.innerHTML = '';
-      messagesContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); margin: auto; font-size: 0.85rem;">هنوز هیچ پیامی در این گفتگو ارسال نشده است.<br>اولین پیام را شما بفرستید!</div>`;
+      messagesContainer.innerHTML = activeChat?.secure ? `<div class="secure-intro" role="status"><strong>گفتگوی امن</strong><p>پیام‌ها رمزگذاری سرتاسری می‌شوند و فقط شما و مخاطب آن‌ها را می‌خوانید.</p><p>با اولین پیام، درخواست گفتگو برای مخاطب می‌رود.</p></div>` : `<div style="text-align: center; color: var(--text-muted); margin: auto; font-size: 0.85rem;">هنوز هیچ پیامی در این گفتگو ارسال نشده است.<br>اولین پیام را شما بفرستید!</div>`;
       return;
     }
 
@@ -617,6 +698,7 @@
     const textNode = (className, text) => () => { const node = document.createElement('div'); node.className = className; node.textContent = text; return node; };
     // Consecutive messages from one person read as a group, broken by a new day or a long pause.
     const sameGroup = (a, b) => !!a && !!b && a.senderId === b.senderId && dayKey(a.createdAt) === dayKey(b.createdAt) && Math.abs(b.createdAt - a.createdAt) < 300_000;
+    if (activeChat?.secure) keep('secure-note', 'secure', textNode('date-pill', 'پیام‌ها رمزگذاری سرتاسری هستند'));
     visible.forEach((msg, index) => {
       const previous = visible[index - 1];
       if (dayKey(previous?.createdAt) !== dayKey(msg.createdAt)) { const label = dayLabel(msg.createdAt); keep('day:' + dayKey(msg.createdAt), label, textNode('date-pill', label)); }
@@ -655,7 +737,7 @@
   }
   function clockTime(timestamp) { return new Date(timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }); }
   function statusMarkup(msg) {
-    const text = messageStatus(msg), state = msg.failed ? 'failed' : msg.pending ? 'pending' : text.startsWith('خوانده') ? 'read' : text.startsWith('تحویل') ? 'delivered' : 'sent';
+    const text = messageStatus(msg), state = msg.failed ? 'failed' : msg.pending || text === 'در صف این دستگاه' ? 'pending' : text.startsWith('خوانده') ? 'read' : text.startsWith('تحویل') ? 'delivered' : 'sent';
     const check = 'M3 12.5 8 17.5 18 6.5', second = 'M9.5 15.5 11 17.5 21 6.5';
     const mark = state === 'failed' ? '' : state === 'pending' ? '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>' : `<path d="${check}"/>${state === 'read' ? `<path d="${second}"/>` : ''}`; // As in Telegram, two ticks only mean read.
     return `<span class="message-status" data-state="${state}" title="${escapeHtml(text)}">${mark ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${mark}</svg><span class="visually-hidden">${escapeHtml(text)}</span>` : escapeHtml(text)}</span>`;
@@ -892,6 +974,7 @@
   function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !activeChat) return;
+    if (activeChat.secure) { sendSecure(text); return; }
     if (deniedChats.has(activeChat.id)) { chatError.textContent='دسترسی ارسال در این گفتگو بسته است.'; return; }
     if (composerContext?.mode === 'edit') { commitEdit(text); return; }
     if (text.length > 10000) { chatError.textContent = 'هر پیام باید حداکثر ۱۰٬۰۰۰ کاراکتر باشد.'; return; }
@@ -1008,6 +1091,7 @@
     return Number(receipt[kind + 'At']) > message.createdAt || (Number(receipt[kind + 'At']) === message.createdAt && String(receipt[kind + 'Id']) >= message.id);
   }
   function messageStatus(message) {
+    if (message.secureStatus) return message.secureStatus;
     if (message.pending) return message.failed ? 'ارسال تأیید نشد؛ تلاش دوباره' : message.attemptedAt ? 'در حال ارسال…' : 'در انتظار اتصال';
     const others = (receiptsByChat[message.chatId] || []).filter(receipt => receipt.userId !== currentUser.id);
     const read = others.filter(receipt => covers(receipt, message, 'read')).length;
@@ -1164,7 +1248,7 @@
           const remote=await post('/api/network/lookup',{address:q});
           if(version!==searchVersion)return;
           searchResultsList.innerHTML=`<button type="button" id="remote-start-chat" class="settings-row"><span>${escapeHtml(remote.displayName)}<small dir="ltr">${escapeHtml(remote.address)}</small></span><span>گفتگو</span></button>`;
-          byId('remote-start-chat').addEventListener('click',()=>{searchModal.style.display='none';openSecure(remote.address);});return;
+          byId('remote-start-chat').addEventListener('click',()=>{searchModal.style.display='none';openSecureAddress(remote.address,remote.displayName).catch(error=>{chatError.textContent=error.message;});});return;
         }
         const users = await api(`/api/users/search?q=${encodeURIComponent(q)}`);
         if (version !== searchVersion) return;
@@ -1698,7 +1782,7 @@
   function saveDraft() {
     if(!activeChat||!currentUser||composerContext?.mode==='edit')return;
     if(messageInput.value.trim())drafts.set(activeChat.id,messageInput.value);else drafts.delete(activeChat.id);
-    try{localStorage.setItem('cf_msg_drafts_'+currentUser.id,JSON.stringify([...drafts].filter(([id])=>!chats.find(chat=>chat.id===id)?.secure)));}catch{}
+    try{localStorage.setItem('cf_msg_drafts_'+currentUser.id,JSON.stringify([...drafts].filter(([id])=>!id.startsWith('draft:')&&!secureItems.some(chat=>chat.id===id))));}catch{}
   }
   const mentionBox=document.createElement('div');mentionBox.className='mention-box';mentionBox.hidden=true;mentionBox.setAttribute('role','listbox');
   document.querySelector('.chat-input-area')?.before(mentionBox);
@@ -1763,7 +1847,7 @@
     bubble.addEventListener('touchend',event=>{const reply=offset>=SWIPE;if(pressed)event.preventDefault();settle();if(reply)setComposer('reply',msg);},{passive:false});
     bubble.addEventListener('touchcancel',settle);
   }
-  async function mutate(msg,action,body={}) { const result=await post(`/api/chats/${msg.chatId}/messages/${msg.id}/${action}`,body);if(result.message) acceptMutation(result.message);return result; }
+  async function mutate(msg,action,body={}) { if(activeChat?.secure){const client=await secureClient();if(action==='delete')await client.remove(msg.chatId,msg.id);else await client.react(msg.chatId,msg.id,body.emoji);await loadSecure(false);return {};} const result=await post(`/api/chats/${msg.chatId}/messages/${msg.id}/${action}`,body);if(result.message) acceptMutation(result.message);return result; }
   async function react(msg,emoji) { const previous=msg.reactions?.find(row=>row.users.includes(currentUser.id));await mutate(msg,'reaction',{emoji:previous?.emoji===emoji?'':emoji}); }
   // Telegram's selection mode: tap messages to mark them, then act on all of them at once.
   const MAX_SELECTED=50,selected=new Map(),selectionBar=document.createElement('div');
@@ -1807,9 +1891,9 @@
     if(selected.size){toggleSelected(msg);return;}
     const chat=chats.find(chat=>chat.id===msg.chatId)||activeChat, own=msg.senderId===currentUser.id;
     const anchor=byId('message-'+msg.id)?.getBoundingClientRect?.(),row=(id,icon,label,danger)=>`<button id="${id}" class="menu-row${danger?' danger-text':''}" type="button">${uiIcon(icon)}<span>${label}</span></button>`;
-    showFeature('گزینه‌های پیام',`${!msg.deletedAt?`<div class="emoji-picker">${['👍','❤️','😂','😮','😢','🙏'].map((emoji,i)=>`<button id="react-${i}" type="button" aria-label="واکنش ${emoji}">${emoji}</button>`).join('')}</div>`:''}<div class="action-grid">
-      ${!msg.deletedAt?`${canPost(chat)?row('action-reply','reply','پاسخ'):''}${own&&!msg.media?row('action-edit','edit','ویرایش'):''}${row('action-forward','forward','هدایت پیام')}${row('action-copy','copy','کپی متن')}${row('action-select','check','انتخاب')}${row('action-save','bookmark','ذخیرهٔ پیام')}${chat?.type==='dm'||isManager(chat)?row('action-pin','pin','سنجاق / برداشتن سنجاق'):''}`:''}
-      ${row('action-hide','hide','حذف فقط برای من')}${own||chat?.type==='group'&&isManager(chat)?row('action-delete','trash','حذف برای همه',true):''}${!own?row('action-report','flag','گزارش پیام',true):''}</div>`);
+    showFeature('گزینه‌های پیام',`${!msg.deletedAt&&!chat?.request&&!chat?.readOnly?`<div class="emoji-picker">${['👍','❤️','😂','😮','😢','🙏'].map((emoji,i)=>`<button id="react-${i}" type="button" aria-label="واکنش ${emoji}">${emoji}</button>`).join('')}</div>`:''}<div class="action-grid">
+      ${chat?.secure?`${msg.deletedAt||chat.request||chat.readOnly?'':row('action-reply','reply','پاسخ')}${own&&!msg.deletedAt&&!chat.readOnly?row('action-edit','edit','ویرایش'):''}${msg.deletedAt?'':row('action-copy','copy','کپی متن')}${own&&!msg.deletedAt&&!chat.readOnly?row('action-delete','trash','حذف برای همه',true):''}</div>`:`${!msg.deletedAt?`${canPost(chat)?row('action-reply','reply','پاسخ'):''}${own&&!msg.media?row('action-edit','edit','ویرایش'):''}${row('action-forward','forward','هدایت پیام')}${row('action-copy','copy','کپی متن')}${row('action-select','check','انتخاب')}${row('action-save','bookmark','ذخیرهٔ پیام')}${chat?.type==='dm'||isManager(chat)?row('action-pin','pin','سنجاق / برداشتن سنجاق'):''}`:''}
+      ${row('action-hide','hide','حذف فقط برای من')}${own||chat?.type==='group'&&isManager(chat)?row('action-delete','trash','حذف برای همه',true):''}${!own?row('action-report','flag','گزارش پیام',true):''}</div>`}`);
     placeMessageMenu(anchor);
     bind('action-reply',()=>setComposer('reply',msg));bind('action-edit',()=>setComposer('edit',msg));
     bind('action-forward',()=>forwardPicker(msg));
@@ -1867,6 +1951,7 @@
   byId('nav-profile').addEventListener('click',()=>settings().then(()=>editSettings('profile')).catch(featureError));
   byId('btn-saved').addEventListener('click',()=>savedView().catch(featureError));
   async function detailsView(chatId) {
+    if(activeChat?.secure)return secureDetails(activeChat);
     showFeature('اطلاعات گفتگو','<p>در حال دریافت…</p>');const generation=featureGeneration,details=await loadChatDetails(chatId);if(generation!==featureGeneration)return;
     const chat=chats.find(row=>row.id===chatId)||activeChat; if(!chat||!details)return;
     const group=details.type==='group',manage=isManager(details),owner=details.role==='owner',channel=!!details.isChannel,noun=channel?'کانال':'گروه',memberRole=role=>channel&&role==='member'?'مشترک':roleName(role);
@@ -1951,6 +2036,7 @@
     bind('message-search-form',async()=>{query=byId('message-search-query').value.trim();await search();},'submit');bind('more-search-results',()=>search(true));byId('message-search-query').focus();
   });
   async function jumpToMessage(chatId,messageId) {
+    if(activeChat?.secure){byId('message-'+messageId)?.scrollIntoView?.({block:'center'});return;}
     if(!messageId)return;let chat=chats.find(row=>row.id===chatId);if(!chat){await loadChats(true);chat=chats.find(row=>row.id===chatId);}if(!chat)throw new Error('دیگر به این گفتگو دسترسی ندارید.');
     if(activeChat?.id!==chatId)await openChat(chat);
     let rounds=0;while(!(messagesByChat[chatId]||[]).some(row=>row.id===messageId)&&historyState[chatId]?.hasOlder&&rounds++<100)await loadMessages(chatId,{older:true});
@@ -1977,7 +2063,7 @@
   api('/api/bootstrap').then(data=>{if(!data)return;byId('registration-help').textContent=data.registration==='invite'?'ثبت‌نام در این سرویس فقط با لینک دعوت مدیر ممکن است.':data.registration==='closed'?'ثبت‌نام فعلاً بسته است؛ با حساب موجود وارد شوید.':'';if(invitation.get('register')){byId('registration-help').textContent='دعوت‌نامهٔ ثبت‌نام دریافت شد. اطلاعات حساب تازه را وارد کنید.';tabRegister.click?.();}}).catch(()=>{});
   // The Windows app's inbox socket heard a call.
   window.addEventListener('wihm-check-calls',()=>{if(token)loadChats(true).then(checkIncomingCalls).catch(()=>{});});
-  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='incoming-call'&&token){loadChats(true).then(checkIncomingCalls).catch(()=>{});return;}if(event.data?.type==='open-secure'&&token){openSecure('',event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
+  navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='incoming-call'&&token){loadChats(true).then(checkIncomingCalls).catch(()=>{});return;}if(event.data?.type==='open-secure'&&token){openSecureThread(event.data.threadId);return;}if(event.data?.type==='open-chat'&&token){loadChats(true).then(()=>{const chat=chats.find(row=>row.id===event.data.chatId);if(chat)openChat(chat);}).catch(()=>{});}});
 
   // Start app
   setupUserSession();
