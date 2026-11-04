@@ -125,8 +125,8 @@ test('real browser MLS clients verify devices, encrypt offline text and replies,
  await assert.rejects(clients[0].start(peer,target),/قبلاً/,'single-use key package cannot be reused');
  clientOffline=true;const marker='TOP_SECRET_متن_خصوصی_12345';const first=await clients[0].send(thread,marker);await Promise.all([clients[0].send(thread,'second secret',first),clients[0].send(thread,'third secret')]);
  let sender=await clients[0].view();assert.equal(sender.queued,3);assert.ok(!JSON.stringify(states[0].outbox).includes(marker));
- clientOffline=false;await clients[0].sync();await api(0,'/test/tick');await clients[1].sync();let receiver=await clients[1].view();assert.equal(receiver.threads.length,0,'server cannot silently inject a device');assert.ok(receiver.pending.length>=1);
- const incoming=receiver.pending.find(e=>e.kind==='welcome');await clients[1].trust(incoming.from,incoming.fromDevice,incoming.senderKey,await fingerprint(incoming.senderKey));await clients[1].sync();receiver=await clients[1].view();
+ clientOffline=false;await clients[0].sync();await api(0,'/test/tick');await clients[1].sync();let receiver=await clients[1].view();assert.equal(receiver.threads[0].request,true,'someone new can only leave a request');await assert.rejects(clients[1].send(receiver.threads[0].id,'too soon'),/درخواست/);
+ await clients[1].acceptRequest(receiver.threads[0].id);await clients[1].sync();receiver=await clients[1].view();
  assert.equal(receiver.threads[0].messages.length,3);assert.equal(receiver.threads[0].messages[0].text,marker);assert.equal(receiver.threads[0].messages[1].replyTo,first);
  assert.ok(!calls.slice(-20).some(c=>c.body.includes(marker)));const envelopes=await servers[1].db.prepare('SELECT envelope FROM secure_events WHERE owner_id=?').bind(servers[1].users.dave.id).all();assert.ok(!JSON.stringify(envelopes).includes(marker));
  const inbox=await api(1,'/api/secure/inbox?device='+b.device,{user:'dave'}),application=inbox.data.events.find(e=>e.envelope.kind==='message');

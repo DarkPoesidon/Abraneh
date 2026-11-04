@@ -20,6 +20,7 @@ function world() {
         return { ok: true };
       }
       if (path === '/api/secure/devices' && method === 'DELETE') { const d = devices.get(who)?.get(body.device); if (d) d.revoked = true; return { ok: true }; }
+      if (path === '/api/secure/blocks') { (server.blocked ||= []).push(body.address); return { ok: true }; }
       if (path === '/api/secure/device-list' && method === 'GET') return { list: lists.get(who) || null };
       if (path === '/api/secure/device-list' && method === 'PUT') { lists.set(who, body); return { ok: true }; }
       if (path === '/api/secure/device-lists') return { address: body.address, list: lists.get(body.address) || null };
@@ -241,4 +242,89 @@ test('only the author can change a message', async () => {
   await bob.client.remove(thread, id);
   await everyone(alice, bob);
   assert.deepEqual(await texts(alice, thread), ['mine']);
+});
+
+const fresh = async () => { const server = world(); return { server, alice: await device(server, 'alice@' + HOST), bob: await device(server, 'bob@' + HOST) }; };
+
+test('a request needs no code: the other person reads it, then accepts', async () => {
+  const { server, alice, bob } = await fresh();
+  const thread = await alice.client.invite('bob@' + HOST, 'سلام، من آلیس هستم');
+  await bob.client.sync();
+  let view = await bob.client.view();
+  assert.equal(view.threads[0].request, true);
+  assert.deepEqual(view.threads[0].messages.map(m => m.text), ['سلام، من آلیس هستم']);
+  await assert.rejects(bob.client.send(thread, 'too soon'), /درخواست/);
+  assert.ok(!JSON.stringify(server.events).includes('آلیس'), 'the server cannot read a request');
+  await bob.client.acceptRequest(thread);
+  await bob.client.send(thread, 'سلام آلیس');
+  await everyone(alice, bob);
+  assert.deepEqual(await texts(alice, thread), ['سلام، من آلیس هستم', 'سلام آلیس']);
+  await alice.client.send(thread, 'پیام دوم');
+  await everyone(alice, bob);
+  view = await bob.client.view();
+  assert.equal(view.threads[0].request, false);
+  assert.equal(view.threads[0].messages.length, 3);
+});
+
+test('declining removes the request and blocks the sender', async () => {
+  const { server, alice, bob } = await fresh();
+  const thread = await alice.client.invite('bob@' + HOST, 'spam');
+  await bob.client.sync();
+  await bob.client.rejectRequest(thread);
+  assert.deepEqual(server.blocked, ['alice@' + HOST]);
+  assert.equal((await bob.client.view()).threads.length, 0);
+});
+
+test('the server still cannot add a device to a known contact', async () => {
+  const { server, alice, bob } = await fresh();
+  const thread = await alice.client.invite('bob@' + HOST, 'hi');
+  await bob.client.sync(); await bob.client.acceptRequest(thread); await bob.client.send(thread, 'ok');
+  await everyone(alice, bob);
+  // A device the server made up writes to Bob as if it were Alice's.
+  const evil = await device(server, 'alice@' + HOST);
+  await evil.client.invite('bob@' + HOST, 'forged');
+  await everyone(bob, evil);
+  const view = await bob.client.view();
+  assert.ok(!view.threads[0].messages.some(m => m.text === 'forged'));
+  assert.ok(view.pending.some(e => e.fromDevice === evil.device), 'it waits, it does not become a chat');
+  assert.equal(view.threads.filter(t => t.request).length, 0);
+});
+
+test('both sides get the same code, and checking it survives until a device changes', async () => {
+  const { server, alice, bob } = await fresh();
+  const thread = await alice.client.invite('bob@' + HOST, 'hi');
+  await bob.client.sync(); await bob.client.acceptRequest(thread); await bob.client.send(thread, 'ok');
+  await everyone(alice, bob);
+  const code = await alice.client.contactCode('bob@' + HOST);
+  assert.match(code, /^\d{4}( \d{4}){5}$/);
+  assert.equal(await bob.client.contactCode('alice@' + HOST), code);
+  await alice.client.verifyContact('bob@' + HOST);
+  assert.equal((await alice.client.view()).threads[0].verified, true);
+  const bob2 = await device(server, 'bob@' + HOST);
+  await link(bob, bob2);
+  await alice.client.trust('bob@' + HOST, bob.device, bob.key, bob.fingerprint);
+  assert.equal((await alice.client.view()).threads[0].verified, false, 'a new device means checking again');
+});
+
+test('a contact who reinstalled shows a warning that one tap accepts', async () => {
+  const { server, alice, bob } = await fresh();
+  const thread = await alice.client.invite('bob@' + HOST, 'hi');
+  await bob.client.sync(); await bob.client.acceptRequest(thread);
+  await everyone(alice, bob);
+  await alice.client.verifyContact('bob@' + HOST);
+  // Bob loses his phone: his only device goes, and a new one starts a new list.
+  await bob.client.revoke(bob.device);
+  const bobNew = await device(server, 'bob@' + HOST);
+  await alice.client.trust('bob@' + HOST, bob.device, bob.key, bob.fingerprint);
+  let view = await alice.client.view();
+  assert.deepEqual(view.keyChanges, ['bob@' + HOST]);
+  assert.equal(view.trusted['bob@' + HOST + '|' + bobNew.device], undefined, 'nothing is sent to it before the warning is accepted');
+  await alice.client.acceptKeyChange('bob@' + HOST);
+  view = await alice.client.view();
+  assert.deepEqual(view.keyChanges, []);
+  assert.equal(view.trusted['bob@' + HOST + '|' + bobNew.device], bobNew.key);
+  assert.equal(view.threads[0].verified, false);
+  await alice.client.send(thread, 'welcome back');
+  await bobNew.client.sync();
+  assert.ok((await bobNew.client.view()).threads.some(t => t.messages.some(m => m.text === 'welcome back')));
 });

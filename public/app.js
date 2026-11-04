@@ -10,7 +10,7 @@
     const task=(async()=>{try{
       const {client}=await window.WihmSecure.connect(api,owner);if(token!==session)return;
       await client.sync();const view=await client.view();if(token!==session)return;
-      secureItems=view.threads.map(t=>({id:t.id,threadId:t.id,secure:true,title:t.peer,lastMessage:t.messages.at(-1),updatedAt:t.messages.at(-1)?.createdAt||0}));
+      secureItems=view.threads.map(t=>({id:t.id,threadId:t.id,secure:true,title:t.peer,lastMessage:t.messages.at(-1),updatedAt:t.messages.at(-1)?.createdAt||0,...(t.request?{unreadCount:1}:{})}));
       for(const e of view.pending.filter(e=>e.kind==='welcome'))if(!secureItems.some(t=>t.id===e.thread))secureItems.push({id:e.thread,threadId:e.thread,secure:true,title:e.from,lastMessage:{text:'دعوت گفتگو · منتظر تأیید دستگاه',createdAt:Date.now()},updatedAt:Date.now(),unreadCount:1});
       renderFilteredChats();await window.WihmSecure.refresh?.();
     }catch(e){console.warn('Secure sync:',e.message);}})();secureRequest=task;try{await task;}finally{if(secureRequest===task)secureRequest=null;}
