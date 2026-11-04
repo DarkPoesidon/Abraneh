@@ -8,7 +8,7 @@ import { allowRequest } from './limits.js';
 import { APP_VERSION } from './version.js';
 import { ROOM_BACKUP_TABLES } from './room-backup.js';
 
-const EXCLUDED=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions']);
+const EXCLUDED=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions','password_resets']);
 const PAUSE=15*60_000,DRAIN=20_000;
 // shortcut: work still running DRAIN after the pause can miss the snapshot; count running work outside D1 if that ever happens.
 const drained=(pausedUntil:number)=>Date.now()>=pausedUntil-PAUSE+DRAIN;

@@ -6,6 +6,7 @@ import { withOperation } from './maintenance.js';
 import { handleBackup, publicRestore } from './backup.js';
 import { Env, User, UserRow } from "./types.js";
 import { hashPassword, verifyPassword, generateSalt, hasJwtSecret } from "./auth.js";
+import { tokenHash } from './access.js';
 import { historyOptions } from "./history.js";
 import { requestIdentity, issueSession, revokeSessions } from './sessions.js';
 import { allowRequest } from './limits.js';
@@ -70,8 +71,8 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
-        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('secure_device_lists','broadcast_channels','chat_moderation','chat_deletions','chat_photos','remote_channel_follows','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
-        const ready = row?.n === 62;
+        const row = await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('password_resets','secure_device_lists','broadcast_channels','chat_moderation','chat_deletions','chat_photos','remote_channel_follows','users','chats','chat_members','messages','user_sessions','session_policy','rate_limits','message_metadata','chat_receipts','schema_migrations','user_profiles','account_security','session_security','group_roles','chat_preferences','message_details','message_reactions','message_hidden','chat_pins','saved_messages','blocked_users','group_invites','group_redemptions','service_admins','site_settings','registration_invites','abuse_reports','push_subscriptions','message_search','telegram_bots','telegram_sources','telegram_subscriptions','telegram_posts','service_user_state','discovery_profiles','service_audit','service_control','service_operations','service_restore','passkeys','security_challenges','user_totp','security_recovery','secure_devices','secure_prekeys','secure_events','secure_outbox','secure_nonces','secure_blocks','secure_peer_keys','channels','channel_members','channel_posts','channel_tokens','channel_webhooks','channel_outbox')").first<{ n: number }>();
+        const ready = row?.n === 63;
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: ready }, ready ? 200 : 503);
       } catch {
         return jsonResponse({ app: 'wihm-cloudflare', version: APP_VERSION, database: false }, 503);
@@ -189,6 +190,23 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
         }
 
         // --- AUTH: LOGIN ---
+        if (url.pathname === "/api/auth/reset" && request.method === "POST") {
+          const body = await inputJson(request);
+          if (!await allowRequest(env, 'password-reset', request.headers.get('CF-Connecting-IP') || 'unknown', 20, 3600_000)) return errorResponse('تلاش‌های بازیابی رمز زیاد است؛ یک ساعت دیگر تلاش کنید.', 429);
+          if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token) || typeof body.newPassword !== 'string' || body.newPassword.length < 8 || body.newPassword.length > 1024) return errorResponse('رمز تازه باید ۸ تا ۱۰۲۴ کاراکتر باشد.');
+          const salt = generateSalt(), hash = await hashPassword(body.newPassword, salt);
+          const claimed = await env.DB.prepare('DELETE FROM password_resets WHERE token_hash=? AND expires_at>? RETURNING user_id').bind(await tokenHash(body.token), Date.now()).first<{ user_id: string }>();
+          if (!claimed) return errorResponse('لینک بازیابی معتبر نیست یا منقضی شده است؛ لینک تازه از مدیر سرور بگیرید.', 403);
+          const { results } = await env.DB.prepare('SELECT id FROM user_sessions WHERE user_id=?').bind(claimed.user_id).all<{ id: string }>();
+          // Two-step login stays on: the owner can reset a password but must not get past the second factor.
+          await env.DB.batch([
+            env.DB.prepare('UPDATE users SET salt=?,password_hash=? WHERE id=?').bind(salt, hash, claimed.user_id),
+            env.DB.prepare('INSERT INTO account_security VALUES (?,2) ON CONFLICT(user_id) DO UPDATE SET password_version=password_version+1').bind(claimed.user_id),
+            env.DB.prepare('INSERT INTO session_policy VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET legacy_disabled=1').bind(claimed.user_id),
+          ]);
+          await revokeSessions(env, claimed.user_id, results.map(row => row.id));
+          return jsonResponse({ ok: true });
+        }
         if (url.pathname === "/api/auth/login" && request.method === "POST") {
           const body = await inputJson(request);
           const username = String(body.username || "").trim().toLowerCase();

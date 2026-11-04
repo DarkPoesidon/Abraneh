@@ -46,7 +46,7 @@ const workerHash = createHash('sha256').update(await readFile(join(output, 'payl
 await writeFile(join(output, 'build.json'), JSON.stringify({ installerVersion: version, appVersion: version, workerSha256: workerHash }, null, 2) + '\n');
 console.log(`Installer built: ${output} (no runtime npm dependencies)`);
 
-const excluded=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions']);
+const excluded=new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions','password_resets']);
 const db=new DatabaseSync(':memory:');db.exec(await readFile('schema.sql','utf8'));
 const tables=Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().filter(row=>!excluded.has(row.name)).map(row=>[row.name,{columns:db.prepare(`PRAGMA table_info("${row.name}")`).all().map(c=>c.name),dependencies:[...new Set(db.prepare(`PRAGMA foreign_key_list("${row.name}")`).all().map(f=>f.table))]}]));
 const roomDb=new DatabaseSync(':memory:'),source=await readFile('src/chatRoom.ts','utf8');roomDb.exec(source.match(/this\.ctx\.storage\.sql\.exec\(`([\s\S]*?)`\);/)[1]);
