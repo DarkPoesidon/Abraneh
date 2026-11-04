@@ -187,3 +187,58 @@ test('an older saved conversation keeps working after the upgrade', async () => 
   assert.ok(view.threads.some(t => t.messages.some(m => m.text === 'پس از ارتقا')));
   assert.equal(view.threadOfSession[session.id] !== undefined, true);
 });
+
+test('replies, edits, deletes, reactions and read receipts travel encrypted to every device', async () => {
+  const server = world(), { alice, bob, thread } = await pair(server);
+  const alice2 = await device(server, 'alice@' + HOST);
+  await link(alice, alice2);
+  await bob.client.trust('alice@' + HOST, alice.device, alice.key, alice.fingerprint);
+  const message = id => party => party.client.view().then(view => view.threads.find(t => t.id === thread).messages.find(m => m.id === id));
+  const first = await alice.client.send(thread, 'PLAIN-ONE');
+  await everyone(alice, alice2, bob);
+  const reply = await bob.client.send(thread, 'PLAIN-TWO', first);
+  await everyone(alice, alice2, bob);
+  assert.equal((await message(reply)(alice)).replyTo, first);
+
+  await alice.client.edit(thread, first, 'PLAIN-EDITED');
+  await bob.client.react(thread, first, '👍');
+  await everyone(alice, alice2, bob);
+  for (const party of [alice, alice2, bob]) {
+    const seen = await message(first)(party);
+    assert.equal(seen.text, 'PLAIN-EDITED'); assert.equal(seen.edited, true);
+    assert.equal(seen.reactions['bob@' + HOST], '👍');
+  }
+  await bob.client.react(thread, first, '');
+  await bob.client.markRead(thread);
+  await alice.client.markRead(thread);
+  await everyone(alice, alice2, bob);
+  assert.deepEqual((await message(first)(alice)).reactions, {});
+  assert.equal((await message(first)(alice)).delivery, 'read');
+  assert.equal((await message(reply)(alice2)).read, true, 'your other device knows you read it');
+
+  await alice.client.remove(thread, first);
+  await everyone(alice, alice2, bob);
+  for (const party of [alice, alice2, bob]) {
+    const seen = await message(first)(party);
+    assert.equal(seen.deleted, true); assert.equal(seen.text, '');
+  }
+
+  const wire = JSON.stringify(server.events);
+  for (const text of ['PLAIN-ONE', 'PLAIN-TWO', 'PLAIN-EDITED', '👍']) assert.ok(!wire.includes(text), text);
+  const kinds = server.events.map(e => e.envelope.kind);
+  assert.ok(kinds.includes('control') && kinds.includes('message'), 'changes do not notify, messages do');
+});
+
+test('only the author can change a message', async () => {
+  const server = world(), { alice, bob, thread } = await pair(server);
+  const id = await alice.client.send(thread, 'mine');
+  await everyone(alice, bob);
+  await assert.rejects(bob.client.edit(thread, id, 'hacked'), /فقط پیام خودتان/);
+  await assert.rejects(bob.client.remove(thread, id), /فقط پیام خودتان/);
+  // A changed client claims the message is its own; the other side still refuses.
+  const state = bob.read();state.threads[thread].messages[0].from = 'bob@' + HOST;bob.client.write(state);
+  await bob.client.edit(thread, id, 'hacked');
+  await bob.client.remove(thread, id);
+  await everyone(alice, bob);
+  assert.deepEqual(await texts(alice, thread), ['mine']);
+});

@@ -20,7 +20,7 @@ const digest=async(value:string)=>b64(new Uint8Array(await crypto.subtle.digest(
 async function verify(key:string,signature:string,data:string) {
   try{return await crypto.subtle.verify('Ed25519',await crypto.subtle.importKey('raw',bytes(key,32),'Ed25519',false,['verify']),bytes(signature,64),encode.encode(data));}catch{return false;}
 }
-export interface SecureEnvelope {id:string;thread:string;from:string;fromDevice:string;to:string;toDevice:string;kind:'welcome'|'message';payload:string;senderKey:string;signature:string}
+export interface SecureEnvelope {id:string;thread:string;from:string;fromDevice:string;to:string;toDevice:string;kind:'welcome'|'message'|'control';payload:string;senderKey:string;signature:string}
 export const envelopeData=(e:SecureEnvelope)=>JSON.stringify(['wihm-mls/1',e.id,e.thread,e.from,e.fromDevice,e.to,e.toDevice,e.kind,e.payload,e.senderKey]);
 export const deviceData=(who:string,device:string,keyPackage:string)=>JSON.stringify(['wihm-device/1',who,device,keyPackage]);
 export const listData=(who:string,list:any)=>JSON.stringify(['wihm-device-list/1',who,list.version,list.devices.map((d:any)=>[d.device,d.key]),list.signer]);
@@ -33,8 +33,8 @@ async function envelope(value:any):Promise<SecureEnvelope> {
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==fields.length||fields.some(k=>!(k in value)))return bad();
   uuid(value.id);uuid(value.thread);uuid(value.fromDevice);uuid(value.toDevice);fullAddress(value.from);fullAddress(value.to);
   const payload=bytes(value.payload);bytes(value.senderKey,32);bytes(value.signature,64);
-  if(!['welcome','message'].includes(value.kind)||payload.length<8)return bad();
-  if(payload[0]!==0||payload[1]!==1||payload[2]!==0||payload[3]!==({message:2,welcome:3} as Record<string,number>)[value.kind])return bad('فقط پیام خصوصی یا دعوت MLS پذیرفته می‌شود.');
+  if(!['welcome','message','control'].includes(value.kind)||payload.length<8)return bad();
+  if(payload[0]!==0||payload[1]!==1||payload[2]!==0||payload[3]!==({message:2,control:2,welcome:3} as Record<string,number>)[value.kind])return bad('فقط پیام خصوصی یا دعوت MLS پذیرفته می‌شود.');
   if(!await verify(value.senderKey,value.signature,envelopeData(value)))return bad('امضای دستگاه معتبر نیست.',403);
   return Object.fromEntries(fields.map(k=>[k,value[k]])) as unknown as SecureEnvelope;
 }
@@ -95,7 +95,7 @@ async function deliver(env:Env,e:SecureEnvelope) {
   const target=fullAddress(e.to),sender=fullAddress(e.from),user=await env.DB.prepare(`SELECT u.id FROM users u WHERE u.username=? AND EXISTS(SELECT 1 FROM secure_devices d WHERE d.user_id=u.id AND d.device_id=? AND d.revoked_at IS NULL) AND NOT EXISTS(SELECT 1 FROM service_user_state s WHERE s.user_id=u.id AND s.disabled_at IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM secure_blocks b WHERE b.user_id=u.id AND b.address=?) AND NOT EXISTS(SELECT 1 FROM blocked_users b JOIN users other ON other.id=b.blocked_id WHERE b.blocker_id=u.id AND other.username=? AND ?=?)`).bind(target.username,e.toDevice,e.from,sender.username,sender.host,target.host).first<{id:string}>();
   if(!user)return bad('مقصد در دسترس نیست یا پیام را نمی‌پذیرد.',404);
   const text=JSON.stringify(e),hash=await digest(text);
-  const inserted=await env.DB.prepare('INSERT OR IGNORE INTO secure_events(id,owner_id,device_id,envelope,digest,created_at) VALUES (?,?,?,?,?,?)').bind(e.id,user.id,e.toDevice,text,hash,Date.now()).run();
+  const inserted=await env.DB.prepare('INSERT OR IGNORE INTO secure_events(id,owner_id,device_id,envelope,digest,created_at,notified_at) VALUES (?,?,?,?,?,?,?)').bind(e.id,user.id,e.toDevice,text,hash,Date.now(),e.kind==='control'?Date.now():null).run();
   const row=await env.DB.prepare('SELECT digest FROM secure_events WHERE id=?').bind(e.id).first<{digest:string}>();if(row?.digest!==hash)return bad('شناسهٔ پیام قبلاً استفاده شده است.',409);
   return {ownerId:user.id,fresh:!!inserted.meta.changes};
 }
