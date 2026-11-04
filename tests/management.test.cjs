@@ -42,7 +42,7 @@ test('management endpoints require the owner and return bounded statistics witho
   assert.equal((await api(0,path,{user:null})).status,401);
   assert.equal((await api(0,path,{user:servers[0].member})).status,403);
  }
- const overview=await api(0,'/api/service/overview');assert.equal(overview.status,200);assert.equal(overview.data.counts.users,2);assert.equal(overview.data.version,'1.7.16');assert.equal(overview.data.backupAvailable,true);assert.equal(overview.data.encryption,'legacy-transport;experimental-mls');
+ const overview=await api(0,'/api/service/overview');assert.equal(overview.status,200);assert.equal(overview.data.counts.users,2);assert.equal(overview.data.version,'1.7.17');assert.equal(overview.data.backupAvailable,true);assert.equal(overview.data.encryption,'legacy-transport;experimental-mls');
  const listed=await api(0,'/api/service/users');assert.equal(listed.data.users.length,2);assert.ok(!JSON.stringify(listed.data).includes('password'));assert.ok(!JSON.stringify(listed.data).includes('salt'));
 });
 test('disabling a user immediately revokes existing REST and websocket access, blocks new logins and survives re-enabling old tokens',async()=>{
@@ -108,4 +108,22 @@ test('user listing uses bounded cursor pages and literal Persian search',async()
  const first=await api(0,'/api/service/users');assert.equal(first.data.users.length,30);assert.ok(first.data.next);
  const second=await api(0,'/api/service/users?after='+first.data.next);assert.equal(second.data.users.length,7);assert.equal(second.data.next,null);assert.equal(new Set([...first.data.users,...second.data.users].map(row=>row.id)).size,37);
  assert.equal((await api(0,'/api/service/users?q='+encodeURIComponent('فارسی 34'))).data.users.length,1);
+});
+test('the owner can create a one-time reset link that ends the member\'s sessions',async()=>{
+ const login=(password,username='mina')=>api(0,'/api/auth/login',{user:null,body:{username,password}}),member=(await api(0,'/api/auth/register',{user:null,body:{username:'mina',password:'testpass123'}})).data,reset=body=>api(0,'/api/auth/reset',{user:null,body});
+ const create=()=>api(0,'/api/service/users',{method:'PATCH',body:{userId:member.user.id,action:'reset-password',reason:''}});
+ assert.equal((await api(0,'/api/service/users',{user:member,method:'PATCH',body:{userId:member.user.id,action:'reset-password',reason:''}})).status,403);
+ assert.equal((await api(0,'/api/service/users',{method:'PATCH',body:{userId:servers[0].owner.user.id,action:'reset-password',reason:''}})).status,409);
+ const first=(await create()).data.token,{token}=(await create()).data;assert.match(token,/^[a-f0-9]{64}$/);
+ assert.ok(!JSON.stringify(await servers[0].db.prepare('SELECT * FROM password_resets').all()).includes(token),'only a hash is stored');
+ assert.equal((await reset({token:first,newPassword:'newpass12345'})).status,403,'a newer link replaces the older one');
+ assert.equal((await reset({token,newPassword:'short'})).status,400);
+ assert.equal((await reset({token:'0'.repeat(64),newPassword:'newpass12345'})).status,403);
+ assert.equal((await login('testpass123')).status,200,'a failed attempt changes nothing');
+ assert.equal((await reset({token,newPassword:'newpass12345'})).status,200);
+ assert.equal((await reset({token,newPassword:'anotherpass123'})).status,403,'a link works once');
+ assert.equal((await api(0,'/api/profile',{user:member})).status,401,'old sessions end');
+ assert.equal((await login('testpass123')).status,401);assert.equal((await login('newpass12345')).status,200);
+ const expired=(await create()).data.token;await servers[0].db.prepare('UPDATE password_resets SET expires_at=1').run();
+ assert.equal((await reset({token:expired,newPassword:'anotherpass123'})).status,403,'a link expires');
 });

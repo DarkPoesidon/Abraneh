@@ -1,7 +1,7 @@
 import { Env, JwtPayload } from './types.js';
 import { InputError, inputJson, jsonResponse } from './http.js';
 import { allowRequest } from './limits.js';
-import { deleteChat, refreshRoom, validId } from './access.js';
+import { deleteChat, refreshRoom, tokenHash, validId } from './access.js';
 import { APP_VERSION } from './version.js';
 
 export async function serviceAdmin(env:Env,id:string) {
@@ -71,9 +71,18 @@ export async function handleManagement(request:Request,env:Env,auth:JwtPayload) 
   if(path==='/api/service/users'&&request.method==='PATCH'){
     if(!await allowRequest(env,'admin-user-action',auth.userId,60,3600_000))throw new InputError('تغییرات زیاد است؛ بعداً دوباره تلاش کنید.',429);
     const body=await inputJson(request);
-    if(typeof body.userId!=='string'||body.userId.length>100||!['disable','enable'].includes(body.action)||typeof body.reason!=='string'||body.reason.length>200)throw new InputError('کاربر، اقدام یا توضیح معتبر نیست.');
-    if(body.userId===auth.userId||await env.DB.prepare('SELECT 1 FROM service_admins WHERE user_id=?').bind(body.userId).first())throw new InputError('حساب مدیر سرویس را نمی‌توان غیرفعال کرد.',409);
+    if(typeof body.userId!=='string'||body.userId.length>100||!['disable','enable','reset-password'].includes(body.action)||typeof body.reason!=='string'||body.reason.length>200)throw new InputError('کاربر، اقدام یا توضیح معتبر نیست.');
+    if(body.userId===auth.userId||await env.DB.prepare('SELECT 1 FROM service_admins WHERE user_id=?').bind(body.userId).first())throw new InputError('حساب مدیر سرویس را نمی‌توان از اینجا تغییر داد.',409);
     if(!await env.DB.prepare('SELECT 1 FROM users WHERE id=?').bind(body.userId).first())throw new InputError('کاربر پیدا نشد.',404);
+    if(body.action==='reset-password'){
+      const token=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),now=Date.now();
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM password_resets WHERE user_id=? OR expires_at<=?').bind(body.userId,now),
+        env.DB.prepare('INSERT INTO password_resets VALUES (?,?,?)').bind(await tokenHash(token),body.userId,now+3600_000),
+      ]);
+      await audit(env,auth.userId,'reset-password',body.userId);
+      return jsonResponse({token});
+    }
     const disabled=body.action==='disable',now=Date.now();
     await env.DB.batch([
       env.DB.prepare('INSERT INTO service_user_state VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET disabled_at=excluded.disabled_at,reason=excluded.reason').bind(body.userId,disabled?now:null,body.reason.trim()),

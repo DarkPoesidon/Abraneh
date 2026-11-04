@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { APP_MARKER, validAccount, validName } from './deploy.mjs';
 import { CloudflareError } from './cloudflare.mjs';
 
-const excluded = new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions','wihm_installation']);
+const excluded = new Set(['service_control','service_operations','service_restore','user_sessions','session_security','security_challenges','rate_limits','schema_migrations','push_subscriptions','password_resets','wihm_installation']);
 const roomNames = new Set(['messages','message_keys','room_meta','sync_queue','message_details','message_reactions']);
 const tokens = new Map(), active = new Set();
 const identifier = value => typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value);

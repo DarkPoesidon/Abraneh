@@ -179,6 +179,7 @@
     tabLogin.classList.add('active');
     tabRegister.classList.remove('active');
     displayNameGroup.style.display = 'none';
+    for (const id of ['otp-group', 'btn-passkey-login', 'auth-help']) document.getElementById(id).style.display = '';
     authSubmitBtn.textContent = 'ورود به حساب';
     authError.style.display = 'none';
   });
@@ -188,9 +189,31 @@
     tabRegister.classList.add('active');
     tabLogin.classList.remove('active');
     displayNameGroup.style.display = 'block';
+    for (const id of ['otp-group', 'btn-passkey-login', 'auth-help']) document.getElementById(id).style.display = 'none';
     authSubmitBtn.textContent = 'ایجاد حساب کاربری';
     authError.style.display = 'none';
   });
+
+  if (invitation.get('reset')) {
+    const resetForm = document.getElementById('reset-form');
+    authForm.style.display = 'none';
+    resetForm.style.display = '';
+    resetForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      authError.style.display = 'none';
+      try {
+        await api('/api/auth/reset', { method: 'POST', body: JSON.stringify({ token: invitation.get('reset'), newPassword: document.getElementById('reset-password').value }) });
+        history.replaceState(null, '', location.pathname + location.search);
+        invitation.delete('reset');
+        resetForm.style.display = 'none';
+        authForm.style.display = '';
+        document.getElementById('auth-help').textContent = 'رمز تازه ذخیره شد. وارد شوید.';
+      } catch (error) {
+        authError.textContent = error.message;
+        authError.style.display = 'block';
+      }
+    });
+  }
 
   authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
