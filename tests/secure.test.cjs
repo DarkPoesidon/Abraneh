@@ -167,3 +167,8 @@ test('the server keeps a device list only when a listed device signed it, and co
  for(const server of [1,0]){const read=await api(server,'/api/secure/device-lists',{user:'bob',body:{address:one.who}});assert.equal(read.status,200,JSON.stringify(read));assert.equal(read.data.list.version,2);}
  assert.deepEqual((await api(1,'/api/secure/device-list',{user:'mallory'})).data.list.devices.map(d=>d.device),[one.device,two.device]);
 });
+test('a control message is delivered but never notifies',async()=>{
+ const e=event(servers[1].alice,servers[1].bob,{kind:'control'});assert.equal((await api(1,'/api/secure/send',{body:e})).status,200);
+ const row=await servers[1].db.prepare('SELECT notified_at AS notified FROM secure_events WHERE id=?').bind(e.id).first();assert.ok(row.notified);
+ const inbox=await api(1,'/api/secure/inbox?device='+servers[1].bob.device,{user:'bob'});assert.ok(inbox.data.events.some(x=>x.envelope.id===e.id));
+});

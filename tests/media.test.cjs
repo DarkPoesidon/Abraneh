@@ -57,7 +57,10 @@ test('type, container, size and duration are checked by the server', async () =>
   assert.equal((await upload(fixture.owner, webm(2000), { mime: 'text/html' })).status, 415);
   assert.equal((await upload(fixture.owner, webm(2000), { kind: 'video', mime: 'audio/webm' })).status, 415);
   assert.equal((await upload(fixture.owner, new TextEncoder().encode('<script>alert(1)</script>'))).status, 400);
-  assert.equal((await upload(fixture.owner, webm(4 * 1048576 + 1))).status, 413);
+  // The server refuses by Content-Length and closes the socket, which can reset a client still sending the body.
+  let oversized;
+  for (let attempt = 0; attempt < 10 && !oversized; attempt++) oversized = await upload(fixture.owner, webm(4 * 1048576 + 1)).catch(error => { if (error.cause?.code !== 'ECONNRESET') throw error; });
+  assert.equal(oversized?.status, 413);
   assert.equal((await upload(fixture.owner, webm(2000), { durationMs: String(10 * 60_000) })).status, 400);
 });
 
