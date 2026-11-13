@@ -49,12 +49,12 @@
 
 ## امکانات
 
-- **گفتگو:** پاسخ، ویرایش، حذف، واکنش، هدایت، انتخاب چند پیام، اشاره با `@` و جستجوی فارسی.
+- **گفتگو:** پاسخ، ویرایش، حذف، واکنش، هدایت، انتخاب چند پیام، اشاره با `@` و جستجوی فارسی. پیش‌نویس هر گفتگو در یک خط در فهرست دیده می‌شود و با ارسال پیام یا پاک‌کردن متن از فهرست برداشته می‌شود. فهرست گفتگوها فیلتر **همه**، **خوانده‌نشده** و **گروه‌ها** دارد. در ویندوز با `Ctrl+K` گفتگو را پیدا کنید و با کلیدهای جهت‌دار و `Enter` آن را باز کنید.
 - **گفتگوی امن:** گفتگوی خصوصی رمزگذاری‌شدهٔ سرتاسری از دکمهٔ «+»، در همان صفحهٔ چت، با درخواست و قبول، کد امنیتی و پشتیبانی از چند دستگاه. فعلاً فقط متن دارد و آزمایشی است.
 - **گروه و کانال:** نقش‌های مالک، مدیر و عضو، دعوت قابل لغو، کانال عمومی و خصوصی، و جستجو و عضویت در کانال‌های سرورهای دیگر.
-- **تماس و رسانه:** تماس صوتی و تصویری، پیام صوتی و تصویری، و ارسال تصویر و فایل.
+- **تماس و رسانه:** تماس صوتی و تصویری، پیام صوتی و تصویری، و ارسال تصویر و فایل. هر بار یک فایل را انتخاب و پیش‌نمایش کنید و سپس **ارسال** را بزنید.
 - **برنامه‌ها:** وب، اندروید و ویندوز، با اعلان حتی وقتی پنجرهٔ برنامه بسته است.
-- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، طراحی نزدیک به تلگرام، منوی گفتگو با نگه‌داشتن انگشت، و دکمهٔ بک مثل برنامه‌های استاندارد.
+- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، طراحی نزدیک به تلگرام، باز شدن منوی گفتگو از پایین با نگه‌داشتن انگشت، و دکمهٔ بک مثل برنامه‌های استاندارد.
 - **مدیریت:** پنل مدیر، گزارش مزاحمت، ثبت‌نام آزاد یا دعوتی، لینک بازیابی رمز برای کاربران، پشتیبان و بازگردانی.
 - **شبکه:** پشتیبانی از پروکسی SOCKS5 و HTTP در برنامه‌های اندروید و ویندوز.
 
@@ -91,6 +91,8 @@ The server installer and the Android and Windows apps ship together in each rele
 | **Run a server** | [Server installer](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
 | **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) |
 | **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) |
+
+Filter the chat list by **All**, **Unread**, or **Groups**. Each chat shows a one-line draft preview until you send or clear the draft. In the Windows app, press `Ctrl+K` to find a chat, use the arrow keys to select it, and press `Enter` to open it. Choose one attachment to preview, then select **Send**. On a touchscreen, press and hold a chat to open its menu from the bottom.
 
 Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Secure chats start from the plus button and use MLS for text. They are experimental and have had no independent audit. Without comparing the security code, a server could sit between two people at first contact, and the app's code comes from the server.
 

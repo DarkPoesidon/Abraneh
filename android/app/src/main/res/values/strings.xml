@@ -96,4 +96,8 @@
     <string name="notif_autostart_button">باز کردن تنظیمات شروع خودکار دستگاه</string>
     <string name="notif_test">آزمایش عملکرد اعلان</string>
     <string name="notif_test_button">🔔 آزمایش نمایش اعلان روی گوشی</string>
+    <string name="you">شما</string>
+    <string name="reply">پاسخ</string>
+    <string name="mark_read">خوانده شد</string>
+    <string name="reply_failed">پاسخ ارسال نشد. برنامه را باز کنید و دوباره بفرستید.</string>
 </resources>

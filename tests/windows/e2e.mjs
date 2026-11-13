@@ -45,7 +45,7 @@ try {
   console.log('ok: the web client runs, without Node');
 
   // The page stays alive in the tray and knows it is hidden.
-  await page.locator('[data-chat-id="design-team"]').click();
+  await page.locator('[data-chat-id="fixture-chat-0"]').click();
   await page.locator('.message-bubble').first().waitFor();
   const browserWindow = () => app.browserWindow(page);
   await (await browserWindow()).evaluate(window => window.close());
@@ -56,8 +56,9 @@ try {
   // A message from someone else reaches the inbox socket while hidden, and Windows shows it.
   await app.evaluate(({ Notification }) => {
     globalThis.shown = [];
+    globalThis.lastNotification = null;
     const show = Notification.prototype.show;
-    Notification.prototype.show = function () { globalThis.shown.push(this.title); return show.call(this); };
+    Notification.prototype.show = function () { globalThis.shown.push(this.title); globalThis.lastNotification = this; return show.call(this); };
   });
   const socket = await page.evaluate(({ origin, token }) => new Promise((done, fail) => {
     const ws = new WebSocket(origin.replace('http', 'ws') + '/ws?chatId=design-team', ['wihm.v1', 'wihm.token.' + token]);
@@ -72,8 +73,12 @@ try {
   assert.equal(await app.evaluate(() => globalThis.shown.length), 1, 'one notification while hidden');
   console.log('ok: a message notifies while hidden');
 
-  await (await browserWindow()).evaluate(window => window.show());
+  await page.evaluate(() => { window.notificationNavigationMarker = true; });
+  await app.evaluate(() => globalThis.lastNotification.emit('click'));
   await page.waitForFunction(() => window.wihmAppHidden === false);
+  await page.locator('#active-chat-title', { hasText: 'تیم طراحی' }).waitFor();
+  assert.equal(await page.evaluate(() => window.notificationNavigationMarker), true, 'notification opens the chat without reloading');
+  console.log('ok: clicking the notification opens its chat without reloading');
 
   // The app's own settings reach the proxy, and Back leaves without saving.
   const address = page.url();

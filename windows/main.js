@@ -58,7 +58,18 @@ function notify({ title, body, chatId } = {}) {
   notification.on('click', () => {
     forget();
     showWindow();
-    if (/^[a-zA-Z0-9_-]{1,100}$/.test(String(chatId))) window.loadURL(config.server + '/?chat=' + encodeURIComponent(chatId));
+    if (typeof chatId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(chatId)) return;
+    const contents = window.webContents;
+    const server = config.server;
+    const openLegacy = () => {
+      if (!contents.isDestroyed() && config.server === server) contents.loadURL(server + '/?chat=' + encodeURIComponent(chatId)).catch(() => {});
+    };
+    if (!onServerPage(contents.getURL()) || contents.isLoadingMainFrame()) {
+      openLegacy();
+      return;
+    }
+    contents.executeJavaScript(`window.wihmOpenNotifiedChat?.(${JSON.stringify(chatId)})`)
+      .then(opened => { if (!opened) openLegacy(); }, openLegacy);
   });
   notification.show();
 }
