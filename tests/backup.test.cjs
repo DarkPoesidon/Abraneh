@@ -13,7 +13,7 @@ before(async()=>{
  await source.db.prepare('INSERT INTO service_admins VALUES (1,?)').bind(owner.user.id).run();
  await source.db.prepare("INSERT INTO site_settings VALUES ('call_turn','opaque-test-configuration')").run();
  room=(await api(source,'/api/chats',{body:{targetUserId:other.user.id}})).data.id;
- const response=await source.mf.dispatchFetch('https://source.test/ws?chatId='+room+'&token='+owner.token,{headers:{Upgrade:'websocket'}});socket=response.webSocket;socket.accept();
+ const response=await source.mf.dispatchFetch('https://source.test/ws?chatId='+room,{headers:{Upgrade:'websocket','Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+owner.token}});socket=response.webSocket;socket.accept();
  const saved=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Message not acknowledged')),5000);socket.addEventListener('message',e=>{if(JSON.parse(e.data).event==='new_message'){clearTimeout(timer);resolve();}});});socket.send(JSON.stringify({action:'send_message',chatId:room,text:'تاریخچهٔ اصلی برای بازیابی',clientMsgId:'backup-message'}));await saved;
 });
 after(async()=>{socket?.close();await Promise.all([source?.mf.dispose(),target?.mf.dispose()]);});

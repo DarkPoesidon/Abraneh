@@ -14,7 +14,7 @@ before(async()=>{
 after(async()=>{for(const socket of sockets)socket.close();await mf?.dispose();});
 test('a real message travels through its room alarm to the Workers fetch push transport',async()=>{
  const room=await api('/api/chats',{targetUserId:recipient.user.id},sender);assert.equal(room.status,201);
- const response=await mf.dispatchFetch('https://app.test/ws?chatId='+room.data.id+'&token='+sender.token,{headers:{Upgrade:'websocket'}});assert.equal(response.status,101);const ws=response.webSocket;ws.accept();sockets.push(ws);
+ const response=await mf.dispatchFetch('https://app.test/ws?chatId='+room.data.id,{headers:{Upgrade:'websocket','Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+sender.token}});assert.equal(response.status,101);const ws=response.webSocket;ws.accept();sockets.push(ws);
  ws.send(JSON.stringify({action:'send_message',chatId:room.data.id,text:'آزمون مسیر واقعی صف اعلان',clientMsgId:'alarm-push-test'}));
  const end=Date.now()+12_000;while(!calls.length&&Date.now()<end)await new Promise(r=>setTimeout(r,100));assert.equal(calls.length,1);assert.equal(calls[0].encoding,'aes128gcm');assert.ok(calls[0].bytes>80);
 });

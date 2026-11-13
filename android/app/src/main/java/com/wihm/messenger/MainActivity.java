@@ -897,7 +897,8 @@ public class MainActivity extends AppCompatActivity {
             String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
             if (sharedText != null && !sharedText.isEmpty() && currentServerUrl != null && !currentServerUrl.isEmpty()) {
                 // The page holds shared text for the next opened chat, and never sends it by itself.
-                webView.loadUrl(Uri.parse(currentServerUrl).buildUpon().appendQueryParameter("share", sharedText).build().toString());
+                // After #, so the text is never sent to the server or kept in its logs.
+                webView.loadUrl(Uri.parse(currentServerUrl).buildUpon().encodedFragment("share=" + Uri.encode(sharedText)).build().toString());
             }
         }
 

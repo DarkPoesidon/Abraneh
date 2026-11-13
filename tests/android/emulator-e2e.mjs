@@ -64,7 +64,7 @@ const db = await fixture.mf.getD1Database('DB');
 const events = [];
 let caller, chatId, callNumber = 0;
 async function callerSocket() {
-  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}&token=${fixture.owner.token}`, { headers: { Upgrade: 'websocket' } });
+  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+fixture.owner.token } });
   caller = response.webSocket; caller.accept();
   caller.addEventListener('message', event => { try { events.push(JSON.parse(event.data)); } catch {} });
 }

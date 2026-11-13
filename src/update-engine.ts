@@ -53,7 +53,7 @@ export async function publishMain(api:CloudApi,bundle:UpdateBundle,force=false) 
   // An accepted upload followed by a lost response is safe to resume.
   if(!force&&settings.bindings.find((b:any)=>b.name==='WIHM_VERSION')?.text===bundle.version)return;
   const jwt=await uploadBundleAssets(api,bundle),form=new FormData();
-  form.append('metadata',new Blob([JSON.stringify({main_module:'worker.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings:retainedBindings(settings,bundle.version),assets:{jwt,config:{html_handling:'auto-trailing-slash',not_found_handling:'none'}}})],{type:'application/json'}));
+  form.append('metadata',new Blob([JSON.stringify({main_module:'worker.mjs',compatibility_date:'2026-01-01',compatibility_flags:['nodejs_compat','global_fetch_strictly_public'],bindings:retainedBindings(settings,bundle.version),assets:{jwt,config:{html_handling:'auto-trailing-slash',not_found_handling:'none',run_worker_first:true}}})],{type:'application/json'}));
   form.append('worker.mjs',new Blob([decode64(bundle.files['worker.mjs'])],{type:'application/javascript+module'}),'worker.mjs');
   await api.request(`/accounts/${api.env.ACCOUNT_ID}/workers/scripts/${api.env.WORKER_NAME}?bindings_inherit=strict`,'PUT',form);
 }

@@ -4,7 +4,7 @@ let fixture, chatId, caller, sockets = [];
 before(async () => {
   fixture = await (await import('./browser/fixture.mjs')).createNavigationFixture();
   const result = await api('/api/chats', fixture.owner, { targetUserId: fixture.peer.user.id }); chatId = result.data.id;
-  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}&token=${fixture.owner.token}`, { headers: { Upgrade: 'websocket' } });
+  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+fixture.owner.token } });
   assert.equal(response.status, 101); caller = response.webSocket; caller.accept(); sockets.push(caller);
 });
 after(async () => { for (const socket of sockets) socket.close(); await fixture?.close(); });

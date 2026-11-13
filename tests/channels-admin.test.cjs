@@ -7,7 +7,7 @@ async function call(account, path, method = 'GET', body) {
 }
 async function ok(account, path, method, body) { const result = await call(account, path, method, body); assert.ok(result.status < 300, path + ' ' + JSON.stringify(result)); return result.data; }
 async function socket(account, chatId) {
-  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}&token=${account.token}`, { headers: { Upgrade: 'websocket' } });
+  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+account.token } });
   const ws = response.webSocket; ws.accept(); sockets.push(ws); const events = []; ws.addEventListener('message', event => events.push(JSON.parse(event.data)));
   return { ws, events };
 }
