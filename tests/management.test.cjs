@@ -48,7 +48,7 @@ test('management endpoints require the owner and return bounded statistics witho
 test('disabling a user immediately revokes existing REST and websocket access, blocks new logins and survives re-enabling old tokens',async()=>{
  const member=servers[0].member,owner=servers[0].owner,db=servers[0].db;
  const room=await api(0,'/api/chats',{body:{targetUserId:member.user.id}});assert.equal(room.status,201);
- const response=await servers[0].mf.dispatchFetch(origins[0]+'/ws?chatId='+room.data.id+'&token='+member.token,{headers:{Upgrade:'websocket'}});assert.equal(response.status,101);const socket=response.webSocket;socket.accept();sockets.push(socket);
+ const response=await servers[0].mf.dispatchFetch(origins[0]+'/ws?chatId='+room.data.id,{headers:{Upgrade:'websocket','Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+member.token}});assert.equal(response.status,101);const socket=response.webSocket;socket.accept();sockets.push(socket);
  const revoked=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Socket not revoked')),5000);socket.addEventListener('message',e=>{if(JSON.parse(e.data).event==='session_revoked'){clearTimeout(timer);resolve();}});});
  assert.equal((await api(0,'/api/service/users',{method:'PATCH',body:{userId:owner.user.id,action:'disable',reason:''}})).status,409);
  const sessionsBefore=(await db.prepare('SELECT count(*) AS n FROM user_sessions WHERE user_id=?').bind(member.user.id).first()).n;

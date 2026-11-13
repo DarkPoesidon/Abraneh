@@ -385,11 +385,14 @@
   // Text shared from another Android app waits here until the user picks a chat.
   let pendingShare = '';
   function readSharedText() {
-    const params = new URLSearchParams(location.search || ''), shared = params.get('share');
+    // The Android app passes it after #, which never reaches the server. Apps before that used the query.
+    const params = new URLSearchParams(location.search || ''), hash = new URLSearchParams((location.hash || '').slice(1)), shared = hash.get('share') || params.get('share');
     if (!shared) return;
     pendingShare = shared.slice(0, 10000); params.delete('share');
     history.replaceState(null, '', location.pathname + (params.size ? '?' + params : ''));
   }
+  // A new # on the open page does not reload it.
+  window.addEventListener?.('hashchange', () => { if (currentUser && token) readSharedText(); });
   let pushRenewedFor = null;
   // A WebView stays "visible" behind other apps, so the Android app reports this itself.
   const pageHidden = () => document.visibilityState === 'hidden' || window.wihmAppHidden === true;

@@ -23,6 +23,10 @@ import { publicSecure, handleSecure, scheduledSecure } from './secure.js';
 import { publicDiscovery, handleDiscovery } from './discovery.js';
 export { ChatRoom } from "./chatRoom.js";
 
+const PAGE_HEADERS = {
+  'Content-Security-Policy': "frame-ancestors 'none'", 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer', 'Strict-Transport-Security': 'max-age=31536000',
+};
 const CHANNEL_HANDLE = /^[a-z][a-z0-9_]{4,31}$/;
 function channelSettings(body: any) {
   const visibility = body.visibility === 'public' ? 'public' : 'private';
@@ -40,7 +44,7 @@ async function validatedMembers(value: unknown, env: Env, self: string): Promise
   return results.length === ids.length ? ids : null;
 }
 
-// Authenticate request via Bearer token or ?token=
+// Authenticate request via Bearer token or the WebSocket subprotocol
 const authenticate = requestIdentity;
 
 export default {
@@ -212,7 +216,9 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           const username = String(body.username || "").trim().toLowerCase();
           const password = String(body.password || "");
           const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-          if (!await allowRequest(env, 'login-ip', ip, 100, 15 * 60_000) || !await allowRequest(env, 'login-name', ip + ':' + username, 15, 15 * 60_000)) return errorResponse('تعداد تلاش ورود زیاد است. ۱۵ دقیقه دیگر دوباره تلاش کنید.', 429);
+          if (!await allowRequest(env, 'login-ip', ip, 100, 15 * 60_000) || !await allowRequest(env, 'login-name', ip + ':' + username, 15, 15 * 60_000)
+            // Caps guessing spread over many addresses. Kept loose, because anyone can spend a name's budget.
+            || !await allowRequest(env, 'login-user', username, 50, 15 * 60_000)) return errorResponse('تعداد تلاش ورود زیاد است. ۱۵ دقیقه دیگر دوباره تلاش کنید.', 429);
 
           if (!username || !password) {
             return errorResponse("نام کاربری و رمز عبور الزامی است.");
@@ -579,7 +585,10 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
     // 3. Static Assets & PWA Fallback
     // ==========================================
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      // Static files reach the Worker first (run_worker_first) because a meta CSP cannot refuse framing.
+      const asset = await env.ASSETS.fetch(request), response = new Response(asset.body, asset);
+      for (const [name, value] of Object.entries(PAGE_HEADERS)) response.headers.set(name, value);
+      return response;
     }
 
     return new Response("Cloudflare Messenger Backend Ready", { status: 200 });

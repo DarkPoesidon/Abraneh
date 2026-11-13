@@ -151,7 +151,7 @@ export async function deploy({ api, accountId, name, payloadDir, journal, enable
       ...(updaterEnabled?[{name:'UPDATER',type:'service',service:name+'-updates'},{name:'UPDATER_AUTH',type:'secret_text',text:updaterAuth}]:[]),
       ...['VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY'].map((name,index) => hasPushKeys ? {name,type:'inherit'} : {name,type:'secret_text',text:(index ? pushKeys.getPrivateKey() : pushKeys.getPublicKey()).toString('base64url')}),
     ],
-    assets: { jwt, config: { html_handling: 'auto-trailing-slash', not_found_handling: 'none' } },
+    assets: { jwt, config: { html_handling: 'auto-trailing-slash', not_found_handling: 'none', run_worker_first: true } },
     ...(!plan.settings ? { migrations: { new_tag: 'v1', new_sqlite_classes: ['ChatRoom'] } } : {}),
   };
   const form = new FormData();

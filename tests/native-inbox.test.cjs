@@ -17,7 +17,7 @@ before(async () => {
   fixture = await (await import('./browser/fixture.mjs')).createNavigationFixture();
   const created = await fixture.mf.dispatchFetch(fixture.origin + '/api/chats', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + fixture.owner.token }, body: JSON.stringify({ targetUserId: fixture.peer.user.id }) });
   chatId = (await created.json()).id;
-  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}&token=${fixture.owner.token}`, { headers: { Upgrade: 'websocket' } });
+  const response = await fixture.mf.dispatchFetch(`${fixture.origin}/ws?chatId=${chatId}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+fixture.owner.token } });
   caller = response.webSocket; caller.accept(); sockets.push(caller);
 });
 after(async () => { for (const socket of sockets) try { socket.close(); } catch {} await fixture?.close(); });

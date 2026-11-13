@@ -15,7 +15,7 @@ let serial = 0;
 before(async () => {
   const result = await build({ entryPoints: ['src/index.ts'], bundle: true, write: false, format: 'esm', platform:'neutral', mainFields:['browser','module','main'], external: ['cloudflare:workers'] });
   const options = { name: 'test-worker', modules: true, script: result.outputFiles[0].text, compatibilityDate: '2026-01-01', compatibilityFlags: ['nodejs_compat'], d1Databases: { DB: 'test-db' }, durableObjects: { CHAT_ROOM: { className: 'ChatRoom', useSQLite: true } } };
-  mf = new Miniflare(convertV4MiniflareOptions({ ...options, bindings: { JWT_SECRET: secret, ADMIN_SETUP_TOKEN: adminCode } }));
+  mf = new Miniflare(convertV4MiniflareOptions({ ...options, bindings: { JWT_SECRET: secret, ADMIN_SETUP_TOKEN: adminCode }, serviceBindings: { ASSETS: () => new Response('page', { headers: { 'Content-Type': 'text/html' } }) } }));
   unconfigured = new Miniflare(convertV4MiniflareOptions(options));
   db = await mf.getD1Database('DB');
   for (const runtime of [mf, unconfigured]) {
@@ -64,7 +64,7 @@ async function dm(a, b) {
 }
 
 async function connect(user, chatId, path = '/ws') {
-  const response = await mf.dispatchFetch(`http://localhost${path}?chatId=${chatId}&token=${user.token}`, { headers: { Upgrade: 'websocket' } });
+  const response = await mf.dispatchFetch(`http://localhost${path}?chatId=${chatId}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+user.token } });
   assert.equal(response.status, 101);
   const socket = response.webSocket;
   socket.accept();
@@ -169,7 +169,7 @@ test('cross-room messages and typing have no side effects through either websock
   assert.ok(history.data.every(message => message.text.startsWith('legitimate-')));
   assert.ok(observed.filter(event => event.event === 'new_message' || event.event === 'typing').every(event => (event.chatId || event.message.chatId) === own));
   assert.equal((await api(`/api/chats/${other}/messages`, { token: a.token })).status, 403);
-  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${other}&token=${a.token}`, { headers: { Upgrade: 'websocket' } })).status, 403);
+  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${other}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+a.token } })).status, 403);
 });
 
 test('history paginates all messages with tied timestamps in DO and D1 fallback', async () => {
@@ -463,7 +463,7 @@ test('blocking closes existing private sockets, isolates search and leaves share
   const a=await account('block_a'),b=await account('block_b'),chat=await dm(a,b),socket=await connect(b,chat);
   const stopped=nextEvent(socket,'chat_access_revoked');
   assert.equal((await api('/api/blocks',{token:a.token,body:{userId:b.user.id}})).status,200);await stopped;
-  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${chat}&token=${b.token}`,{headers:{Upgrade:'websocket'}})).status,403);
+  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${chat}`, { headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol':'wihm.v1, wihm.token.'+b.token } })).status,403);
   assert.equal((await api('/api/chats',{token:b.token,body:{targetUserId:a.user.id}})).status,403);
   assert.equal((await api('/api/users/search?q=block_a',{token:b.token})).data.length,0);
   const group=(await api('/api/chats',{token:a.token,body:{type:'group',memberIds:[b.user.id]}})).data.id;
@@ -555,4 +555,22 @@ test('saved-message pages preserve ties and long Persian search is literal rathe
   const ids=[];let cursor='';
   for(let i=0;i<3;i++) {const page=(await api('/api/saved'+(cursor?'?before='+cursor:''),{token:a.token})).data;ids.push(...page.map(row=>row.id));const last=page.at(-1);cursor=last.savedAt+':'+last.id;}
   assert.equal(ids.length,17);assert.equal(new Set(ids).size,17);
+});
+
+test('pages refuse framing and a token in the address is not accepted', async () => {
+  const page = await mf.dispatchFetch('http://localhost/');
+  assert.equal(await page.text(), 'page');
+  assert.equal(page.headers.get('X-Frame-Options'), 'DENY');
+  assert.equal(page.headers.get('Content-Security-Policy'), "frame-ancestors 'none'");
+  assert.equal(page.headers.get('X-Content-Type-Options'), 'nosniff');
+  const user = await account('query_token'), other = await account('query_peer'), chatId = await dm(user, other);
+  assert.equal((await mf.dispatchFetch(`http://localhost/ws?chatId=${chatId}&token=${user.token}`, { headers: { Upgrade: 'websocket' } })).status, 401);
+  assert.equal((await mf.dispatchFetch(`http://localhost/api/auth/me?token=${user.token}`)).status, 401);
+});
+
+test('login guesses for one name are capped across addresses', async () => {
+  await account('capped_login');
+  const attempt = index => api('/api/auth/login', { body: { username: 'capped_login', password: 'wrong-password' }, headers: { 'CF-Connecting-IP': '203.0.113.' + index } });
+  for (let index = 0; index < 50; index++) assert.equal((await attempt(index)).status, 401);
+  assert.equal((await attempt(60)).status, 429);
 });
