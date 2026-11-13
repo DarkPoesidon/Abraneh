@@ -32,7 +32,14 @@ jobs:
       - run: npm run dist
         working-directory: windows
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/tags/installer-v1.7.25' && github.event_name != 'pull_request'
         with:
           name: windows-installer
           path: windows/dist/wihm-messenger-windows-setup.exe
           if-no-files-found: error
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: windows/dist/wihm-messenger-windows-setup.exe
+          key: release-${{ github.run_id }}-windows
+          enableCrossOsArchive: true
