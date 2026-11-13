@@ -13,7 +13,16 @@ function harness(handler, { storageEntries = [], failStorage = false, online = t
     let html = '', text = ''; const classes=new Set(),attributes={};
     return {
       style: {}, dataset:{}, setAttribute(key,value){attributes[key]=value;},getAttribute(key){return attributes[key];}, children: [], listeners: {}, value: '', hidden: false, disabled: false, scrollTop: 0,
-      classList: { add(...values){values.forEach(value=>classes.add(value));},remove(...values){values.forEach(value=>classes.delete(value));},contains(value){return classes.has(value);} },
+      classList: { add(...values){values.forEach(value=>classes.add(value));},remove(...values){values.forEach(value=>classes.delete(value));},contains(value){return classes.has(value);},toggle(value,on){if(on)classes.add(value);else classes.delete(value);} },
+      querySelector(selector) {
+        if (selector !== '.chat-preview') return null;
+        const match = html.match(/<span class="chat-preview" id="([^"]+)"><\/span>/);
+        if (!match) return null;
+        const preview = element();
+        preview.id = match[1];
+        elements.set(preview.id, preview);
+        return preview;
+      },
       addEventListener(type, fn) { this.listeners[type] = fn; },
       appendChild(child) { this.children.push(child); }, focus() {},
       get scrollHeight() { return this.children.length * 40; },
@@ -100,7 +109,7 @@ test('polling discovers new chats and inactive previews without reloading and pr
   chats = [...chats, { id: 'new', title: 'New group', type: 'group', updatedAt: 5, lastMessage: { id: 'new-msg', text: 'Incoming elsewhere', createdAt: 5 } }];
   await app.poll();
   assert.equal(app.el('chats-list').children.length, 3);
-  assert.match(app.el('chats-list').children[0].innerHTML, /Incoming elsewhere/);
+  assert.match(app.el('chat-preview-new').innerHTML, /Incoming elsewhere/);
   app.el('chat-filter-input').value = 'Chat A';
   app.el('chat-filter-input').listeners.input(); await app.poll();
   assert.equal(app.el('chats-list').children.length, 1);
@@ -267,4 +276,28 @@ test('desktop rail preserves the draft and selected chat, persists across reload
   await app.click('btn-back-to-chats');assert.equal(app.el('sidebar').classList.contains('hidden'),false);
   app.window.innerWidth=1200;app.windowEvents.resize();assert.equal(app.el('sidebar').classList.contains('collapsed'),true);
   const reopened=harness(handler,{storageEntries:[...app.storage]});await settle();assert.equal(reopened.el('sidebar').classList.contains('collapsed'),true);assert.equal(reopened.storage.get('cf_msg_token'),'session-token');
+});
+
+
+test('conversation rows show saved draft text and restore the last message after clearing it', async () => {
+  const chats = initialChats();
+  chats[0].lastMessage = message('previous', 'آخرین پیام');
+  const handler = path => reply(path === '/api/chats' ? chats : []);
+  const app = harness(handler, { storageEntries: [['cf_msg_drafts_self', JSON.stringify([['a', ' <b>پیش‌نویس</b> \n خط دوم ']])]] });
+  const row = () => app.el('chat-preview-a').innerHTML;
+  await settle();
+  assert.match(row(), /class="chat-draft-label">پیش‌نویس/);
+  assert.match(row(), /&lt;b&gt;پیش‌نویس&lt;\/b&gt; خط دوم/);
+  assert.doesNotMatch(row(), /آخرین پیام/);
+  await app.open(0);
+  app.el('message-input').value = '  ';
+  app.el('message-input').listeners.input();
+  assert.doesNotMatch(row(), /chat-draft-label/);
+  assert.match(row(), /آخرین پیام/);
+  assert.deepEqual(JSON.parse(app.storage.get('cf_msg_drafts_self')), []);
+  app.el('message-input').value = 'پیام جدید';
+  app.el('message-input').listeners.input();
+  assert.match(row(), /پیام جدید/);
+  await app.click('btn-send-message');
+  assert.doesNotMatch(row(), /chat-draft-label/);
 });

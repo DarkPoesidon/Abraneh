@@ -21,6 +21,21 @@ try {
   const db = await fixture.mf.getD1Database('DB');
   const owner = await open(fixture.owner), peer = await open(fixture.peer, { width: 390, height: 800 });
 
+  const allChats = await owner.locator('.chat-item').count();
+  await owner.getByRole('button', { name: 'گروه‌ها', exact: true }).click();
+  assert.equal(await owner.locator('.chat-item').count(), 1);
+  await owner.getByRole('button', { name: 'نخوانده‌ها', exact: true }).click();
+  assert.ok(await owner.locator('.chat-item').count() > 0);
+  await owner.getByRole('button', { name: 'همه', exact: true }).click();
+  assert.equal(await owner.locator('.chat-item').count(), allChats);
+  await owner.keyboard.press('Control+k');
+  await owner.locator('#chat-filter-input').fill('تیم طراحی');
+  await owner.keyboard.press('ArrowDown');
+  await owner.keyboard.press('Enter');
+  await owner.waitForFunction(() => document.querySelector('#active-chat-title').textContent === 'تیم طراحی');
+  await owner.locator('#chat-filter-input').fill('');
+  console.log('ok: chat filters and keyboard navigation');
+
   // Username
   await peer.locator('#nav-settings').click();
   await peer.locator('#settings-profile').click();
@@ -82,9 +97,29 @@ try {
   await owner.reload(); await owner.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
   await owner.waitForFunction(() => ['متصل به سرور', 'آنلاین'].includes(document.querySelector('#status-text').textContent));
   await owner.locator('.media-picker').setInputFiles({ name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') });
+  await owner.locator('.attachment-details', { hasText: 'report.pdf' }).waitFor();
+  assert.equal(await owner.locator('.file-note .file-name', { hasText: 'report.pdf' }).count(), 0);
+  await owner.locator('.media-recorder .media-cancel').click();
+  await owner.locator('.media-picker').setInputFiles({ name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') });
+  await owner.locator('.media-recorder .media-send').click();
   await owner.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
   await owner.locator('.media-picker').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: pixel });
+  await owner.locator('.attachment-preview[src^="blob:"]').waitFor();
+  await owner.locator('.media-recorder .media-send').click();
   await owner.locator('.image-note img[src^="blob:"]').waitFor();
+  for (const eventType of ['paste', 'drop']) {
+    await owner.locator('.message-input').evaluate((input, type) => {
+      const data = new DataTransfer();
+      data.items.add(new File(['preview only'], 'preview.txt', { type: 'text/plain' }));
+      const event = type === 'paste' ? new ClipboardEvent(type, { clipboardData: data, bubbles: true })
+        : new DragEvent(type, { dataTransfer: data, bubbles: true });
+      input.dispatchEvent(event);
+    }, eventType);
+    await owner.locator('.attachment-details', { hasText: 'preview.txt' }).waitFor();
+    await owner.locator('.media-recorder .media-cancel').click();
+    assert.equal(await owner.locator('.file-note .file-name', { hasText: 'preview.txt' }).count(), 0);
+  }
+
   await peer.goto(fixture.origin); await peer.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
   await peer.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
   await peer.locator('.image-note img[src^="blob:"]').waitFor({ timeout: 15000 });
@@ -134,6 +169,14 @@ try {
   await touchContext.addInitScript(account => { localStorage.setItem('cf_msg_token', account.token); localStorage.setItem('cf_msg_user', JSON.stringify(account.user)); }, fixture.owner);
   const touch = await touchContext.newPage(); await touch.goto(fixture.origin);
   await touch.locator('.chat-item[data-chat-id="design-team"]').click();
+  await touch.locator('#btn-chat-details').tap();
+  const sheet = touch.locator('#feature-modal.chat-sheet .feature-card');
+  await sheet.waitFor();
+  const sheetBox = await sheet.boundingBox();
+  assert.ok(sheetBox && Math.abs(sheetBox.y + sheetBox.height - 800) < 2 && sheetBox.x >= 0 && sheetBox.x + sheetBox.width <= 390, 'touch chat menu opens at the bottom');
+  await shot(touch, 'chat-sheet');
+  await touch.locator('#btn-close-feature').tap();
+  await sheet.waitFor({ state: 'hidden' });
   const received = touch.locator('.message-bubble.received').first(); await received.waitFor();
   assert.equal(await touch.locator('.message-more').first().isVisible(), false, 'no dots button on a phone');
   const cdp = await touchContext.newCDPSession(touch), box = await received.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
@@ -163,7 +206,9 @@ try {
   await owner.locator('.mention-row').first().click();
   assert.equal(await owner.locator('.message-input').inputValue(), '@sara_new ');
   await owner.locator('.message-input').fill('');
-  await owner.locator('.message-bubble').last().click({ button: 'right', position: { x: 4, y: 4 } }); await owner.locator('#action-forward').click();
+  const linkedMessage = owner.locator('.message-bubble').filter({ has: owner.locator('a[href="https://example.org/a?b=1&c=2"]') });
+  await linkedMessage.dispatchEvent('contextmenu');
+  await owner.locator('#action-forward').click();
   await owner.locator('#forward-query').fill('خبرنامه'); await owner.locator('.forward-row').first().click();
   await owner.locator('.forward-label').last().waitFor();
   assert.match(await owner.locator('.forward-label').last().innerText(), /هدایت‌شده از/);
