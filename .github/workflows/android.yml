@@ -53,6 +53,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: apk
+      # The Android 13 image needs 7 GB for its user data, more than the runner has free. Its size setting is ignored.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -64,8 +67,6 @@ jobs:
           target: ${{ matrix.target }}
           arch: x86_64
           disable-animations: true
-          # The Android 13 image asks for 7 GB of user data by default, which the runner no longer has free.
-          disk-size: 2048M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png ${{ matrix.check }}
       - uses: actions/upload-artifact@v4
