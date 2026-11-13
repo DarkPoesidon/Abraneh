@@ -1,5 +1,5 @@
 // Pure rules, free of Electron so they can be unit tested.
-const TAG_PREFIX = 'windows-v';
+const TAG_PREFIX = 'installer-v';
 const HOST = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 
 /** Returns the server's origin, or null. Plain http is only for this computer. */
@@ -34,16 +34,15 @@ function isNewer(latest, current) {
   return false;
 }
 
-/** This repository also holds server and Android releases, so "latest" can't be used here. */
-function newestRelease(releases, current) {
-  let best = null;
-  for (const release of Array.isArray(releases) ? releases : []) {
-    if (release.draft || release.prerelease || !String(release.tag_name).startsWith(TAG_PREFIX)) continue;
-    const version = release.tag_name.slice(TAG_PREFIX.length), name = `wihm-messenger-windows-v${version}-setup.exe`;
-    const setup = release.assets?.find(asset => asset.name === name), sums = release.assets?.find(asset => asset.name === 'SHA256SUMS.txt');
-    if (setup && sums && isNewer(version, best ? best.version : current)) best = { version, name, setupUrl: setup.browser_download_url, sumsUrl: sums.browser_download_url };
-  }
-  return best;
+function availableUpdate(release, current) {
+  if (!release || release.draft || release.prerelease || !String(release.tag_name).startsWith(TAG_PREFIX)) return null;
+  const version = release.tag_name.slice(TAG_PREFIX.length);
+  if (!isNewer(version, current) || !Array.isArray(release.assets)) return null;
+  const name = 'wihm-messenger-windows-setup.exe';
+  const setup = release.assets.find(asset => asset.name === name);
+  const sums = release.assets.find(asset => asset.name === 'SHA256SUMS');
+  if (!setup?.browser_download_url || !sums?.browser_download_url) return null;
+  return { version, name, setupUrl: setup.browser_download_url, sumsUrl: sums.browser_download_url };
 }
 
 function checksumFor(sums, name) {
@@ -54,4 +53,4 @@ function checksumFor(sums, name) {
   return null;
 }
 
-module.exports = { serverOrigin, proxyRule, isNewer, newestRelease, checksumFor };
+module.exports = { serverOrigin, proxyRule, isNewer, availableUpdate, checksumFor };

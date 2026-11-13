@@ -53,6 +53,12 @@ public class WebAppInterface {
         activity.runOnUiThread(() -> Toast.makeText(activity, message, Toast.LENGTH_SHORT).show());
     }
 
+    /** The page reports its theme, so the system bars around it match. */
+    @JavascriptInterface
+    public void setTheme(final boolean light) {
+        activity.runOnUiThread(() -> activity.applySystemBars(light, true));
+    }
+
     @JavascriptInterface
     public void showNotification(final String title, final String message, final String chatId) {
         activity.runOnUiThread(() -> NotificationHelper.showNotification(activity, title, message, chatId));

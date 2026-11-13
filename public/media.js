@@ -34,7 +34,17 @@
       const preview = create('video', 'media-preview'), status = create('span', 'media-status'), send = create('button', 'btn-primary media-send'), cancel = create('button', 'quiet-button media-cancel');
       preview.muted = preview.playsInline = preview.autoplay = true; preview.hidden = true; preview.setAttribute('aria-label', 'پیش‌نمایش دوربین');
       status.setAttribute('role', 'status'); send.type = cancel.type = 'button'; cancel.textContent = 'لغو';
-      bar.append(preview, status, send, cancel); footer.append(bar);
+      const image = create('img', 'attachment-preview');
+      image.hidden = true;
+      image.alt = 'پیش‌نمایش تصویر';
+      const details = create('div', 'attachment-details');
+      details.hidden = true;
+      const name = create('strong'), destination = create('small');
+      const destinationLabel = create('span'), destinationName = create('bdi');
+      destinationLabel.textContent = 'مقصد ارسال';
+      destination.append(destinationLabel, ': ', destinationName);
+      details.append(name, destination);
+      bar.append(preview, image, details, status, send, cancel); footer.append(bar);
 
       const supported = typeof MediaRecorder !== 'undefined' && navigator.mediaDevices?.getUserMedia;
       if (supported) {
@@ -48,24 +58,65 @@
       const picker = create('input', 'media-picker'); picker.type = 'file'; picker.hidden = true;
       const attach = create('button', 'icon-btn media-attach'); attach.type = 'button'; attach.id = 'btn-attach-file'; attach.title = 'ارسال فایل یا تصویر'; attach.setAttribute('aria-label', attach.title);
       attach.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 11-9.2 9.2a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg>';
-      attach.addEventListener('click', () => { if (!recording && !pending && canRecord()) picker.click(); });
+      let pickerChatId = null;
+      attach.addEventListener('click', () => {
+        if (recording || pending || !canRecord()) return;
+        pickerChatId = getChat()?.id;
+        picker.click();
+      });
       footer.prepend(attach, picker);
-      picker.addEventListener('change', () => { const file = picker.files[0]; picker.value = ''; sendFile(file); });
-      // A pasted or dropped file asks first, since it may not have been meant for this chat.
-      const askToSend = file => { if (file && !recording && !pending && canRecord() && confirm('این فایل ارسال شود؟' + '\n' + file.name)) sendFile(file); };
-      footer.querySelector('.message-input')?.addEventListener('paste', event => { const file = event.clipboardData?.files?.[0]; if (file) { event.preventDefault(); askToSend(file); } });
+      picker.addEventListener('change', () => {
+        const file = picker.files[0], chatId = pickerChatId;
+        picker.value = ''; pickerChatId = null;
+        if (!chatId || getChat()?.id === chatId) reviewFile(file);
+      });
+      footer.querySelector('.message-input')?.addEventListener('paste', event => { const file = event.clipboardData?.files?.[0]; if (file) { event.preventDefault(); reviewFile(file); } });
       const dropZone = footer.parentElement;
       dropZone?.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
-      dropZone?.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (file) { event.preventDefault(); askToSend(file); } });
-      function sendFile(file) {
-        const chat = getChat(); if (!file || !chat) return;
+      dropZone?.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (file) { event.preventDefault(); reviewFile(file); } });
+      function reviewFile(file) {
+        const chat = getChat();
+        if (!file || !chat || recording || pending || !canRecord()) return;
         const kind = IMAGE_TYPES.includes(file.type) && file.size <= LIMITS.image ? 'image' : 'file';
         if (!file.size) { notify('این فایل خالی است.'); return; }
         if (file.size > LIMITS[kind]) { notify('حجم فایل بیشتر از ۳۲ مگابایت است.'); return; }
-        pending = { blob: file, chatId: chat.id, kind, mime: file.type || 'application/octet-stream', durationMs: 0, name: file.name, clientMsgId: 'cli_' + crypto.randomUUID() };
-        sendPending();
+        pending = { attachment: true, blob: file, chatId: chat.id, kind, mime: file.type || 'application/octet-stream', durationMs: 0, name: file.name, clientMsgId: 'cli_' + crypto.randomUUID() };
+        name.textContent = file.name + ' · ' + fileSize(file.size);
+        destinationName.textContent = chat.title;
+        if (IMAGE_TYPES.includes(file.type)) {
+          image.src = URL.createObjectURL(file);
+          image.hidden = false;
+        }
+        details.hidden = false;
+        status.textContent = '';
+        send.textContent = 'ارسال';
+        send.disabled = false;
+        show(true);
+        bar.dataset.attachment = '';
+        cancel.focus();
       }
-      function show(on) { bar.hidden = !on; footer.classList.toggle('recording', on); if (!on) delete bar.dataset.state; }
+      function show(on) {
+        bar.hidden = !on;
+        footer.classList.toggle('recording', on);
+        if (on) return;
+        delete bar.dataset.state;
+        delete bar.dataset.attachment;
+        if (image.hasAttribute('src')) {
+          URL.revokeObjectURL(image.src);
+          image.removeAttribute('src');
+        }
+        image.hidden = details.hidden = true;
+      }
+      function dismissAttachment() {
+        if (!pending?.attachment) return false;
+        pending = null;
+        show(false);
+        attach.focus();
+        return true;
+      }
+      bar.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && dismissAttachment()) event.preventDefault();
+      });
       function stopTracks(stream) { stream?.getTracks().forEach(track => track.stop()); preview.srcObject = null; preview.hidden = true; }
 
       async function start(kind) {
@@ -103,13 +154,13 @@
         sendPending();
       }
       async function sendPending() {
-        const item = pending; if (!item) return;
+        const item = pending; if (!item || (item.attachment && (getChat()?.id !== item.chatId || !canRecord()))) return;
         delete bar.dataset.state; status.textContent = 'در حال ارسال...'; send.disabled = true; show(true);
-        try { await upload(item.blob, item); if (pending === item) { pending = null; show(false); } }
+        try { await upload(item.blob, item); if (pending === item) { pending = null; show(false); if (item.attachment) attach.focus(); } }
         catch (error) { if (pending === item) { status.textContent = error.message || 'ارسال نشد.'; send.textContent = 'تلاش دوباره'; send.disabled = false; } }
       }
       send.addEventListener('click', () => { if (recording) stop(true); else sendPending(); });
-      cancel.addEventListener('click', () => { if (recording) stop(false); else { pending = null; show(false); } });
+      cancel.addEventListener('click', () => { if (recording) stop(false); else if (!dismissAttachment()) { pending = null; show(false); } });
 
       // One element per message: rendering rebuilds the list, and reattaching the same node keeps playback running.
       function buildNote(msg, settings) {
@@ -192,6 +243,7 @@
       }
       return {
         enhance,
+        dismissAttachment,
         reset() { pending = null; if (recording) stop(false); else show(false); },
         purge() { this.reset(); for (const note of notes.values()) { if (note.player) { note.player.pause(); URL.revokeObjectURL(note.player.src); } if (note.url) URL.revokeObjectURL(note.url); } notes.clear(); },
       };

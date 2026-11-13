@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' wss:; object-src 'none'; base-uri 'none'; form-action 'self'">
-  <meta name="wihm-version" content="1.7.22">
+  <meta name="wihm-version" content="1.7.25">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>پیام‌رسان ابرانه (Cloudflare Messenger)</title>
   
@@ -136,13 +136,13 @@
         <button id="btn-menu-server" class="menu-item" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-server"/></svg><span>تنظیمات سرور</span></button>
         <div class="menu-divider"></div>
         <button id="btn-logout" class="menu-item danger-text" role="menuitem" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-logout"/></svg><span>خروج از حساب</span></button>
-        <p class="app-version" dir="ltr">WIHM 1.7.22</p>
+        <p class="app-version" dir="ltr">WIHM 1.7.25</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrapper"><input type="search" id="chat-filter-input" class="search-input" placeholder="جستجوی گفتگوها" aria-label="جستجوی گفتگوها"><svg class="ui-icon search-icon" aria-hidden="true"><use href="#i-search"/></svg></div>
         <button id="btn-open-search" class="icon-btn compose-button" title="گفتگوی جدید" aria-label="گفتگوی جدید" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#i-new-chat"/></svg></button>
       </div>
-      <nav class="chat-filters" aria-label="نمایش گفتگوها"><span class="sidebar-caption">گفتگوها</span><button id="btn-archive" class="archive-button" type="button" aria-pressed="false" aria-label="گفتگوهای آرشیوشده" title="گفتگوهای آرشیوشده"><span class="archive-tile"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg></span><span id="archive-label">گفتگوهای آرشیوشده</span></button></nav>
+      <nav class="chat-filters" aria-label="نمایش گفتگوها"><div id="chat-list-filters" class="chat-list-filters" role="group" aria-label="فیلتر گفتگوها"><button type="button" data-chat-filter="all" aria-pressed="true">همه</button><button type="button" data-chat-filter="unread" aria-pressed="false">نخوانده‌ها</button><button type="button" data-chat-filter="groups" aria-pressed="false">گروه‌ها</button></div><button id="btn-archive" class="archive-button" type="button" aria-pressed="false" aria-label="گفتگوهای آرشیوشده" title="گفتگوهای آرشیوشده"><span class="archive-tile"><svg class="ui-icon" aria-hidden="true"><use href="#i-archive"/></svg></span><span id="archive-label">آرشیو</span></button></nav>
       <div id="chats-list" class="chats-list" role="group" aria-label="گفتگوها"></div>
       <nav id="bottom-nav" class="bottom-nav" aria-label="پیمایش اصلی">
         <button id="nav-chats" class="nav-item" type="button" aria-current="page"><svg class="ui-icon" aria-hidden="true"><use href="#i-chats"/></svg><span>گفتگوها</span></button>

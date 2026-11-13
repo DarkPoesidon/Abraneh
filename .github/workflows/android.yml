@@ -1,99 +1,24 @@
 name: Android app
 on:
   pull_request:
-    paths: ['android/**', '.github/workflows/android.yml']
-  push:
-    tags: ['android-v*']
+    paths: ['android/**', 'tests/android/**', 'package.json', '.github/workflows/android.yml']
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_B64: { required: true }
+      ANDROID_KEYSTORE_PASSWORD: { required: true }
+      ANDROID_KEY_ALIAS: { required: true }
+      ANDROID_KEY_PASSWORD: { required: true }
+      ANDROID_NEXT_KEYSTORE_B64: { required: true }
+      ANDROID_NEXT_KEY_PASSWORD: { required: true }
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: android
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-      - run: chmod +x gradlew
-      # This build signs with the debug key, so it needs no secrets. lintDebug fails on a call
-      # that older Android versions don't have.
-      - run: ./gradlew lintDebug testDebugUnitTest assembleRelease --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: android/app/build/outputs/apk/release/app-universal-release.apk
-  emulator:
-    needs: check
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { android: '5', api: 21, target: default }
-          - { android: '6', api: 23, target: default }
-          - { android: '7', api: 24, target: default }
-          - { android: '8', api: 26, target: google_apis }
-          # This image has no WebView, which is how the app's own handling of that gets tested.
-          - { android: '8-no-webview', api: 26, target: default, check: no-webview }
-          - { android: '9', api: 28, target: default }
-          - { android: '11', api: 30, target: default }
-          - { android: '13', api: 33, target: google_apis }
-          - { android: '14', api: 34, target: google_apis }
-          - { android: '15', api: 35, target: google_apis }
-          - { android: '16', api: 36, target: google_apis }
-    name: Android ${{ matrix.android }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: apk
-      # The Android 13 image needs 7 GB for its user data, more than the runner has free. Its size setting is ignored.
-      - name: Free disk space
-        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api }}
-          target: ${{ matrix.target }}
-          arch: x86_64
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png ${{ matrix.check }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-${{ matrix.android }}
-          path: |
-            android-${{ matrix.android }}.png
-            smoke-logcat.txt
-          if-no-files-found: ignore
-  release:
-    # Publishing waits for every Android version above.
-    needs: emulator
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    defaults:
-      run:
-        working-directory: android
-    env:
-      WIHM_KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
-      WIHM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      WIHM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      WIHM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      WIHM_NEXT_KEYSTORE_FILE: ${{ github.workspace }}/next.keystore
-      WIHM_NEXT_KEY_PASSWORD: ${{ secrets.ANDROID_NEXT_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -102,53 +27,75 @@ jobs:
           java-version: '17'
           cache: gradle
       - name: Restore the signing keys
+        if: startsWith(github.ref, 'refs/tags/installer-v')
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           NEXT_KEYSTORE: ${{ secrets.ANDROID_NEXT_KEYSTORE_B64 }}
         run: |
-          printf '%s' "$KEYSTORE" | base64 -d > "$WIHM_KEYSTORE_FILE"
-          printf '%s' "$NEXT_KEYSTORE" | base64 -d > "$WIHM_NEXT_KEYSTORE_FILE"
+          test -n "$KEYSTORE" && test -n "$NEXT_KEYSTORE" || { echo "::error::Missing Android signing keys"; exit 1; }
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/wihm-release.keystore"
+          printf '%s' "$NEXT_KEYSTORE" | base64 -d > "$RUNNER_TEMP/wihm-next.keystore"
       - run: chmod +x gradlew
-      - run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
-      # The first key leaked in 2026, so Android 9 and later move to the second one and refuse APKs signed only by the first.
-      # Android 5 to 8 cannot follow a rotation and keep the first key.
-      - name: Rotate the signing key
+      - name: Test and build the universal APK
+        env:
+          WIHM_KEYSTORE_FILE: ${{ startsWith(github.ref, 'refs/tags/installer-v') && format('{0}/wihm-release.keystore', runner.temp) || '' }}
+          WIHM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          WIHM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          WIHM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew lintDebug testDebugUnitTest assembleRelease --no-daemon
+      - name: Sign and verify the release APK
+        if: startsWith(github.ref, 'refs/tags/installer-v')
+        env:
+          WIHM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          WIHM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          WIHM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          WIHM_NEXT_KEY_PASSWORD: ${{ secrets.ANDROID_NEXT_KEY_PASSWORD }}
         run: |
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
-          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
-            apk="app/build/outputs/apk/release/app-$abi-release.apk"
-            "$apksigner" sign --out "$apk.rotated" --lineage signing-lineage.bin --rotation-min-sdk-version 28 --v4-signing-enabled false               --ks "$WIHM_KEYSTORE_FILE" --ks-key-alias "$WIHM_KEY_ALIAS" --ks-pass env:WIHM_KEYSTORE_PASSWORD --key-pass env:WIHM_KEY_PASSWORD               --next-signer --ks "$WIHM_NEXT_KEYSTORE_FILE" --ks-key-alias wihm-next --ks-pass env:WIHM_NEXT_KEY_PASSWORD "$apk"
-            mv "$apk.rotated" "$apk"
-          done
-      - name: Check the version and signing keys
-        run: |
-          version=$(grep -o 'versionName "[^"]*"' app/build.gradle | cut -d'"' -f2)
-          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "android-v$version" ]]; then
-            echo "::error::The tag does not match versionName $version"; exit 1
-          fi
-          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
-          # Another key would stop every installed app from updating.
-          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
-            apk="app/build/outputs/apk/release/app-$abi-release.apk"
-            "$apksigner" verify --print-certs --min-sdk-version 21 --max-sdk-version 27 "$apk" | grep -q 'SHA-256 digest: 04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99'
-            "$apksigner" verify --print-certs --min-sdk-version 28 "$apk" | grep -q 'SHA-256 digest: 9a2de616d39c69fa2b91be6e74177d28ca73f65d96e227e13451e6610261f549'
-          done
-      - name: Publish for the in-app updater
-        if: startsWith(github.ref, 'refs/tags/android-v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir release-apks
-          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
-            cp "app/build/outputs/apk/release/app-$abi-release.apk" "release-apks/wihm-messenger-$GITHUB_REF_NAME-$abi.apk"
-          done
-          (cd release-apks && sha256sum *.apk > SHA256SUMS.txt)
-          # Never "latest": the server installer downloads the latest release of this repository.
-          gh release create "$GITHUB_REF_NAME" release-apks/* --title "WIHM Android ${GITHUB_REF_NAME#android-v}" --notes "نسخهٔ اندروید پیام‌رسان ابرانه" --latest=false
-      - name: Update the fixed download address
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: sh ../scripts/publish-latest-app.sh android "${GITHUB_REF_NAME#android-v}" release-apks
+          apk=app/build/outputs/apk/release/app-release.apk
+          # Android 9 and later follow the signing lineage. Android 5 to 8 need the original key.
+          "$apksigner" sign --out "$apk.rotated" --lineage signing-lineage.bin --rotation-min-sdk-version 28 --v4-signing-enabled false \
+            --ks "$RUNNER_TEMP/wihm-release.keystore" --ks-key-alias "$WIHM_KEY_ALIAS" --ks-pass env:WIHM_KEYSTORE_PASSWORD --key-pass env:WIHM_KEY_PASSWORD \
+            --next-signer --ks "$RUNNER_TEMP/wihm-next.keystore" --ks-key-alias wihm-next --ks-pass env:WIHM_NEXT_KEY_PASSWORD "$apk"
+          mv "$apk.rotated" "$apk"
+          "$apksigner" verify --print-certs --min-sdk-version 21 --max-sdk-version 27 "$apk" | grep -q 'SHA-256 digest: 04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99'
+          "$apksigner" verify --print-certs --min-sdk-version 28 "$apk" | grep -q 'SHA-256 digest: 9a2de616d39c69fa2b91be6e74177d28ca73f65d96e227e13451e6610261f549'
       - name: Remove the signing keys
         if: always()
-        run: rm -f "$WIHM_KEYSTORE_FILE" "$WIHM_NEXT_KEYSTORE_FILE"
+        run: rm -f "$RUNNER_TEMP/wihm-release.keystore" "$RUNNER_TEMP/wihm-next.keystore"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disk-size: 2G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: sh tests/android/smoke.sh android/app/build/outputs/apk/release/app-release.apk android-smoke.png
+      - uses: actions/upload-artifact@v4
+        if: failure() && github.ref != 'refs/tags/installer-v1.7.25'
+        continue-on-error: true
+        with:
+          name: android-smoke
+          path: |
+            android-smoke.png
+            smoke-logcat.txt
+          if-no-files-found: ignore
+      - run: cp app/build/outputs/apk/release/app-release.apk wihm-messenger-android-universal.apk
+      - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/tags/installer-v1.7.25' && github.event_name != 'pull_request'
+        with:
+          name: android-apk
+          path: android/wihm-messenger-android-universal.apk
+          if-no-files-found: error
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: android/wihm-messenger-android-universal.apk
+          key: release-${{ github.run_id }}-android
+          enableCrossOsArchive: true

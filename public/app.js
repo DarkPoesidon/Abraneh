@@ -128,7 +128,7 @@
   const reportingReceipts = new Set(), pendingReceipts = new Set();
   let locatingUnread = null;
   let openingChatId = null;
-  let profile = {}, archivedView = false, composerContext = null;
+  let profile = {}, archivedView = false, chatFilter = 'all', composerContext = null;
   let extras=null,calls=null,media=null,admin=null;
   let sidebarCompact=false,lastMobileLayout=window.innerWidth<=768;
   try {sidebarCompact=localStorage.getItem('cf_msg_sidebar_compact')==='1';}catch{/* Preferences are optional when device storage is unavailable. */}
@@ -436,7 +436,14 @@
     // An open secure chat has no socket, so it checks more often. Each check writes one rate limit row.
     let secureTicks=0;if(!securePoll)securePoll=setInterval(()=>{if(document.visibilityState!=='hidden'&&(activeChat?.secure||++secureTicks%3===0))refreshSecure();},5000);
     redeemInvitation().catch(error => { chatError.textContent=error.message; });
-    loadChats().then(()=>{checkIncomingCalls();const launchChat=new URLSearchParams(location.search||'').get('chat');const target=chats.find(chat=>chat.id===launchChat);if(target){openChat(target);history.replaceState(null,'',location.pathname);}});
+    loadChats().then(()=>{
+      checkIncomingCalls();
+      const launchChat = new URLSearchParams(location.search).get('chat');
+      if (launchChat && chats.some(chat => chat.id === launchChat)) {
+        openNotifiedChat(launchChat);
+        history.replaceState(null, '', location.pathname);
+      }
+    });
     if (!chatPollInterval) chatPollInterval = setInterval(() => {
       if (document.visibilityState !== 'hidden') loadChats();
       flushOutbox();
@@ -490,13 +497,84 @@
 
   function renderFilteredChats() {
     const q = chatFilterInput.value.trim().toLowerCase();
-    renderChats([...chats,...secureItems].filter(chat => (!!chat.archived === archivedView) && (chat.title || '').toLowerCase().includes(q)).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.updatedAt || 0) - (a.updatedAt || 0)));
+    const list = [...chats, ...secureItems].filter(chat =>
+      !!chat.archived === archivedView &&
+      (archivedView || chatFilter === 'all' ||
+        (chatFilter === 'unread' && chat.unreadCount > 0) ||
+        (chatFilter === 'groups' && chat.type === 'group' && !chat.isChannel)) &&
+      (chat.title || '').toLowerCase().includes(q));
+    renderChats(list.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.updatedAt || 0) - (a.updatedAt || 0)));
+  }
+
+  const chatFilterButtons = document.getElementById('chat-list-filters');
+  chatFilterButtons?.addEventListener('click', event => {
+    const filter = event.target.closest('button[data-chat-filter]');
+    if (!filter) return;
+    chatFilter = filter.dataset.chatFilter;
+    for (const button of chatFilterButtons.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(button === filter));
+    }
+    chatsList.scrollTop = 0;
+    if (archivedView) setArchivedView(false);
+    else renderFilteredChats();
+  });
+
+  function openNotifiedChat(id) {
+    if (activeChat?.id === id) return;
+    const chat = chats.find(item => item.id === id);
+    if (chat) openChat(chat);
+  }
+
+  window.wihmOpenNotifiedChat = id => {
+    if (!currentUser || !/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return false;
+    if (chats.some(chat => chat.id === id)) openNotifiedChat(id);
+    else loadChats(true).then(() => openNotifiedChat(id));
+    return true;
+  };
+
+  document.addEventListener('keydown', event => {
+    if (!currentUser || event.isComposing || event.defaultPrevented ||
+        document.querySelector?.('dialog[open]') || featureModal.style.display === 'flex' ||
+        searchModal.style.display === 'flex' || sessionsModal.style.display === 'flex') return;
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if (sidebar.classList.contains('collapsed')) byId('btn-toggle-sidebar')?.click();
+      if (sidebar.classList.contains('hidden')) closeActiveChat();
+      chatFilterInput.focus();
+      chatFilterInput.select();
+      return;
+    }
+    const item = document.activeElement?.closest?.('.chat-item');
+    if (document.activeElement !== chatFilterInput && !item) return;
+    const items = [...chatsList.querySelectorAll('.chat-item')];
+    if (!items.length) return;
+    if (event.key === 'Enter' && !item) {
+      event.preventDefault();
+      items[0].click();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      const next = item ? items[items.indexOf(item) + offset] : items[offset > 0 ? 0 : items.length - 1];
+      (next || chatFilterInput).focus();
+    }
+  });
+
+  function paintChatPreview(preview, chat) {
+    const draft = drafts.get(chat.id)?.trim();
+    preview.classList.toggle('has-draft', !!draft);
+    const lastText = chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است';
+    preview.innerHTML = draft
+      ? `<strong class="chat-draft-label">پیش‌نویس</strong> <bdi data-no-i18n>${escapeHtml(draft.replace(/\s+/g, ' '))}</bdi>`
+      : escapeHtml(lastText);
   }
 
   function renderChats(list) {
+    const focusedChat = document.activeElement?.closest?.('.chat-item')?.dataset.chatId;
     chatsList.innerHTML = '';
     if (!list.length) {
-      chatsList.innerHTML = `<div class="chat-list-empty" role="status" aria-label="گفتگویی وجود ندارد">${uiIcon('compose')}<span>گفتگویی وجود ندارد.<br>با دکمهٔ گفتگوی جدید شروع کنید.</span></div>`;
+      if (focusedChat) chatFilterInput.focus();
+      const filtered = chatFilterInput.value.trim() || archivedView || chatFilter !== 'all';
+      chatsList.innerHTML = `<div class="chat-list-empty" role="status">${uiIcon('compose')}<span>${filtered ? 'گفتگویی پیدا نشد.' : 'گفتگویی وجود ندارد.<br>با دکمهٔ گفتگوی جدید شروع کنید.'}</span></div>`;
       return;
     }
 
@@ -508,7 +586,6 @@
       item.className = `chat-item ${activeChat?.id === chat.id ? 'active' : ''}`;
 
       const timeStr = chat.lastMessage ? formatTime(chat.lastMessage.createdAt) : '';
-      const lastText = chat.lastMessage ? chat.lastMessage.text : 'هنوز پیامی ارسال نشده است';
 
       item.innerHTML = `
         <span class="chat-avatar-wrap"><span class="avatar" style="--avatar-hue:${avatarHue(chat.id)}">${avatarHtml(chat.avatar,chat.title)}</span>${chat.unreadCount?`<span class="rail-unread" aria-hidden="true">${Number(chat.unreadCount)>99?'۹۹+':Number(chat.unreadCount).toLocaleString('fa-IR')}</span>`:''}</span>
@@ -517,9 +594,13 @@
             <span class="chat-title">${chat.secure?'<svg class="ui-icon secure-mark" aria-label="گفتگوی امن" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>':''}${chat.isChannel?'<svg class="ui-icon channel-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l9 5V5L7 10H4z"/><path d="M19 9a4 4 0 0 1 0 6"/></svg>':''}<span class="chat-title-text">${escapeHtml(chat.title)}</span>${chat.muted?'<svg class="ui-icon chat-state" aria-hidden="true"><use href="#i-mute"/></svg>':''}</span>
             <span class="chat-time">${timeStr}</span>
           </div>
-          <div class="chat-last-msg"><span class="chat-preview">${escapeHtml(lastText)}</span>${chat.pinned&&!chat.unreadCount?'<svg class="ui-icon chat-pin" aria-hidden="true"><use href="#i-pin"/></svg>':''}${chat.unreadCount ? `<span class="unread-badge${chat.muted?' muted':''}" aria-label="${Number(chat.unreadCount)} پیام نخوانده">${Number(chat.unreadCount).toLocaleString('fa-IR')}</span>` : ''}</div>
+          <div class="chat-last-msg"><span class="chat-preview" id="chat-preview-${escapeHtml(chat.id)}"></span>${chat.pinned&&!chat.unreadCount?'<svg class="ui-icon chat-pin" aria-hidden="true"><use href="#i-pin"/></svg>':''}${chat.unreadCount ? `<span class="unread-badge${chat.muted?' muted':''}" aria-label="${Number(chat.unreadCount)} پیام نخوانده">${Number(chat.unreadCount).toLocaleString('fa-IR')}</span>` : ''}</div>
         </div>
       `;
+
+      const preview = item.querySelector('.chat-preview');
+      paintChatPreview(preview, chat);
+      item.setAttribute('aria-describedby', preview.id);
 
       // Right click or a long press, as in Telegram.
       // Right click or a long press opens the chat's menu, as in Telegram.
@@ -530,6 +611,7 @@
       for(const name of ['touchmove','touchend','touchcancel'])item.addEventListener(name,()=>clearTimeout(pressTimer),{passive:true});
       item.addEventListener('click', event => {if(pressed){pressed=false;event.preventDefault();return;}if(activeChat?.id===chat.id){if(window.innerWidth<=768)sidebar.classList.add('hidden');if(!chat.secure)reportReceipt(chat.id);return;}return openChat(chat);});
       chatsList.appendChild(item);
+      if (chat.id === focusedChat) item.focus({ preventScroll: true });
     });
   }
 
@@ -627,6 +709,7 @@
     }
     if (sessionsModal.style.display === 'flex') { byId('btn-close-sessions').click(); return true; }
     if (searchModal.style.display === 'flex') { byId('btn-close-modal').click(); return true; }
+    if (media?.dismissAttachment?.()) return true;
     if (activeChat) { closeActiveChat(); return true; }
     if (archivedView) { setArchivedView(false); return true; }
     if (chatFilterInput.value) { chatFilterInput.value = ''; renderFilteredChats(); return true; }
@@ -1423,12 +1506,16 @@
   byId('btn-menu-group').addEventListener('click',()=>openSearch('group'));
   byId('btn-menu-archive').addEventListener('click',()=>setArchivedView(true));
   function setArchivedView(archived) {
-    archivedView=archived;byId('archive-label').textContent=archived?'همهٔ گفتگوها':'آرشیو';
+    archivedView=archived;
+    for (const button of chatFilterButtons?.querySelectorAll('button') || []) {
+      button.setAttribute('aria-pressed', String(!archived && button.dataset.chatFilter === chatFilter));
+    }
+    byId('archive-label').textContent=archived?'همهٔ گفتگوها':'آرشیو';
     const button=byId('btn-archive');button.setAttribute('aria-pressed',String(archived));button.title=archived?'بازگشت به همهٔ گفتگوها':'گفتگوهای آرشیوشده';button.setAttribute('aria-label',button.title);renderFilteredChats();
   }
   applySidebarLayout();
   function closeFeature() { featureGeneration++; featureModal.style.display='none'; resetMessageMenu(); lastFeatureFocus?.focus?.(); }
-  function resetMessageMenu() { featureModal.classList?.remove('message-menu'); const card=featureModal.querySelector?.('.feature-card'); if(card)card.style.cssText=''; }
+  function resetMessageMenu() { featureModal.classList?.remove('message-menu','chat-sheet'); const card=featureModal.querySelector?.('.feature-card'); if(card)card.style.cssText=''; }
   function placeMessageMenu(rect) {
     featureModal.classList?.add('message-menu');
     const card=featureModal.querySelector?.('.feature-card');if(!card||!rect)return;
@@ -1523,7 +1610,7 @@
     if(!ws||ws.readyState!==WebSocket.OPEN||activeChat?.id!==data.chatId)throw Error('اتصال گفتگو برقرار نیست.');ws.send(JSON.stringify(data));
   },mount:callMount,notify:message=>chatError.textContent=message});
   media=window.WihmMedia?.create({footer:document.querySelector('.chat-input-area'),sendButton:btnSendMessage,getChat:()=>activeChat,notify:message=>chatError.textContent=message,
-    canRecord:()=>{if(!activeChat)return false;if(deniedChats.has(activeChat.id)){chatError.textContent='دسترسی ارسال در این گفتگو بسته است.';return false;}if(composerContext?.mode==='edit'){chatError.textContent='ابتدا ویرایش پیام را تمام یا لغو کنید.';return false;}chatError.textContent='';return true;},
+    canRecord:()=>{if(!activeChat||activeChat.secure||!canPost(activeChat))return false;if(deniedChats.has(activeChat.id)){chatError.textContent='دسترسی ارسال در این گفتگو بسته است.';return false;}if(composerContext?.mode==='edit'){chatError.textContent='ابتدا ویرایش پیام را تمام یا لغو کنید.';return false;}chatError.textContent='';return true;},
     upload:async(blob,item)=>{
       const query=new URLSearchParams({kind:item.kind,mime:item.mime,durationMs:String(item.durationMs),clientMsgId:item.clientMsgId});if(item.name)query.set('name',item.name);
       if(composerContext?.mode==='reply'&&activeChat?.id===item.chatId)query.set('replyToId',composerContext.message.id);
@@ -1696,6 +1783,7 @@
   function applyAppearance(theme,size) {
     const light=theme==='light'||(theme==='system'&&window.matchMedia?.('(prefers-color-scheme: light)').matches);
     if(document.documentElement?.dataset) { document.documentElement.dataset.theme=light?'light':'dark'; document.documentElement.dataset.fontSize=size; }
+    try { window.Android?.setTheme?.(light); } catch {}
   }
   window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>applyAppearance(profile.theme,profile.font_size));
   byId('btn-settings').addEventListener('click',()=>{closeMainMenu();settings().catch(featureError);});
@@ -1819,7 +1907,12 @@
   // As in Telegram, unsent text stays with its chat. A secure chat's text stays in memory only.
   function saveDraft() {
     if(!activeChat||!currentUser||composerContext?.mode==='edit')return;
-    if(messageInput.value.trim())drafts.set(activeChat.id,messageInput.value);else drafts.delete(activeChat.id);
+    const draft = messageInput.value.trim() ? messageInput.value : '';
+    if (draft === (drafts.get(activeChat.id) || '')) return;
+    if (draft) drafts.set(activeChat.id, draft);
+    else drafts.delete(activeChat.id);
+    const preview = document.getElementById('chat-preview-' + activeChat.id);
+    if (preview) paintChatPreview(preview, activeChat);
     try{localStorage.setItem('cf_msg_drafts_'+currentUser.id,JSON.stringify([...drafts].filter(([id])=>!id.startsWith('draft:')&&!secureItems.some(chat=>chat.id===id))));}catch{}
   }
   const mentionBox=document.createElement('div');mentionBox.className='mention-box';mentionBox.hidden=true;mentionBox.setAttribute('role','listbox');
@@ -1995,7 +2088,12 @@
     const row=(id,icon,label,danger)=>`<button id="${id}" class="menu-row${danger?' danger-text':''}" type="button">${uiIcon(icon)}<span>${label}</span></button>`,inside=activeChat?.id===chat.id;
     const secure=!!chat.secure,dm=chat.type==='dm'&&!secure,group=chat.type==='group'&&!chat.isChannel;
     showFeature(chat.title,`<div class="action-grid">${row('menu-info','user',dm||secure?'مشاهدهٔ پروفایل':'اطلاعات گفتگو')}${inside&&!secure?row('menu-search','search','جستجو'):''}${row('menu-pin','pin',chat.pinned?'برداشتن سنجاق':'سنجاق')}${secure?'':row('menu-mute',chat.muted?'bell':'mute',chat.muted?'روشن‌کردن اعلان':'بی‌صدا کردن')}${row('menu-archive','archive',chat.archived?'خارج‌کردن از آرشیو':'آرشیو')}${(dm&&!chat.blocked)||secure?row('menu-block','hide','مسدودکردن کاربر',true):''}${dm||secure?row('menu-delete','trash','حذف گفتگو',true):''}</div>`);
-    placeMessageMenu(rect);
+    if (window.matchMedia?.('(pointer: coarse) and (max-width: 768px)').matches) {
+      featureModal.classList.add('chat-sheet');
+    } else {
+      placeMessageMenu(rect);
+      featureContent.querySelector?.('button')?.focus();
+    }
     const prefs=async changes=>{if(secure){await (await secureClient()).setPrefs(chat.id,{...(changes.pinned!==undefined?{pinned:changes.pinned}:{}),...(changes.archived!==undefined?{shelved:changes.archived}:{})});await loadSecure(false);}else{await patch(`/api/chats/${chat.id}/preferences`,changes);await loadChats(true);}closeFeature();};
     bind('menu-info',async()=>{if(inside)await detailsView(chat.id);else{closeFeature();await openChat(chat);await detailsView(chat.id);}});
     bind('menu-search',()=>{closeFeature();byId('btn-message-search').click();});
