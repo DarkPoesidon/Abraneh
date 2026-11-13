@@ -700,6 +700,47 @@
     renderFilteredChats();
   }
   btnBackToChats.addEventListener('click', closeActiveChat);
+  // On a phone, dragging the open chat to the right goes back to the list, as in Telegram.
+  // Messages only swipe left to reply, so the two never compete.
+  (function chatSwipeBack() {
+    if (!activeChatWrapper.addEventListener) return;
+    const COMMIT = 0.3, FLICK = 0.6; // share of the width, and px per ms
+    let start = null;
+    const reset = animate => {
+      activeChatWrapper.style.transition = animate ? 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s' : '';
+      activeChatWrapper.style.transform = ''; activeChatWrapper.style.opacity = '';
+    };
+    activeChatWrapper.addEventListener('touchstart', event => {
+      start = null;
+      if (event.touches.length !== 1 || window.innerWidth > 768 || !activeChat || selected.size || calls?.active?.()) return;
+      if (event.target.closest?.('input,textarea,[contenteditable="true"],.chat-input-area,video,audio,.voice-seek')) return;
+      const touch = event.touches[0];
+      start = { x: touch.clientX, y: touch.clientY, at: event.timeStamp, sideways: null, dx: 0 };
+    }, { passive: true });
+    activeChatWrapper.addEventListener('touchmove', event => {
+      if (!start) return;
+      const touch = event.touches[0], dx = touch.clientX - start.x, dy = touch.clientY - start.y;
+      if (start.sideways === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) start.sideways = dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.5;
+      if (!start.sideways) return;
+      event.preventDefault();
+      start.dx = Math.max(0, dx);
+      activeChatWrapper.style.transition = 'none';
+      activeChatWrapper.style.transform = `translateX(${start.dx}px)`;
+      activeChatWrapper.style.opacity = String(1 - Math.min(.35, start.dx / window.innerWidth * .5));
+    }, { passive: false });
+    const end = event => {
+      if (!start?.sideways) { start = null; return; }
+      const width = window.innerWidth || 1, speed = start.dx / Math.max(1, event.timeStamp - start.at);
+      const back = start.dx > width * COMMIT || (speed > FLICK && start.dx > 40);
+      start = null;
+      if (!back) { reset(true); return; }
+      activeChatWrapper.style.transition = 'transform .16s cubic-bezier(.4,0,1,1), opacity .16s';
+      activeChatWrapper.style.transform = `translateX(${width}px)`; activeChatWrapper.style.opacity = '.6';
+      setTimeout(() => { reset(false); if (activeChat) closeActiveChat(); }, 160);
+    };
+    activeChatWrapper.addEventListener('touchend', end);
+    activeChatWrapper.addEventListener('touchcancel', () => { start = null; reset(true); });
+  })();
   // The Android back key and browser back both come here. It closes the top layer and returns false when nothing is left, as in Telegram.
   // Returns how to close the top layer, or null when nothing is open. Asking does not close anything.
   function backStep() {
