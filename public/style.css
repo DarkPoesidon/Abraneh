@@ -1573,3 +1573,14 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
   :root #feature-modal.chat-sheet .feature-card { animation:none; }
   #feature-modal.chat-sheet .menu-row { min-height:48px; }
 }
+
+/* Motion: one set of curves. Decelerate for things arriving, standard for things moving across. */
+:root { --ease-out:cubic-bezier(.2,.8,.2,1); --ease-standard:cubic-bezier(.4,0,.2,1); }
+.chat-item, .settings-row, .menu-item, .icon-btn, .nav-item, .quiet-button, .btn-primary { transition-timing-function:var(--ease-standard); }
+.chat-item:active, .settings-row:active, .menu-item:active { transform:scale(.985); transition:transform .1s var(--ease-standard); }
+@media (max-width: 768px) {
+  /* The list returns with the same curve the chat arrived on, so going back feels like the reverse. */
+  .sidebar { transition:transform .26s var(--ease-out); }
+  #active-chat-wrapper { will-change:transform; touch-action:pan-y; }
+}
+@media (prefers-reduced-motion: reduce) { .chat-item:active, .settings-row:active, .menu-item:active { transform:none; } }
