@@ -80,4 +80,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#installer-v}"
-          gh release create "$GITHUB_REF_NAME" package/* --repo "$GITHUB_REPOSITORY" --title "WIHM Cloudflare $version" --notes-file "docs/releases/$version.fa.md"
+          files="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          # This release is the page people land on, so it also carries the apps.
+          {
+            printf '## دریافت\n\n'
+            printf -- '- **سرور:** [نصب‌کننده](%s/wihm-installer.zip)\n' "$files"
+            printf -- '- **اندروید:** [برنامهٔ اندروید](%s/wihm-messenger-android-universal.apk)\n' "$files"
+            printf -- '- **ویندوز:** [برنامهٔ ویندوز](%s/wihm-messenger-windows-setup.exe)\n\n---\n\n' "$files"
+            cat "docs/releases/$version.fa.md"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" package/* --repo "$GITHUB_REPOSITORY" --title "ابرانه $version" --notes-file notes.md
+          sh scripts/release-apps.sh "$GITHUB_REF_NAME"

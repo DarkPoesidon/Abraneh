@@ -141,7 +141,7 @@ jobs:
           done
           (cd release-apks && sha256sum *.apk > SHA256SUMS.txt)
           # Never "latest": the server installer downloads the latest release of this repository.
-          gh release create "$GITHUB_REF_NAME" release-apks/* --title "WIHM Android ${GITHUB_REF_NAME#android-v}" --notes "نسخهٔ اندروید پیام‌رسان ابرانه" --latest=false
+          gh release create "$GITHUB_REF_NAME" release-apks/* --title "اندروید ${GITHUB_REF_NAME#android-v} · به‌روزرسان داخل برنامه" --notes "نسخهٔ اندروید پیام‌رسان ابرانه" --latest=false
       - name: Update the fixed download address
         env:
           GH_TOKEN: ${{ github.token }}

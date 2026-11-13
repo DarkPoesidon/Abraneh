@@ -1,5 +1,6 @@
 #!/bin/sh
-# Keeps android-latest or windows-latest pointing at the newest app, under file names that never change.
+# Keeps android-latest or windows-latest pointing at the newest app, under file names that never change,
+# then copies the files onto the newest server release, which is the one page people download from.
 # GitHub's own "latest" release must stay the server, which the installers download.
 # The apps' updaters only read android-v* and windows-v* tags, so they ignore these two.
 # Usage: publish-latest-app.sh <android|windows> <version> <folder with the release files>
@@ -32,3 +33,6 @@ else
   gh release create "$tag" "$out"/* --repo "$GITHUB_REPOSITORY" --title "ابرانه برای $name: آخرین نسخه" --notes "$notes" --latest=false --target main
 fi
 rm -rf "$out"
+# With no tag, gh shows the release marked latest, which is the server.
+latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2> /dev/null || true)
+if [ -n "$latest" ]; then sh "$(dirname "$0")/release-apps.sh" "$latest"; fi

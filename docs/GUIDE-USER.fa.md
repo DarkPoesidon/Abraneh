@@ -36,7 +36,7 @@
 
 ### اندروید (اندروید ۵ به بالا)
 
-۱. [فایل اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) را دانلود و باز کنید.
+۱. [فایل اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) را دانلود و باز کنید.
 
 ۲. اگر گوشی اجازهٔ نصب خواست، برای همان مرورگر **اجازه** بدهید و نصب را بزنید.
 
@@ -48,7 +48,7 @@
 
 ### ویندوز (ویندوز ۱۰ و ۱۱)
 
-۱. [نصب‌کنندهٔ ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) را دانلود و اجرا کنید. حجمش حدود ۱۲۰ مگابایت است.
+۱. [نصب‌کنندهٔ ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) را دانلود و اجرا کنید. حجمش حدود ۱۲۰ مگابایت است.
 
 ۲. اگر ویندوز هشدار داد، **More info** و بعد **Run anyway** را بزنید. این برنامه امضای تجاری ندارد.
 
