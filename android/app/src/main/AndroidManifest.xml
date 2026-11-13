@@ -43,6 +43,7 @@
         android:theme="@style/Theme.WIHMMessenger"
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true"
         tools:targetApi="34">
 
         <activity

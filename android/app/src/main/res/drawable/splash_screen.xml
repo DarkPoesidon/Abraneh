@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 5 and 6.0 cannot centre a drawable in a layer list, so they show the plain colour. -->
+<color xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/bg_dark" />

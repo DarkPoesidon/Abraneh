@@ -11,6 +11,9 @@ import android.net.Uri;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.app.KeyguardManager;
+import android.view.ViewTreeObserver;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -50,6 +53,14 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_LIGHT_THEME = "light_theme";
 
     private boolean pageLoaded;
+    private OnBackPressedCallback backCallback;
+    private static final long START_SCREEN_MAX_MS = 3000;
+    static final String KEY_APP_LOCK = "app_lock";
+    private static final int REQUEST_CODE_UNLOCK = 1002;
+    // As in Signal, a short trip to another app does not ask again.
+    private static final long LOCK_AFTER_MS = 60_000;
+    private boolean unlocked, unlocking, answeringCall;
+    private long stoppedAt;
     private final List<String> pendingScripts = new ArrayList<>();
     private WebView webView;
     private ProgressBar progressBar;
@@ -166,6 +177,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         if (WebViewCheck.stopIfMissing(this)) return;
         setContentView(R.layout.activity_main);
+        holdStartScreen();
         applySystemBars(getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_LIGHT_THEME, false), false);
 
         NotificationHelper.createNotificationChannel(this);
@@ -180,6 +192,7 @@ public class MainActivity extends AppCompatActivity {
         setupWebView();
         setupErrorView();
         setupBackNavigation();
+        hideFromRecents(appLockEnabled());
 
         // Check if server URL is configured
         SharedPreferences prefs = getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE);
@@ -193,6 +206,21 @@ public class MainActivity extends AppCompatActivity {
         }
 
         handleIncomingIntent(getIntent());
+    }
+
+    /** Keeps the start screen up until the page has drawn, instead of showing an empty page. Never longer than a few seconds. */
+    private void holdStartScreen() {
+        final long until = SystemClock.uptimeMillis() + START_SCREEN_MAX_MS;
+        final View content = findViewById(android.R.id.content);
+        content.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                boolean ready = pageLoaded || errorLayout == null || errorLayout.getVisibility() == View.VISIBLE
+                        || currentServerUrl == null || currentServerUrl.isEmpty() || SystemClock.uptimeMillis() > until;
+                if (ready) content.getViewTreeObserver().removeOnPreDrawListener(this);
+                return ready;
+            }
+        });
     }
 
     /** The status and navigation bars follow the page's theme. It is saved so the next start opens in it. */
@@ -220,6 +248,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         visible = false;
+        stoppedAt = SystemClock.elapsedRealtime();
         tellPageVisibility();
         // Answering a call is the only reason to show over the lock screen, so it ends with the screen.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setShowWhenLocked(false);
@@ -235,9 +264,48 @@ public class MainActivity extends AppCompatActivity {
         return "window.wihmAppHidden=" + !visible + ";window.dispatchEvent(new Event('wihm-app-visibility'));";
     }
 
+    boolean appLockEnabled() {
+        return getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_APP_LOCK, false);
+    }
+
+    /** Only possible with a screen lock, since that is what unlocks the app. */
+    boolean appLockAvailable() {
+        KeyguardManager keyguard = ContextCompat.getSystemService(this, KeyguardManager.class);
+        return keyguard != null && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? keyguard.isDeviceSecure() : keyguard.isKeyguardSecure());
+    }
+
+    boolean setAppLock(boolean enabled) {
+        if (enabled && !appLockAvailable()) return false;
+        getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_APP_LOCK, enabled).commit(); // written at once: a lock lost to a quick kill would leave the app open
+        unlocked = true;
+        hideFromRecents(enabled);
+        return true;
+    }
+
+    /** The preview in the recent apps list would show the chats the lock hides. Android 13 can hide it without blocking screenshots. */
+    private void hideFromRecents(boolean hide) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!hide);
+    }
+
+    /** Asks for the phone's own unlock when the app opens, or returns after a minute away. An answered call never waits for it. */
+    private void lockIfNeeded() {
+        if (!appLockEnabled() || unlocking) return;
+        if (answeringCall) { answeringCall = false; unlocked = true; return; }
+        if (unlocked && SystemClock.elapsedRealtime() - stoppedAt < LOCK_AFTER_MS) return;
+        KeyguardManager keyguard = ContextCompat.getSystemService(this, KeyguardManager.class);
+        Intent unlock = keyguard == null ? null : keyguard.createConfirmDeviceCredentialIntent(getString(R.string.app_lock_title), getString(R.string.app_lock_desc));
+        // The screen lock was removed after the lock was set, so nothing could unlock the app.
+        if (unlock == null) { unlocked = true; return; }
+        unlocked = false;
+        unlocking = true;
+        webView.setVisibility(View.INVISIBLE);
+        startActivityForResult(unlock, REQUEST_CODE_UNLOCK);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        lockIfNeeded();
         SharedPreferences prefs = getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE);
         String token = prefs.getString(ServerConfigActivity.KEY_AUTH_TOKEN, "");
         boolean keepAlive = prefs.getBoolean("keep_alive_enabled", true);
@@ -362,6 +430,8 @@ public class MainActivity extends AppCompatActivity {
                 // Inject bridge script to catch notifications, telegram links and clipboard
                 injectNativeBridge(view);
                 pageLoaded = true;
+                // A new page has not reported yet, and may never if it is an older version.
+                backCallback.setEnabled(true);
                 view.evaluateJavascript(visibilityScript(), null);
                 for (String script : pendingScripts) view.evaluateJavascript(script, null);
                 pendingScripts.clear();
@@ -849,8 +919,16 @@ public class MainActivity extends AppCompatActivity {
         errorLayout.setVisibility(View.VISIBLE);
     }
 
+    /**
+     * Android 13 and later animate a back gesture before it ends, so they must know at once whether the page will use it.
+     * The page reports this whenever it may have changed. A page that never reports keeps back, as before.
+     */
+    void setPageHasBack(boolean hasBack) {
+        if (backCallback != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) backCallback.setEnabled(hasBack);
+    }
+
     private void setupBackNavigation() {
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        backCallback = new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 // Query webview to see if a modal is open or active chat is open
@@ -872,14 +950,12 @@ public class MainActivity extends AppCompatActivity {
                         "})();";
 
                 webView.evaluateJavascript("window.wihmNativeBack=true;" + checkJs, value -> {
-                    if ("\"modal_closed\"".equals(value) || "\"chat_closed\"".equals(value)) {
-                        // Handled inside page
-                        return;
-                    }
+                    if ("\"modal_closed\"".equals(value) || "\"chat_closed\"".equals(value)) return;
                     moveTaskToBack(true);
                 });
             }
-        });
+        };
+        getOnBackPressedDispatcher().addCallback(this, backCallback);
     }
 
     @Override
@@ -911,6 +987,7 @@ public class MainActivity extends AppCompatActivity {
         if (intent.getBooleanExtra(IncomingCall.EXTRA_ANSWER, false)) {
             // Handled once, so reopening the app later can't answer another call.
             intent.removeExtra(IncomingCall.EXTRA_ANSWER);
+            answeringCall = true;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 setShowWhenLocked(true);
                 setTurnScreenOn(true);
@@ -1005,6 +1082,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_UNLOCK) {
+            unlocking = false;
+            unlocked = resultCode == RESULT_OK;
+            if (unlocked) webView.setVisibility(View.VISIBLE);
+            else moveTaskToBack(true);
+            return;
+        }
         if (requestCode == REQUEST_CODE_SERVER_CONFIG && resultCode == RESULT_OK) {
             SharedPreferences prefs = getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE);
             currentServerUrl = prefs.getString(ServerConfigActivity.KEY_SERVER_URL, "");
