@@ -639,6 +639,7 @@
 
   // --- Open Chat & Connect WebSocket ---
   async function openChat(chat, preserveCall = false) {
+    reportBackSoon();
     if (chat.secure) return openSecureChat(chat);
     activeChat = chat;
     openingChatId = chat.id;
@@ -687,6 +688,7 @@
 
   // Leaving a chat really closes it, so its messages stop counting as read.
   function closeActiveChat() {
+    reportBackSoon();
     if (activeChat && !activeChat.secure) disconnectWebSocket(!!calls?.active());
     activeChat = null; openingChatId = null; cancelComposer(); clearSelection();
     activeChatWrapper.style.display = 'none'; emptyState.style.display = 'flex'; sidebar.classList.remove('hidden');
@@ -694,25 +696,38 @@
   }
   btnBackToChats.addEventListener('click', closeActiveChat);
   // The Android back key and browser back both come here. It closes the top layer and returns false when nothing is left, as in Telegram.
-  function wihmBack() {
+  // Returns how to close the top layer, or null when nothing is open. Asking does not close anything.
+  function backStep() {
     const dialog = document.querySelector?.('dialog[open]');
-    if (dialog && !calls?.active()) { dialog.close(); return true; }
-    if (!mainMenu.hidden) { closeMainMenu(true); return true; }
-    if (selected.size) { clearSelection(); return true; }
-    if (featureModal.style.display === 'flex') {
+    if (dialog && !calls?.active()) return () => dialog.close();
+    if (!mainMenu.hidden) return () => closeMainMenu(true);
+    if (selected.size) return clearSelection;
+    if (featureModal.style.display === 'flex') return () => {
       const settingsBack = byId('btn-settings-back'), pageBack = featureContent.querySelector?.('[id$="-back"]:not([hidden])');
       if (settingsBack && !settingsBack.hidden) settingsBack.click(); else if (pageBack) pageBack.click(); else closeFeature();
-      return true;
-    }
-    if (sessionsModal.style.display === 'flex') { byId('btn-close-sessions').click(); return true; }
-    if (searchModal.style.display === 'flex') { byId('btn-close-modal').click(); return true; }
-    if (media?.dismissAttachment?.()) return true;
-    if (activeChat) { closeActiveChat(); return true; }
-    if (archivedView) { setArchivedView(false); return true; }
-    if (chatFilterInput.value) { chatFilterInput.value = ''; renderFilteredChats(); return true; }
-    return false;
+    };
+    if (sessionsModal.style.display === 'flex') return () => byId('btn-close-sessions').click();
+    if (searchModal.style.display === 'flex') return () => byId('btn-close-modal').click();
+    if (media?.hasAttachment?.()) return () => media.dismissAttachment();
+    if (activeChat) return closeActiveChat;
+    if (archivedView) return () => setArchivedView(false);
+    if (chatFilterInput.value) return () => { chatFilterInput.value = ''; renderFilteredChats(); };
+    return null;
   }
+  function wihmBack() { const step = backStep(); if (!step) return false; step(); return true; }
   window.wihmBack = wihmBack;
+  window.wihmCanGoBack = () => !!backStep();
+  // The Android app needs this before a back gesture ends, so Android can show where back leads.
+  // Layers open from taps, keys and async loads, so it is checked after each and once the load has had time.
+  // Declared as functions, so chats opened while the page starts can call them.
+  function reportBack() {
+    const can = !!backStep();
+    if (can === reportBack.last || !window.Android?.setCanGoBack) return;
+    reportBack.last = can;
+    try { window.Android.setCanGoBack(can); } catch {}
+  }
+  function reportBackSoon() { if (!window.Android?.setCanGoBack) return; setTimeout(reportBack, 0); setTimeout(reportBack, 400); setTimeout(reportBack, 1500); }
+  for (const type of ['click', 'keyup', 'popstate']) window.addEventListener?.(type, reportBackSoon, true);
   // One extra history entry lets browser back reach the app first.
   if (globalThis.history && !window.wihmNativeBack) { history.pushState?.({ wihm: true }, ''); window.addEventListener?.('popstate', () => { if (wihmBack()) history.pushState({ wihm: true }, ''); else history.back(); }); }
 
@@ -1524,7 +1539,7 @@
   }
   featureModal.addEventListener?.('click',event=>{if(event.target===featureModal&&featureModal.classList?.contains('message-menu'))closeFeature();});
   document.addEventListener?.('keydown',event=>{if(event.key==='Escape'&&featureModal.classList?.contains('message-menu'))closeFeature();});
-  function showFeature(title,html) {
+  function showFeature(title,html) { reportBackSoon();
     if(featureModal.style.display!=='flex')lastFeatureFocus=mainMenu.contains(document.activeElement)?mainMenuButton:document.activeElement;
     resetMessageMenu();byId('feature-title').textContent=title; featureContent.innerHTML=html;featureContent.dataset.settingsPage='';byId('settings-navigation').hidden=true;byId('btn-settings-back').hidden=true;
     byId('feature-status').textContent=''; featureModal.style.display='flex'; featureGeneration++;
@@ -1810,6 +1825,14 @@
           ${window.Android.isBatteryOptimizationIgnored?.() ? 'محدودیت باتری اندروید برای ابرانه برداشته شده است.' : 'توجه: برای دریافت پیام در حالت خاموش بودن صفحه، دکمه «غیرفعال‌سازی محدودیت باتری» را بزنید و مجاز کنید.'}
         </p>
       </section>
+      ${window.Android.isAppLockAvailable ? `<section class="feature-section">
+        <h4>قفل برنامه</h4>
+        <label class="check-label" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+          <input id="android-app-lock" type="checkbox" ${window.Android.isAppLockEnabled?.() ? 'checked' : ''}>
+          <span><strong>باز کردن ابرانه با قفل گوشی</strong></span>
+        </label>
+        <p id="android-app-lock-status" class="session-help" style="margin-top: 4px;">با اثرانگشت، چهره یا رمز گوشی. بعد از یک دقیقه بیرون بودن از برنامه دوباره پرسیده می‌شود و پیش‌نمایش برنامه در فهرست برنامه‌های اخیر پنهان می‌ماند.</p>
+      </section>` : ''}
     ` : `
       <section class="feature-section notification-controls"><h4>اعلان این دستگاه</h4><p class="session-help">اعلان به اجازهٔ مرورگر و اتصال به سرویس اعلان آن وابسته است. در آیفون و آیپد، iOS 16.4 یا جدیدتر و افزودن برنامه به صفحهٔ اصلی لازم است. ذخیرهٔ پیام به اعلان وابسته نیست.</p><div class="button-row"><button id="enable-notifications" class="quiet-button" type="button">فعال‌کردن اعلان</button><button id="test-notifications" class="quiet-button" type="button">آزمایش ارسال سرور</button><button id="test-local-notification" class="quiet-button" type="button">آزمایش نمایش دستگاه</button><button id="disable-notifications" class="quiet-button" type="button">قطع اعلان این دستگاه</button></div><p id="notification-state" class="session-help"></p></section>
     `;
@@ -1858,6 +1881,12 @@
           if (status) status.textContent = ignored ? 'محدودیت باتری اندروید برای ابرانه برداشته شده است.' : 'توجه: برای دریافت پیام در حالت خاموش بودن صفحه، دکمه «غیرفعال‌سازی محدودیت باتری» را بزنید و مجاز کنید.';
         }, 1000);
       });
+      bind('android-app-lock', e => {
+        if (window.Android.setAppLockEnabled?.(e.target.checked) === false) {
+          e.target.checked = false;
+          byId('android-app-lock-status').textContent = 'برای قفل برنامه، ابتدا در تنظیمات گوشی قفل صفحه بگذارید.';
+        }
+      }, 'change');
       bind('android-autostart', () => {
         window.Android.openAutostartSettings?.();
       });

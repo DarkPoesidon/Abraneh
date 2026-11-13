@@ -244,6 +244,7 @@
       return {
         enhance,
         dismissAttachment,
+        hasAttachment: () => !!pending?.attachment,
         reset() { pending = null; if (recording) stop(false); else show(false); },
         purge() { this.reset(); for (const note of notes.values()) { if (note.player) { note.player.pause(); URL.revokeObjectURL(note.player.src); } if (note.url) URL.revokeObjectURL(note.url); } notes.clear(); },
       };

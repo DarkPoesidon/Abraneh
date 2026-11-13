@@ -13,7 +13,14 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.LocusIdCompat;
+import androidx.core.content.pm.ShortcutInfoCompat;
+import androidx.core.content.pm.ShortcutManagerCompat;
+import androidx.core.graphics.drawable.IconCompat;
 import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
 import androidx.core.content.ContextCompat;
@@ -74,6 +81,23 @@ public class NotificationHelper {
     /** Ends the reply spinner by telling the user the reply was not sent. */
     static void showReplyFailed(Context context, String chatId) {
         post(context, null, context.getString(R.string.reply_failed), chatId, "", true, true);
+    }
+
+    /** A coloured circle with the chat's first letter, as the chat list draws it. */
+    static Bitmap letterAvatar(String title, String key) {
+        int size = 128;
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.HSVToColor(new float[]{Math.abs(key.hashCode() % 360), 0.55f, 0.72f}));
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+        String letter = title == null || title.trim().isEmpty() ? "?" : new String(Character.toChars(title.trim().codePointAt(0)));
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(size * 0.45f);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setFakeBoldText(true);
+        canvas.drawText(letter, size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2, paint);
+        return bitmap;
     }
 
     static int idFor(String chatId) {
@@ -182,8 +206,15 @@ public class NotificationHelper {
         }
 
         if (style == null) style = new NotificationCompat.MessagingStyle(new Person.Builder().setName(context.getString(R.string.you)).build());
+        IconCompat avatar = IconCompat.createWithBitmap(letterAvatar(displayTitle, chatId));
+        Person sender = new Person.Builder().setName(displayTitle).setKey(chatId).setIcon(avatar).build();
         // A message with no person is shown as the user's own.
-        style.addMessage(message, System.currentTimeMillis(), own ? null : new Person.Builder().setName(displayTitle).setKey(chatId).build());
+        style.addMessage(message, System.currentTimeMillis(), own ? null : sender);
+        // A long-lived shortcut puts the chat in Android 11's Conversations section, with its own priority and bubble settings.
+        ShortcutManagerCompat.pushDynamicShortcut(context, new ShortcutInfoCompat.Builder(context, chatId)
+                .setShortLabel(displayTitle).setLongLived(true).setPerson(sender).setIcon(avatar)
+                .setIntent(intent).build());
+        builder.setShortcutId(chatId).setLocusId(new LocusIdCompat(chatId)).setLargeIcon(avatar.getBitmap());
         Bundle extras = new Bundle();
         extras.putString(EXTRA_TITLE, displayTitle);
         extras.putString(EXTRA_MESSAGE, messageId);

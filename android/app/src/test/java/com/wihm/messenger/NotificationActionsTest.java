@@ -106,6 +106,27 @@ public class NotificationActionsTest {
     }
 
     @Test
+    public void aChatNotificationIsAConversationWithItsOwnShortcut() {
+        NotificationHelper.showMessage(app, "سارا", "سلام", "room-1", "m1");
+        assertEquals("room-1", chat("room-1").getShortcutId());
+        java.util.List<androidx.core.content.pm.ShortcutInfoCompat> shortcuts =
+                androidx.core.content.pm.ShortcutManagerCompat.getDynamicShortcuts(app);
+        assertEquals(1, shortcuts.size());
+        assertEquals("room-1", shortcuts.get(0).getId());
+        assertEquals("سارا", shortcuts.get(0).getShortLabel().toString());
+        assertEquals("room-1", shortcuts.get(0).getIntent().getStringExtra("target_chat_id"));
+        NotificationCompat.MessagingStyle style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(chat("room-1"));
+        assertNotNull("the sender has a picture", style.getMessages().get(0).getPerson().getIcon());
+    }
+
+    @Test
+    public void letterAvatarsUseTheFirstLetterAndSurviveEmptyTitles() {
+        assertEquals(128, NotificationHelper.letterAvatar("سارا", "room-1").getWidth());
+        assertNotNull(NotificationHelper.letterAvatar("", "room-1"));
+        assertNotNull(NotificationHelper.letterAvatar("😀 گروه", "room-2"));
+    }
+
+    @Test
     public void aMessageWithoutAnIdGetsNoButtons() {
         NotificationHelper.showNotification(app, "سارا", "سلام", "room-1");
         assertNotNull(NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(chat("room-1")));

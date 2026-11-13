@@ -100,4 +100,6 @@
     <string name="reply">Reply</string>
     <string name="mark_read">Mark as read</string>
     <string name="reply_failed">The reply was not sent. Open the app and send it again.</string>
+    <string name="app_lock_title">Abraneh is locked</string>
+    <string name="app_lock_desc">Unlock your phone to see your chats.</string>
 </resources>

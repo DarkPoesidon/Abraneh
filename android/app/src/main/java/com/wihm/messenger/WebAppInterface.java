@@ -1,5 +1,6 @@
 package com.wihm.messenger;
 
+import androidx.core.content.pm.ShortcutManagerCompat;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -59,6 +60,30 @@ public class WebAppInterface {
         activity.runOnUiThread(() -> activity.applySystemBars(light, true));
     }
 
+    /** Whether back would close something in the page, so Android knows before a back gesture ends. */
+    @JavascriptInterface
+    public void setCanGoBack(final boolean canGoBack) {
+        activity.runOnUiThread(() -> activity.setPageHasBack(canGoBack));
+    }
+
+    @JavascriptInterface
+    public boolean isAppLockAvailable() {
+        return activity.appLockAvailable();
+    }
+
+    @JavascriptInterface
+    public boolean isAppLockEnabled() {
+        return activity.appLockEnabled();
+    }
+
+    /** Returns false when the phone has no screen lock to unlock the app with. */
+    @JavascriptInterface
+    public boolean setAppLockEnabled(final boolean enabled) {
+        if (enabled && !activity.appLockAvailable()) return false;
+        activity.runOnUiThread(() -> activity.setAppLock(enabled));
+        return true;
+    }
+
     @JavascriptInterface
     public void showNotification(final String title, final String message, final String chatId) {
         activity.runOnUiThread(() -> NotificationHelper.showNotification(activity, title, message, chatId));
@@ -110,6 +135,8 @@ public class WebAppInterface {
 
             // Stop background notification service
             WihmNotificationService.stop(activity);
+            // The chats' shortcuts name the people in them, so they leave with the account.
+            ShortcutManagerCompat.removeAllDynamicShortcuts(activity);
         });
     }
 

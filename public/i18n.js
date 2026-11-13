@@ -18,6 +18,10 @@
   if (language !== 'en') return;
 
   const EN = {
+    'قفل برنامه': "App lock",
+    'باز کردن ابرانه با قفل گوشی': "Open Abraneh with the phone's lock",
+    'با اثرانگشت، چهره یا رمز گوشی. بعد از یک دقیقه بیرون بودن از برنامه دوباره پرسیده می‌شود و پیش‌نمایش برنامه در فهرست برنامه‌های اخیر پنهان می‌ماند.': "With your fingerprint, face or phone PIN. It asks again after a minute away, and hides the app's preview in recent apps.",
+    'برای قفل برنامه، ابتدا در تنظیمات گوشی قفل صفحه بگذارید.': "To lock the app, first set a screen lock in the phone's settings.",
     '— برای دریافت پست تازه، نوسازی را بزن.': '— refresh to get new posts.',
     '، برنامه را باز کنید.': ', open the app.',
     '؛ پیام رمز‌شده در صف می‌ماند.': '; the encrypted message stays in the queue.',

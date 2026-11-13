@@ -108,6 +108,26 @@ public class InboxServiceTest {
         return socket;
     }
 
+    @Test
+    public void theAppLockNeedsAScreenLockAndAsksForItWhenTheAppOpens() {
+        android.app.KeyguardManager keyguard = app.getSystemService(android.app.KeyguardManager.class);
+        shadowOf(keyguard).setIsDeviceSecure(false);
+        MainActivity activity = Robolectric.buildActivity(MainActivity.class).create().get();
+        assertFalse("no screen lock, nothing could unlock the app", activity.setAppLock(true));
+        assertFalse(activity.appLockEnabled());
+
+        shadowOf(keyguard).setIsDeviceSecure(true);
+        assertTrue(activity.setAppLock(true));
+        org.robolectric.android.controller.ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).create().start().resume();
+        Intent unlock = null;
+        for (Intent started; (started = shadowOf(controller.get()).getNextStartedActivity()) != null; ) {
+            if ("android.app.action.CONFIRM_DEVICE_CREDENTIAL".equals(started.getAction())) unlock = started;
+        }
+        assertNotNull("a fresh start asks for the phone's unlock", unlock);
+        assertEquals(android.view.View.INVISIBLE, controller.get().findViewById(R.id.web_view).getVisibility());
+        assertTrue(activity.setAppLock(false));
+    }
+
     private void waitFor(BooleanSupplier condition) throws Exception {
         for (int i = 0; i < 100 && !condition.getAsBoolean(); i++) {
             shadowOf(Looper.getMainLooper()).idle();
