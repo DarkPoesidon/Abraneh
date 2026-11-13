@@ -4,7 +4,8 @@ const { writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
 const { availableUpdate, checksumFor } = require('./rules');
 
-const RELEASES = 'https://api.github.com/repos/DarkPoesidon/Abraneh/releases/latest';
+// By number, not name: GitHub keeps the number through a rename or a transfer. Same number as src/update-bundle.ts.
+const RELEASES = 'https://api.github.com/repositories/1436869002/releases/latest';
 let busy = false;
 
 async function download(url, window) {
