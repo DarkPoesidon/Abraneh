@@ -10,7 +10,7 @@ android {
         applicationId "com.wihm.messenger"
         minSdk 21
         targetSdk 34
-        versionCode 16
+        versionCode 17
         versionName(new groovy.json.JsonSlurper().parse(rootProject.file("../package.json")).version as String)
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

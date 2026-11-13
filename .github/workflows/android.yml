@@ -78,7 +78,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: sh tests/android/smoke.sh android/app/build/outputs/apk/release/app-release.apk android-smoke.png
       - uses: actions/upload-artifact@v4
-        if: failure() && github.ref != 'refs/tags/installer-v1.7.25'
+        if: failure() && !startsWith(github.ref, 'refs/tags/installer-v')
         continue-on-error: true
         with:
           name: android-smoke
@@ -88,13 +88,13 @@ jobs:
           if-no-files-found: ignore
       - run: cp app/build/outputs/apk/release/app-release.apk wihm-messenger-android-universal.apk
       - uses: actions/upload-artifact@v4
-        if: github.ref != 'refs/tags/installer-v1.7.25' && github.event_name != 'pull_request'
+        if: !startsWith(github.ref, 'refs/tags/installer-v') && github.event_name != 'pull_request'
         with:
           name: android-apk
           path: android/wihm-messenger-android-universal.apk
           if-no-files-found: error
       - uses: actions/cache/save@v4
-        if: github.ref == 'refs/tags/installer-v1.7.25'
+        if: startsWith(github.ref, 'refs/tags/installer-v')
         with:
           path: android/wihm-messenger-android-universal.apk
           key: release-${{ github.run_id }}-android
