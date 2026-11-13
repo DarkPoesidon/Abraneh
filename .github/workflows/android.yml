@@ -88,7 +88,7 @@ jobs:
           if-no-files-found: ignore
       - run: cp app/build/outputs/apk/release/app-release.apk wihm-messenger-android-universal.apk
       - uses: actions/upload-artifact@v4
-        if: !startsWith(github.ref, 'refs/tags/installer-v') && github.event_name != 'pull_request'
+        if: ${{ !startsWith(github.ref, 'refs/tags/installer-v') && github.event_name != 'pull_request' }}
         with:
           name: android-apk
           path: android/wihm-messenger-android-universal.apk

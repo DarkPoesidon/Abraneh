@@ -32,7 +32,7 @@ jobs:
       - run: npm run dist
         working-directory: windows
       - uses: actions/upload-artifact@v4
-        if: !startsWith(github.ref, 'refs/tags/installer-v') && github.event_name != 'pull_request'
+        if: ${{ !startsWith(github.ref, 'refs/tags/installer-v') && github.event_name != 'pull_request' }}
         with:
           name: windows-installer
           path: windows/dist/wihm-messenger-windows-setup.exe

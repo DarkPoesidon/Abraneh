@@ -92,17 +92,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        if: !startsWith(github.ref, 'refs/tags/installer-v')
+        if: ${{ !startsWith(github.ref, 'refs/tags/installer-v') }}
         with:
           name: wihm-installer
           path: package
       - uses: actions/download-artifact@v4
-        if: !startsWith(github.ref, 'refs/tags/installer-v')
+        if: ${{ !startsWith(github.ref, 'refs/tags/installer-v') }}
         with:
           name: android-apk
           path: package
       - uses: actions/download-artifact@v4
-        if: !startsWith(github.ref, 'refs/tags/installer-v')
+        if: ${{ !startsWith(github.ref, 'refs/tags/installer-v') }}
         with:
           name: windows-installer
           path: package
