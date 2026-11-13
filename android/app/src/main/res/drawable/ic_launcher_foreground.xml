@@ -1,27 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <group
-        android:scaleX="0.65"
-        android:scaleY="0.65"
-        android:translateX="18.9"
-        android:translateY="18.9">
-        <!-- Main Chat Bubble -->
-        <path
-            android:fillColor="#0284c7"
-            android:pathData="M24,20 C15.16,20 8,27.16 8,36 L8,68 C8,76.84 15.16,84 24,84 L38,84 L52,98 L52,84 L84,84 C92.84,84 100,76.84 100,68 L100,36 C100,27.16 92.84,20 84,20 Z" />
-        <!-- Cloud / Messenger Wave Inside -->
-        <path
-            android:fillColor="#ffffff"
-            android:pathData="M38,58 C35.79,58 34,56.21 34,54 C34,51.79 35.79,50 38,50 L70,50 C72.21,50 74,51.79 74,54 C74,56.21 72.21,58 70,58 Z" />
-        <path
-            android:fillColor="#ffffff"
-            android:pathData="M34,42 C34,39.79 35.79,38 38,38 L62,38 C64.21,38 66,39.79 66,42 C66,44.21 64.21,46 62,46 L38,46 C35.79,46 34,44.21 34,42 Z" />
-        <path
-            android:fillColor="#38bdf8"
-            android:pathData="M48,68 C45.79,68 44,66.21 44,64 C44,61.79 45.79,60 48,60 L74,60 C76.21,60 78,61.79 78,64 C78,66.21 76.21,68 74,68 Z" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="128" android:viewportHeight="128">
+    <group android:scaleX=".68" android:scaleY=".68" android:translateX="20.48" android:translateY="20.48">
+        <path android:fillColor="#B8F2F0" android:pathData="M24 100V68C24 50 37 40 56 35C64 33 67.5 30 67.5 25H78V54C60 57 45.5 67 45.5 81V100Z" />
+        <path android:fillColor="#2699EA" android:pathData="M59 100V85C59 76 66 69 75 64C90 56 101 63 101 79V100Z" />
     </group>
 </vector>

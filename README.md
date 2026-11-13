@@ -1,5 +1,6 @@
 <div align="center">
 
+<img src="public/icon.svg" alt="" width="112" height="112">
 <h1>ابرانه · Abraneh</h1>
 
 <p dir="rtl"><strong>پیام‌رسان فارسی روی زیرساخت خودتان، بدون نیاز به سرور اختصاصی</strong></p>
@@ -10,7 +11,6 @@
   <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
 </p>
 
-<img src="docs/assets/wihm-cloudflare-poster.png" alt="پوستر پیام‌رسان ابرانه با نمای نسخهٔ دسکتاپ و موبایل" width="100%">
 
 </div>
 

@@ -52,7 +52,7 @@ jobs:
           zip -qr wihm-installer.zip WIHM-Installer
           tar -czf wihm-installer.tar.gz WIHM-Installer
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.ref != 'refs/tags/installer-v1.7.25' && (startsWith(github.ref, 'refs/tags/installer-v') || github.event_name == 'workflow_dispatch')
         with:
           name: wihm-installer
           path: |
@@ -60,6 +60,16 @@ jobs:
             dist/wihm-installer.tar.gz
             dist/wihm-update.json
             dist/wihm-update.sig
+      - uses: actions/cache/save@v4
+        if: runner.os == 'Linux' && github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: |
+            dist/wihm-installer.zip
+            dist/wihm-installer.tar.gz
+            dist/wihm-update.json
+            dist/wihm-update.sig
+          key: release-${{ github.run_id }}-server
+          enableCrossOsArchive: true
   android:
     if: startsWith(github.ref, 'refs/tags/installer-v')
     uses: ./.github/workflows/android.yml
@@ -82,17 +92,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
+        if: github.ref != 'refs/tags/installer-v1.7.25'
         with:
           name: wihm-installer
           path: package
       - uses: actions/download-artifact@v4
+        if: github.ref != 'refs/tags/installer-v1.7.25'
         with:
           name: android-apk
           path: package
       - uses: actions/download-artifact@v4
+        if: github.ref != 'refs/tags/installer-v1.7.25'
         with:
           name: windows-installer
           path: package
+      - uses: actions/cache/restore@v4
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: |
+            dist/wihm-installer.zip
+            dist/wihm-installer.tar.gz
+            dist/wihm-update.json
+            dist/wihm-update.sig
+          key: release-${{ github.run_id }}-server
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: android/wihm-messenger-android-universal.apk
+          key: release-${{ github.run_id }}-android
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        with:
+          path: windows/dist/wihm-messenger-windows-setup.exe
+          key: release-${{ github.run_id }}-windows
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Collect cached release packages
+        if: github.ref == 'refs/tags/installer-v1.7.25'
+        shell: bash
+        run: |
+          mkdir package
+          cp dist/wihm-installer.zip dist/wihm-installer.tar.gz dist/wihm-update.json dist/wihm-update.sig \
+            android/wihm-messenger-android-universal.apk windows/dist/wihm-messenger-windows-setup.exe package/
       - name: Verify and publish the shared release
         shell: bash
         env:
