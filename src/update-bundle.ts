@@ -1,6 +1,6 @@
 import { UPDATE_PUBLIC_KEY } from './update-key.js';
 
-export const RELEASE_ROOT = 'https://github.com/DarkPoesidon/WIHM-Cloudflare/releases';
+export const RELEASE_ROOT = 'https://github.com/DarkPoesidon/Abraneh/releases';
 export const UPDATER_MARKER = 'wihm-updater-v1';
 export const assetTypes: Record<string,string> = { html:'text/html; charset=utf-8', css:'text/css; charset=utf-8', js:'application/javascript; charset=utf-8', json:'application/json; charset=utf-8', svg:'image/svg+xml', woff2:'font/woff2', txt:'text/plain; charset=utf-8', md:'text/markdown; charset=utf-8' };
 export interface UpdateBundle {

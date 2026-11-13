@@ -2,7 +2,7 @@
 # macOS, Linux and Android/Termux. No Wrangler or native npm packages.
 set -euo pipefail
 trap 'printf "\nSetup stopped. Check your connection and try again.\n" >&2' ERR
-release='https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download'
+release='https://github.com/DarkPoesidon/Abraneh/releases/latest/download'
 cache_root="${HOME:?}/.wihm-cloudflare"
 mkdir -p "$cache_root"
 chmod 700 "$cache_root"

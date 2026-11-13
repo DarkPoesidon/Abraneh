@@ -35,7 +35,7 @@ async function deliver(env:Env,row:any,data:any,ttl:number,topic:string,fetcher:
   if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return false;
   if(!validPushEndpoint(row.endpoint))throw new InputError('اشتراک اعلان معتبر نیست؛ دوباره اعلان این دستگاه را فعال کنید.',409);
   const subscription={endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}};
-  const {headers}=await vapidHeaders(subscription,{subject:'https://github.com/DarkPoesidon/WIHM-Cloudflare',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
+  const {headers}=await vapidHeaders(subscription,{subject:'https://github.com/DarkPoesidon/Abraneh',publicKey:env.VAPID_PUBLIC_KEY!,privateKey:env.VAPID_PRIVATE_KEY!});
   // Padding every short notification to 4096 bytes causes HTTP 413 on affected push services.
   const body=await encryptNotification(subscription,new TextEncoder().encode(JSON.stringify(data)),{pad:false});
   if(body.byteLength>4096)throw new InputError('حجم اعلان بیش از حد مجاز است.',413);

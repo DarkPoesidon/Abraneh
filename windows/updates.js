@@ -4,7 +4,7 @@ const { writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
 const { availableUpdate, checksumFor } = require('./rules');
 
-const RELEASES = 'https://api.github.com/repos/DarkPoesidon/WIHM-Cloudflare/releases/latest';
+const RELEASES = 'https://api.github.com/repos/DarkPoesidon/Abraneh/releases/latest';
 let busy = false;
 
 async function download(url, window) {

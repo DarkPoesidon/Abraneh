@@ -36,7 +36,7 @@ import java.util.concurrent.Executors;
 
 public class UpdateHelper {
     private static final String TAG = "UpdateHelper";
-    public static final String GITHUB_REPO = "DarkPoesidon/WIHM-Cloudflare";
+    public static final String GITHUB_REPO = "DarkPoesidon/Abraneh";
     public static final String GITHUB_RELEASES_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest";
     public static final String GITHUB_RELEASES_PAGE = "https://github.com/" + GITHUB_REPO + "/releases/latest";
     private static final String APK_NAME = "wihm-messenger-android-universal.apk";
