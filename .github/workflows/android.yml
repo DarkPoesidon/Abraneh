@@ -64,6 +64,8 @@ jobs:
           target: ${{ matrix.target }}
           arch: x86_64
           disable-animations: true
+          # The Android 13 image asks for 7 GB of user data by default, which the runner no longer has free.
+          disk-size: 2048M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: sh tests/android/smoke.sh app-universal-release.apk android-${{ matrix.android }}.png ${{ matrix.check }}
       - uses: actions/upload-artifact@v4
