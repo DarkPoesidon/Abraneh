@@ -68,5 +68,11 @@ if (location.protocol === 'file:') {
     openServerSettings() {
       ipcRenderer.send('open-setup');
     },
+    setTheme(light) {
+      ipcRenderer.send('set-theme', light === true);
+    },
+    setUnreadCount(count) {
+      ipcRenderer.send('set-unread', Number(count));
+    },
   });
 }
