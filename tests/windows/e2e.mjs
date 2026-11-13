@@ -2,7 +2,7 @@
 //   WIHM_PLAYWRIGHT_MODULE=<playwright-core> node tests/windows/e2e.mjs
 import { createNavigationFixture } from '../browser/fixture.mjs';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -43,6 +43,24 @@ try {
   assert.equal(await page.evaluate(() => window.Android?.isDesktop), true);
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined', 'the page must not reach Node');
   console.log('ok: the web client runs, without Node');
+
+  // The title bar follows the page's theme, and the taskbar button shows unread messages.
+  assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark');
+  await page.evaluate(() => window.Android.setTheme(true));
+  for (let i = 0; i < 20 && (await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)) !== 'light'; i++) await page.waitForTimeout(100);
+  assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'light');
+  await page.evaluate(() => window.Android.setTheme(false));
+  await (await app.browserWindow(page)).evaluate(window => {
+    globalThis.overlays = [];
+    const set = window.setOverlayIcon.bind(window);
+    window.setOverlayIcon = (icon, text) => { globalThis.overlays.push(text); return set(icon, text); };
+  });
+  await page.evaluate(() => window.Android.setUnreadCount(3));
+  await page.evaluate(() => window.Android.setUnreadCount(0));
+  for (let i = 0; i < 20 && (await (await app.browserWindow(page)).evaluate(() => globalThis.overlays.length)) < 2; i++) await page.waitForTimeout(100);
+  const overlays = await (await app.browserWindow(page)).evaluate(() => globalThis.overlays);
+  assert.match(overlays[0], /3/); assert.equal(overlays[1], '');
+  console.log('ok: theme reaches the title bar, unread reaches the taskbar');
 
   // The page stays alive in the tray and knows it is hidden.
   await page.locator('[data-chat-id="fixture-chat-0"]').click();
@@ -127,6 +145,15 @@ try {
 
   // Permissions are for this server only.
   assert.equal(await page.evaluate(() => Notification.permission), 'granted');
+  // The window keeps its place for the next start.
+  await (await app.browserWindow(page)).evaluate(window => { window.show(); window.setBounds({ x: 120, y: 90, width: 900, height: 640 }); });
+  await page.waitForTimeout(300);
+  await (await app.browserWindow(page)).evaluate(window => window.close());
+  const saved = JSON.parse(readFileSync(join(profile, 'config.json'), 'utf8'));
+  assert.deepEqual({ x: saved.window.x, y: saved.window.y, width: saved.window.width, height: saved.window.height }, { x: 120, y: 90, width: 900, height: 640 });
+  assert.equal(saved.light, false);
+  assert.equal(saved.server, fixture.origin, 'the server stays saved beside the window place');
+  console.log('ok: the window place is remembered');
   console.log('Windows app passed.');
 } finally {
   await app.evaluate(({ app }) => { app.isQuitting = true; app.quit(); }).catch(() => {});

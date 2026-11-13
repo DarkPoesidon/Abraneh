@@ -42,3 +42,20 @@ test('checksums are matched by the exact file name', () => {
   assert.equal(checksumFor(`${other}  other.exe\n${hash} *setup.exe\r\n`, 'setup.exe'), hash);
   assert.equal(checksumFor(`${hash}  setup.exe.bak`, 'setup.exe'), null);
 });
+
+test('the window reopens where it was, unless that place is off every screen', () => {
+  const { windowBounds } = require('../windows/rules.js');
+  const screens = [{ x: 0, y: 0, width: 1920, height: 1040 }, { x: 1920, y: 0, width: 1280, height: 984 }];
+  assert.deepEqual(windowBounds({ x: 2000, y: 40, width: 900, height: 700 }, screens), { x: 2000, y: 40, width: 900, height: 700 });
+  assert.deepEqual(windowBounds({ x: 100.4, y: 10, width: 1000, height: 600 }, screens), { x: 100, y: 10, width: 1000, height: 600 });
+  const fallback = { width: 1100, height: 760 };
+  assert.deepEqual(windowBounds({ x: 3400, y: 40, width: 900, height: 700 }, screens), fallback, 'a monitor that was removed');
+  assert.deepEqual(windowBounds({ x: 100, y: -300, width: 900, height: 700 }, screens), fallback, 'title bar above the screen');
+  for (const bad of [undefined, {}, { x: 0, y: 0, width: 100, height: 100 }, { x: 'a', y: 0, width: 900, height: 700 }]) assert.deepEqual(windowBounds(bad, screens), fallback);
+});
+
+test('the unread label', () => {
+  const { unreadLabel } = require('../windows/rules.js');
+  assert.equal(unreadLabel(0), ''); assert.equal(unreadLabel(-2), ''); assert.equal(unreadLabel(NaN), '');
+  assert.equal(unreadLabel(3), '3'); assert.equal(unreadLabel(99), '99'); assert.equal(unreadLabel(250), '99+');
+});

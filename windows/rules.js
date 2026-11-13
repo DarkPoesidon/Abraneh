@@ -53,4 +53,20 @@ function checksumFor(sums, name) {
   return null;
 }
 
-module.exports = { serverOrigin, proxyRule, isNewer, availableUpdate, checksumFor };
+/** The saved window place, if it still fits on a connected screen; otherwise the default size, centred. */
+function windowBounds(saved, workAreas) {
+  const fallback = { width: 1100, height: 760 };
+  if (!saved || ![saved.x, saved.y, saved.width, saved.height].every(Number.isFinite) || saved.width < 360 || saved.height < 560) return fallback;
+  // Enough of the title bar must be on a screen to grab, or a removed monitor would hide the window.
+  const reachable = (workAreas || []).some(area => saved.x + saved.width - 80 > area.x && saved.x + 80 < area.x + area.width && saved.y >= area.y - 8 && saved.y + 40 < area.y + area.height);
+  return reachable ? { x: Math.round(saved.x), y: Math.round(saved.y), width: Math.round(saved.width), height: Math.round(saved.height) } : fallback;
+}
+
+/** The unread count as shown, or '' when there is nothing to show. */
+function unreadLabel(count) {
+  const value = Math.floor(Number(count));
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return value > 99 ? '99+' : String(value);
+}
+
+module.exports = { serverOrigin, proxyRule, isNewer, availableUpdate, checksumFor, windowBounds, unreadLabel };

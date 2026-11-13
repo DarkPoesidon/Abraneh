@@ -496,6 +496,8 @@
   }
 
   function renderFilteredChats() {
+    // The Windows app shows this on its taskbar button. Muted and archived chats do not count, as in their own badges.
+    try { window.Android?.setUnreadCount?.([...chats, ...secureItems].reduce((sum, chat) => sum + (!chat.muted && !chat.archived ? Number(chat.unreadCount) || 0 : 0), 0)); } catch {}
     const q = chatFilterInput.value.trim().toLowerCase();
     const list = [...chats, ...secureItems].filter(chat =>
       !!chat.archived === archivedView &&
