@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 /** Pure URL and version rules, kept free of Android types so they can be unit tested. */
 final class UrlRules {
-    private static final String ANDROID_TAG_PREFIX = "android-v";
+    private static final String ANDROID_TAG_PREFIX = "installer-v";
     // The web client's secure bundle is built for es2022, which needs Chrome 94.
     private static final int MIN_WEBVIEW = 94;
 
@@ -55,12 +55,11 @@ final class UrlRules {
     }
 
     /**
-     * APK releases live beside the installer's releases in the public repository, so only tags
-     * named android-v1.2.3 count. Returns the version, or null for any other tag.
+     * Returns the version of a shared stable release, or null for any other tag.
      */
     static String androidReleaseVersion(String tag) {
         if (tag == null || !tag.startsWith(ANDROID_TAG_PREFIX)) return null;
         String version = tag.substring(ANDROID_TAG_PREFIX.length());
-        return version.matches("\\d+(\\.\\d+)*") ? version : null;
+        return version.matches("\\d+\\.\\d+\\.\\d+") ? version : null;
     }
 }

@@ -6,8 +6,8 @@
 
 <p>
   <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Server" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Server&style=for-the-badge&logo=cloudflare&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=android-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=windows-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
 </p>
 
 <img src="docs/assets/wihm-cloudflare-poster.png" alt="پوستر پیام‌رسان ابرانه با نمای نسخهٔ دسکتاپ و موبایل" width="100%">
@@ -20,11 +20,13 @@
 
 ## دریافت
 
+نصب‌کنندهٔ سرور و برنامه‌های اندروید و ویندوز با هم در یک نسخه منتشر می‌شوند.
+
 | چه می‌خواهید؟ | صفحهٔ آخرین نسخه | دریافت مستقیم |
 | --- | --- | --- |
 | **ساخت سرور** | [نصب‌کنندهٔ سرور](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
-| **برنامهٔ اندروید** (اندروید ۵ به بالا) | [اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) |
-| **برنامهٔ ویندوز** (ویندوز ۱۰ و ۱۱، ۶۴ بیتی) | [ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) |
+| **برنامهٔ اندروید** (اندروید ۵ به بالا) | [اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) |
+| **برنامهٔ ویندوز** (ویندوز ۱۰ و ۱۱، ۶۴ بیتی) | [ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) |
 
 - اگر کسی برایتان سرور ساخته است، فقط برنامه را نصب کنید و نشانی سرور را وارد کنید. روی آیفون و مک، نشانی را در مرورگر باز کنید و برنامه را از همان‌جا نصب کنید.
 - نصب‌کنندهٔ ویندوز امضای دیجیتال ندارد و ویندوز موقع نصب هشدار می‌دهد. برای ادامه، «More info» و بعد «Run anyway» را بزنید.
@@ -82,11 +84,13 @@
 
 **Abraneh** is a messenger you host on your own Cloudflare account, with chats, groups, channels, voice and video calls, and file sharing. No dedicated server is needed.
 
+The server installer and the Android and Windows apps ship together in each release.
+
 | You want | Latest release | Direct download |
 | --- | --- | --- |
 | **Run a server** | [Server installer](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
-| **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/android-latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/android-latest/wihm-messenger-android-universal.apk) |
-| **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/tag/windows-latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/download/windows-latest/wihm-messenger-windows-setup.exe) |
+| **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) |
+| **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) |
 
 Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Secure chats start from the plus button and use MLS for text. They are experimental and have had no independent audit. Without comparing the security code, a server could sit between two people at first contact, and the app's code comes from the server.
 

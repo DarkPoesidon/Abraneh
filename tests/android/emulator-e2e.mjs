@@ -1,6 +1,6 @@
 // Drives the shrunk QA build of the Android app on an emulator, against a real local Worker.
 // Run from this repository, with the emulator already booted:
-//   ANDROID_ADB=<adb path> WIHM_APK=<app-universal-qa.apk> WIHM_SHOTS=<folder> node tests/android/emulator-e2e.mjs
+//   ANDROID_ADB=<adb path> WIHM_APK=<app-qa.apk> WIHM_SHOTS=<folder> node tests/android/emulator-e2e.mjs
 import { createNavigationFixture } from '../browser/fixture.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';

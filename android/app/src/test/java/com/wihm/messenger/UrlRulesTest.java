@@ -54,10 +54,10 @@ public class UrlRulesTest {
 
     @Test
     public void onlyAndroidTagsCountAsAppReleases() {
-        assertEquals("1.5.0", UrlRules.androidReleaseVersion("android-v1.5.0"));
-        assertNull(UrlRules.androidReleaseVersion("installer-v1.6.1"));
+        assertEquals("1.5.0", UrlRules.androidReleaseVersion("installer-v1.5.0"));
+        assertNull(UrlRules.androidReleaseVersion("android-v1.6.1"));
         assertNull(UrlRules.androidReleaseVersion("v1.4.7"));
-        assertNull(UrlRules.androidReleaseVersion("android-vnext"));
+        assertNull(UrlRules.androidReleaseVersion("installer-v1.6.1-rc.1"));
         assertNull(UrlRules.androidReleaseVersion(null));
     }
 }

@@ -37,8 +37,9 @@ import java.util.concurrent.Executors;
 public class UpdateHelper {
     private static final String TAG = "UpdateHelper";
     public static final String GITHUB_REPO = "DarkPoesidon/WIHM-Cloudflare";
-    public static final String GITHUB_RELEASES_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases?per_page=40";
-    public static final String GITHUB_RELEASES_PAGE = "https://github.com/" + GITHUB_REPO + "/releases";
+    public static final String GITHUB_RELEASES_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest";
+    public static final String GITHUB_RELEASES_PAGE = "https://github.com/" + GITHUB_REPO + "/releases/latest";
+    private static final String APK_NAME = "wihm-messenger-android-universal.apk";
     private static final String UPDATE_CHECK_PREF = "last_update_check_time";
     private static final long UPDATE_CHECK_INTERVAL_MS = 24L * 3600L * 1000L;
     private static final int UPDATE_NOTIFICATION_ID = 9002;
@@ -66,7 +67,7 @@ public class UpdateHelper {
         return "universal";
     }
 
-    /** Returns the newest published APK release, or null if there is none yet. */
+    /** Returns the latest published release. */
     private static JSONObject fetchLatestRelease() throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_RELEASES_API).openConnection();
         try {
@@ -89,16 +90,7 @@ public class UpdateHelper {
                 }
             }
 
-            // GitHub lists newest first, and the shared repository also holds installer releases.
-            JSONArray releases = new JSONArray(sb.toString());
-            for (int i = 0; i < releases.length(); i++) {
-                JSONObject release = releases.getJSONObject(i);
-                if (!release.optBoolean("draft") && !release.optBoolean("prerelease")
-                        && UrlRules.androidReleaseVersion(release.optString("tag_name")) != null) {
-                    return release;
-                }
-            }
-            return null;
+            return new JSONObject(sb.toString());
         } finally {
             conn.disconnect();
         }
@@ -114,71 +106,28 @@ public class UpdateHelper {
         executor.execute(() -> {
             try {
                 JSONObject release = fetchLatestRelease();
-                String latestVersion = release != null ? UrlRules.androidReleaseVersion(release.optString("tag_name")) : getAppVersion(activity);
-                if (release == null) release = new JSONObject();
                 String currentVersion = getAppVersion(activity);
+                String releaseVersion = UrlRules.androidReleaseVersion(release.optString("tag_name"));
+                String latestVersion = releaseVersion == null ? currentVersion : releaseVersion;
                 String releaseNotes = release.optString("body", "").trim();
                 String htmlUrl = release.optString("html_url", GITHUB_RELEASES_PAGE);
                 JSONArray assets = release.optJSONArray("assets");
 
-                // Select the best APK asset for device architecture
-                String matchedAssetUrl = null;
-                String matchedAssetName = null;
-                long matchedAssetSize = 0;
-
-                if (assets != null && assets.length() > 0) {
-                    String[] supportedAbis = Build.SUPPORTED_ABIS;
-                    // 1. Try matching device ABI specifically
-                    if (supportedAbis != null) {
-                        for (String abi : supportedAbis) {
-                            String targetSuffix = "-" + abi + ".apk";
-                            for (int i = 0; i < assets.length(); i++) {
-                                JSONObject asset = assets.getJSONObject(i);
-                                String name = asset.optString("name", "");
-                                if (name.endsWith(targetSuffix)) {
-                                    matchedAssetUrl = asset.optString("browser_download_url", "");
-                                    matchedAssetName = name;
-                                    matchedAssetSize = asset.optLong("size", 0);
-                                    break;
-                                }
-                            }
-                            if (matchedAssetUrl != null) break;
-                        }
-                    }
-
-                    // 2. Fallback to universal APK
-                    if (matchedAssetUrl == null) {
-                        for (int i = 0; i < assets.length(); i++) {
-                            JSONObject asset = assets.getJSONObject(i);
-                            String name = asset.optString("name", "");
-                            if (name.contains("universal") && name.endsWith(".apk")) {
-                                matchedAssetUrl = asset.optString("browser_download_url", "");
-                                matchedAssetName = name;
-                                matchedAssetSize = asset.optLong("size", 0);
-                                break;
-                            }
-                        }
-                    }
-
-                    // 3. Fallback to any APK
-                    if (matchedAssetUrl == null) {
-                        for (int i = 0; i < assets.length(); i++) {
-                            JSONObject asset = assets.getJSONObject(i);
-                            String name = asset.optString("name", "");
-                            if (name.endsWith(".apk")) {
-                                matchedAssetUrl = asset.optString("browser_download_url", "");
-                                matchedAssetName = name;
-                                matchedAssetSize = asset.optLong("size", 0);
-                                break;
-                            }
-                        }
+                String downloadUrl = "";
+                long size = 0;
+                for (int i = 0; assets != null && i < assets.length(); i++) {
+                    JSONObject asset = assets.getJSONObject(i);
+                    if (APK_NAME.equals(asset.optString("name"))) {
+                        downloadUrl = asset.optString("browser_download_url");
+                        size = asset.optLong("size");
+                        break;
                     }
                 }
 
-                final boolean isNewer = compareVersions(latestVersion, currentVersion) > 0;
-                final String finalDownloadUrl = matchedAssetUrl;
-                final String finalAssetName = matchedAssetName != null ? matchedAssetName : "wihm-messenger.apk";
-                final long finalSize = matchedAssetSize;
+                final boolean isNewer = !release.optBoolean("draft") && !release.optBoolean("prerelease")
+                        && !downloadUrl.isEmpty() && compareVersions(latestVersion, currentVersion) > 0;
+                final String finalDownloadUrl = downloadUrl;
+                final long finalSize = size;
 
                 mainHandler.post(() -> {
                     if (activity.isFinishing()) return;
@@ -189,7 +138,7 @@ public class UpdateHelper {
 
                     if (isNewer) {
                         showUpdateAvailableDialog(activity, latestVersion, currentVersion, releaseNotes,
-                                finalDownloadUrl, finalAssetName, finalSize, htmlUrl);
+                                finalDownloadUrl, APK_NAME, finalSize, htmlUrl);
                     } else if (userInitiated) {
                         new AlertDialog.Builder(activity)
                                 .setTitle(R.string.update_latest_title)

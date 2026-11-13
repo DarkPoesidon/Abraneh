@@ -1,9 +1,8 @@
 name: Windows app
 on:
   pull_request:
-    paths: ['windows/**', 'tests/windows/**', 'src/chatRoom.ts', '.github/workflows/windows.yml']
-  push:
-    tags: ['windows-v*']
+    paths: ['windows/**', 'tests/windows/**', 'tests/windows.test.cjs', 'package.json', 'src/chatRoom.ts', '.github/workflows/windows.yml']
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,12 +21,8 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: windows
-      - name: Check the tag matches the app's version
-        if: startsWith(github.ref, 'refs/tags/windows-v')
-        shell: bash
-        run: |
-          version=$(node -p "require('./windows/package.json').version")
-          [ "$GITHUB_REF_NAME" = "windows-v$version" ] || { echo "::error::The tag does not match version $version"; exit 1; }
+      - name: Check Windows version matches the server version
+        run: node -e "if (require('./windows/package.json').version !== require('./package.json').version) throw Error('Windows and server versions differ')"
       - run: node --test tests/windows.test.cjs
       - name: Open the app against a local server
         shell: bash
@@ -36,36 +31,8 @@ jobs:
           node tests/windows/e2e.mjs
       - run: npm run dist
         working-directory: windows
-      - name: Collect the installer
-        shell: bash
-        run: |
-          mkdir release-files
-          cp windows/dist/wihm-messenger-windows-v*-setup.exe release-files/
-          (cd release-files && sha256sum *.exe > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: release-files
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/windows-v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-installer
-          path: release-files
-      - name: Publish for the in-app updater
-        env:
-          GH_TOKEN: ${{ github.token }}
-        # Never "latest": the server installer downloads the latest release of this repository.
-        run: gh release create "$GITHUB_REF_NAME" release-files/* --repo "$GITHUB_REPOSITORY" --title "WIHM Windows ${GITHUB_REF_NAME#windows-v}" --notes "نسخهٔ ویندوز پیام‌رسان ابرانه" --latest=false
-      - uses: actions/checkout@v4
-        with:
-          path: source
-      - name: Update the fixed download address
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: sh source/scripts/publish-latest-app.sh windows "${GITHUB_REF_NAME#windows-v}" release-files
+          path: windows/dist/wihm-messenger-windows-setup.exe
+          if-no-files-found: error

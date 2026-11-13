@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { serverOrigin, proxyRule, isNewer, newestRelease, checksumFor } = require('../windows/rules.js');
+const { serverOrigin, proxyRule, isNewer, availableUpdate, checksumFor } = require('../windows/rules.js');
 
 test('only https servers, or plain http on this computer', () => {
   assert.equal(serverOrigin(' chat.workers.dev '), 'https://chat.workers.dev');
@@ -22,16 +22,19 @@ test('versions compare as numbers', () => {
   assert.ok(!isNewer('bad', '1.0.0'));
 });
 
-test('the newest Windows release ignores the server, Android, drafts and incomplete ones', () => {
-  const release = (tag, extra = {}) => {
-    const version = tag.replace('windows-v', '');
-    return { tag_name: tag, assets: [{ name: `wihm-messenger-windows-v${version}-setup.exe`, browser_download_url: 'setup/' + version }, { name: 'SHA256SUMS.txt', browser_download_url: 'sums/' + version }], ...extra };
-  };
-  const found = newestRelease([release('installer-v9.0.0'), release('android-v9.0.0'), release('windows-v3.0.0', { draft: true }), release('windows-v2.5.0', { prerelease: true }), release('windows-v2.1.0', { assets: [] }), release('windows-v2.0.0'), release('windows-v1.5.0')], '1.0.0');
-  assert.equal(found.version, '2.0.0');
-  assert.equal(found.setupUrl, 'setup/2.0.0');
-  assert.equal(newestRelease([release('windows-v1.0.0')], '1.0.0'), null);
-  assert.equal(newestRelease({ message: 'rate limited' }, '1.0.0'), null);
+test('updates come from a complete newer shared release', () => {
+  const setup = { name: 'wihm-messenger-windows-setup.exe', browser_download_url: 'setup' };
+  const sums = { name: 'SHA256SUMS', browser_download_url: 'sums' };
+  const release = { tag_name: 'installer-v1.8.0', assets: [setup, sums] };
+  assert.deepEqual(availableUpdate(release, '1.7.22'), {
+    version: '1.8.0', name: setup.name, setupUrl: 'setup', sumsUrl: 'sums',
+  });
+  for (const invalid of [
+    { tag_name: 'windows-v1.8.0' }, { draft: true }, { prerelease: true },
+    { tag_name: 'installer-v1.8.0-rc.1' }, { assets: [setup] }, { assets: [sums] },
+  ]) assert.equal(availableUpdate({ ...release, ...invalid }, '1.7.22'), null);
+  assert.equal(availableUpdate(release, '1.8.0'), null);
+  assert.equal(availableUpdate({ message: 'rate limited' }, '1.7.22'), null);
 });
 
 test('checksums are matched by the exact file name', () => {
