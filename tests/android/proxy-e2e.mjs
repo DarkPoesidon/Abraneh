@@ -1,6 +1,6 @@
 // Proves the Android app's page and its inbox socket really travel through a SOCKS5 proxy.
 // Run from this repository, with the emulator booted:
-//   ANDROID_ADB=<adb path> WIHM_APK=<app-universal-qa.apk> WIHM_SHOTS=<folder> node tests/android/proxy-e2e.mjs
+//   ANDROID_ADB=<adb path> WIHM_APK=<app-qa.apk> WIHM_SHOTS=<folder> node tests/android/proxy-e2e.mjs
 import { createNavigationFixture } from '../browser/fixture.mjs';
 import { execFileSync } from 'node:child_process';
 import { createServer, connect } from 'node:net';

@@ -6,8 +6,8 @@
 
 <p>
   <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Server" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Server&style=for-the-badge&logo=cloudflare&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=android-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=windows-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
 </p>
 
 <img src="docs/assets/wihm-cloudflare-poster.png" alt="پوستر پیام‌رسان ابرانه با نمای نسخهٔ دسکتاپ و موبایل" width="100%">
@@ -19,6 +19,8 @@
 ابرانه پیام‌رسانی برای گفتگوی خصوصی، گروه و کانال است که روی حساب کلادفلر خودتان اجرا می‌شود. داده‌ها در حساب خودتان می‌مانند و برای راه‌اندازی به خرید یا مدیریت سرور نیاز ندارید.
 
 ## دریافت
+
+نصب‌کنندهٔ سرور و برنامه‌های اندروید و ویندوز با هم در یک نسخه منتشر می‌شوند.
 
 | چه می‌خواهید؟ | صفحهٔ آخرین نسخه | دریافت مستقیم |
 | --- | --- | --- |
@@ -81,6 +83,8 @@
 ## English
 
 **Abraneh** is a messenger you host on your own Cloudflare account, with chats, groups, channels, voice and video calls, and file sharing. No dedicated server is needed.
+
+The server installer and the Android and Windows apps ship together in each release.
 
 | You want | Latest release | Direct download |
 | --- | --- | --- |

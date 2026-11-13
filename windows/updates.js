@@ -2,9 +2,9 @@ const { app, dialog, net, shell } = require('electron');
 const { createHash } = require('node:crypto');
 const { writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
-const { newestRelease, checksumFor } = require('./rules');
+const { availableUpdate, checksumFor } = require('./rules');
 
-const RELEASES = 'https://api.github.com/repos/DarkPoesidon/WIHM-Cloudflare/releases?per_page=40';
+const RELEASES = 'https://api.github.com/repos/DarkPoesidon/WIHM-Cloudflare/releases/latest';
 let busy = false;
 
 async function download(url, window) {
@@ -28,7 +28,7 @@ async function checkForUpdate(t, interactive, window) {
   try {
     const response = await net.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'WIHM-Windows' } });
     if (!response.ok) throw new Error('HTTP ' + response.status);
-    const release = newestRelease(await response.json(), app.getVersion());
+    const release = availableUpdate(await response.json(), app.getVersion());
     if (!release) {
       if (interactive) await dialog.showMessageBox({ message: t('noUpdate') });
       return;

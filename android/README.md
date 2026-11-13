@@ -17,7 +17,7 @@
 | **اعلان با برنامهٔ بسته** | سرویس پیش‌زمینهٔ `WihmNotificationService` یک WebSocket دائمی به `/api/ws/inbox` نگه می‌دارد. به Chrome یا خدمات گوگل وابسته نیست. |
 | **تماس ورودی** | سرویس خودش زنگ و لرزش را پخش می‌کند و صفحهٔ تمام‌صفحهٔ `IncomingCallActivity` را باز می‌کند. دکمهٔ پاسخ برنامه را باز می‌کند و صفحه تماس را می‌پذیرد. |
 | **قطع اتصال** | سرویس خودش دوباره وصل می‌شود، هر ۲ دقیقه و با هر تغییر شبکه اتصال را آزمایش می‌کند و تا وصل شدن هر ۶۰ ثانیه پیام‌ها را بررسی می‌کند. |
-| **به‌روزرسانی APK** | فقط برای تغییر کد بومی یا مجوزها لازم است. برنامه انتشارهای `android-v*` را از ریپوی عمومی WIHM-Cloudflare می‌خواند. |
+| **به‌روزرسانی APK** | فقط برای تغییر کد بومی یا مجوزها لازم است. برنامه آخرین انتشار مشترک را از ریپوی عمومی WIHM-Cloudflare می‌خواند. |
 
 | **صدای تماس** | `CallAudio` صدا را بین گوشی و بلندگو عوض می‌کند و نزدیک گوش صفحه را خاموش می‌کند. |
 | **پراکسی** | `ProxySettings` پراکسی SOCKS5 یا HTTP را برای WebView و سرویس اعمال می‌کند. MTProto پشتیبانی نمی‌شود، چون فقط پروتکل تلگرام را حمل می‌کند. |
@@ -27,7 +27,7 @@
 
 آزمون سرتاسری روی شبیه‌ساز در `tests/android/emulator-e2e.mjs` ریپوی WIHM-Cloudflare است و نسخهٔ `assembleQa` را اجرا می‌کند.
 
-برای انتشار، `versionCode` و `versionName` را در `app/build.gradle` بالا ببرید و تگ `android-v<نسخه>` بزنید. گردش‌کار `.github/workflows/android.yml` بیلد را می‌سازد و منتشر می‌کند.
+برای انتشار، `versionCode` را در `app/build.gradle` افزایش دهید. `versionName` از `package.json` ریشه خوانده می‌شود و یک APK یونیورسال همراه سرور و ویندوز با تگ `installer-v<نسخه>` منتشر می‌شود.
 
 کلید امضا در این ریپو نیست. CI آن را از GitHub Secrets می‌خواند و بیلد محلی از فایل نادیده‌گرفته‌شدهٔ `android/keystore.properties`. بدون این‌ها بیلد با کلید debug امضا می‌شود.
 
@@ -77,7 +77,7 @@
 
 ## 🚀 دریافت فایل نصبی (APK)
 
-فایل‌های آماده و امضاشده از [انتشارهای `android-v*`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases) دریافت می‌شوند.
+یک [APK یونیورسال امضاشده](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) در آخرین انتشار موجود است.
 
 ---
 
@@ -96,7 +96,7 @@
 ```bash
 ./gradlew assembleRelease
 ```
-فایل نهایی در مسیر `app/build/outputs/apk/release/` تولید می‌شود.
+فایل نهایی در مسیر `app/build/outputs/apk/release/app-release.apk` تولید می‌شود.
 
 ---
 

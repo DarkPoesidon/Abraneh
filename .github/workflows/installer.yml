@@ -51,8 +51,6 @@ jobs:
         run: |
           zip -qr wihm-installer.zip WIHM-Installer
           tar -czf wihm-installer.tar.gz WIHM-Installer
-          sha256sum wihm-installer.zip wihm-installer.tar.gz wihm-update.json > SHA256SUMS
-          if [ -f wihm-update.sig ]; then sha256sum wihm-update.sig >> SHA256SUMS; fi
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
@@ -60,12 +58,24 @@ jobs:
           path: |
             dist/wihm-installer.zip
             dist/wihm-installer.tar.gz
-            dist/SHA256SUMS
             dist/wihm-update.json
             dist/wihm-update.sig
+  android:
+    if: startsWith(github.ref, 'refs/tags/installer-v')
+    uses: ./.github/workflows/android.yml
+    secrets:
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_NEXT_KEYSTORE_B64: ${{ secrets.ANDROID_NEXT_KEYSTORE_B64 }}
+      ANDROID_NEXT_KEY_PASSWORD: ${{ secrets.ANDROID_NEXT_KEY_PASSWORD }}
+  windows:
+    if: startsWith(github.ref, 'refs/tags/installer-v')
+    uses: ./.github/workflows/windows.yml
   publish:
     if: startsWith(github.ref, 'refs/tags/installer-v')
-    needs: installer
+    needs: [installer, android, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,13 +85,21 @@ jobs:
         with:
           name: wihm-installer
           path: package
-      - name: Publish installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: package
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: package
+      - name: Verify and publish the shared release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#installer-v}"
           files="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-          # This release is the page people land on, so it also carries the apps.
           {
             printf '## دریافت\n\n'
             printf -- '- **سرور:** [نصب‌کننده](%s/wihm-installer.zip)\n' "$files"
@@ -89,5 +107,12 @@ jobs:
             printf -- '- **ویندوز:** [برنامهٔ ویندوز](%s/wihm-messenger-windows-setup.exe)\n\n---\n\n' "$files"
             cat "docs/releases/$version.fa.md"
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" package/* --repo "$GITHUB_REPOSITORY" --title "ابرانه $version" --notes-file notes.md
-          sh scripts/release-apps.sh "$GITHUB_REF_NAME"
+          (
+            cd package
+            set -- wihm-installer.zip wihm-installer.tar.gz wihm-update.json wihm-update.sig \
+              wihm-messenger-android-universal.apk wihm-messenger-windows-setup.exe
+            for asset do test -s "$asset" || exit 1; done
+            sha256sum "$@" > SHA256SUMS
+            gh release create "$GITHUB_REF_NAME" "$@" SHA256SUMS --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --latest --title "ابرانه $version" --notes-file ../notes.md
+          )
