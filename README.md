@@ -6,9 +6,9 @@
 <p dir="rtl"><strong>پیام‌رسان فارسی روی زیرساخت خودتان، بدون نیاز به سرور اختصاصی</strong></p>
 
 <p>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Server" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Server&style=for-the-badge&logo=cloudflare&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
-  <a href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/WIHM-Cloudflare?filter=installer-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/Abraneh/releases/latest"><img alt="Server" src="https://img.shields.io/github/v/release/DarkPoesidon/Abraneh?filter=installer-v*&sort=semver&display_name=tag&label=Server&style=for-the-badge&logo=cloudflare&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/Abraneh/releases/latest"><img alt="Android" src="https://img.shields.io/github/v/release/DarkPoesidon/Abraneh?filter=installer-v*&sort=semver&display_name=tag&label=Android&style=for-the-badge&logo=android&logoColor=white&color=2399f0"></a>
+  <a href="https://github.com/DarkPoesidon/Abraneh/releases/latest"><img alt="Windows" src="https://img.shields.io/github/v/release/DarkPoesidon/Abraneh?filter=installer-v*&sort=semver&display_name=tag&label=Windows&style=for-the-badge&logoColor=white&color=2399f0"></a>
 </p>
 
 
@@ -24,9 +24,9 @@
 
 | چه می‌خواهید؟ | صفحهٔ آخرین نسخه | دریافت مستقیم |
 | --- | --- | --- |
-| **ساخت سرور** | [نصب‌کنندهٔ سرور](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
-| **برنامهٔ اندروید** (اندروید ۵ به بالا) | [اندروید](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) |
-| **برنامهٔ ویندوز** (ویندوز ۱۰ و ۱۱، ۶۴ بیتی) | [ویندوز](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) |
+| **ساخت سرور** | [نصب‌کنندهٔ سرور](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-installer.zip) |
+| **برنامهٔ اندروید** (اندروید ۵ به بالا) | [اندروید](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-messenger-android-universal.apk) |
+| **برنامهٔ ویندوز** (ویندوز ۱۰ و ۱۱، ۶۴ بیتی) | [ویندوز](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-messenger-windows-setup.exe) |
 
 - اگر کسی برایتان سرور ساخته است، فقط برنامه را نصب کنید و نشانی سرور را وارد کنید. روی آیفون و مک، نشانی را در مرورگر باز کنید و برنامه را از همان‌جا نصب کنید.
 - نصب‌کنندهٔ ویندوز امضای دیجیتال ندارد و ویندوز موقع نصب هشدار می‌دهد. برای ادامه، «More info» و بعد «Run anyway» را بزنید.
@@ -64,7 +64,7 @@
 - **گفتگوی امن** با MLS رمز می‌شود و سرور متن پیام‌ها را ندارد، ولی می‌بیند چه کسی، چه زمانی و با چه کسی پیام داده است.
 - گفتگوی امن هنوز **آزمایشی** است، چون کتابخانهٔ آن و این پیاده‌سازی ممیزی مستقل امنیتی ندارند.
 - در اولین تماس، بدون مقایسهٔ کد امنیتی، سرور در تئوری می‌تواند میان دو نفر قرار بگیرد. در نسخهٔ وب و اپ‌هایی که صفحه را از سرور می‌گیرند هم، صاحب سرور کد برنامه را در اختیار دارد.
-- برای گزارش آسیب‌پذیری، موضوع را به‌صورت خصوصی از [Security Advisories](https://github.com/DarkPoesidon/WIHM-Cloudflare/security/advisories/new) بفرستید.
+- برای گزارش آسیب‌پذیری، موضوع را به‌صورت خصوصی از [Security Advisories](https://github.com/DarkPoesidon/Abraneh/security/advisories/new) بفرستید.
 
 ## مجوز
 
@@ -74,7 +74,7 @@
 - **بدون اجازهٔ جداگانه مجاز نیست:** فروش، ارائهٔ پولی، یا هر استفادهٔ تجاری دیگر.
 - **برای بازنشر:** متن مجوز و خط Required Notice باید همراه نرم‌افزار بماند.
 
-برای مجوز تجاری، در [Issues](https://github.com/DarkPoesidon/WIHM-Cloudflare/issues) پیام بگذارید. مجوز کتابخانه‌ها و فونت‌ها در [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) آمده است. این پروژه وابستگی یا ارتباطی با تلگرام ندارد.
+برای مجوز تجاری، در [Issues](https://github.com/DarkPoesidon/Abraneh/issues) پیام بگذارید. مجوز کتابخانه‌ها و فونت‌ها در [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) آمده است. این پروژه وابستگی یا ارتباطی با تلگرام ندارد.
 
 </div>
 
@@ -88,9 +88,9 @@ The server installer and the Android and Windows apps ship together in each rele
 
 | You want | Latest release | Direct download |
 | --- | --- | --- |
-| **Run a server** | [Server installer](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) |
-| **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) |
-| **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-windows-setup.exe) |
+| **Run a server** | [Server installer](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`wihm-installer.zip`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-installer.zip) |
+| **Android app** (Android 5+) | [Android](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`universal.apk`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-messenger-android-universal.apk) |
+| **Windows app** (Windows 10 and 11, 64-bit) | [Windows](https://github.com/DarkPoesidon/Abraneh/releases/latest) | [`setup.exe`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-messenger-windows-setup.exe) |
 
 Filter the chat list by **All**, **Unread**, or **Groups**. Each chat shows a one-line draft preview until you send or clear the draft. In the Windows app, press `Ctrl+K` to find a chat, use the arrow keys to select it, and press `Enter` to open it. Choose one attachment to preview, then select **Send**. On a touchscreen, press and hold a chat to open its menu from the bottom.
 

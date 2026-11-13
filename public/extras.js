@@ -21,7 +21,7 @@
     function renderServer(status){
       if(!current(updateView)||!byId('server-update-panel'))return;
       const panel=byId('server-update-panel');
-      if(!status.configured){panel.innerHTML='<p class="session-help">به‌روزرسانی سرور هنوز فعال نیست. صاحب سرویس باید نصب‌کنندهٔ جدید را فقط یک بار با همان نام قبلی اجرا و «به‌روزرسانی سرور از داخل پیام‌رسان» را انتخاب کند؛ بعد از آن نیازی به اجرای دوبارهٔ ویندوز یا ترموکس نیست.</p><a class="quiet-button" href="https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest" target="_blank" rel="noreferrer">دریافت نصب‌کننده</a>';return;}
+      if(!status.configured){panel.innerHTML='<p class="session-help">به‌روزرسانی سرور هنوز فعال نیست. صاحب سرویس باید نصب‌کنندهٔ جدید را فقط یک بار با همان نام قبلی اجرا و «به‌روزرسانی سرور از داخل پیام‌رسان» را انتخاب کند؛ بعد از آن نیازی به اجرای دوبارهٔ ویندوز یا ترموکس نیست.</p><a class="quiet-button" href="https://github.com/DarkPoesidon/Abraneh/releases/latest" target="_blank" rel="noreferrer">دریافت نصب‌کننده</a>';return;}
       const job=status.job,running=job?.state==='running',available=status.latest&&compare(status.latest.version,status.installedVersion)>0;
       const retry=job?.state==='failed'&&status.latest?.version===job.version;
       const phases={prepare:'بررسی بسته و نصب قبلی',database:'آماده‌سازی دیتابیس',publish:'بارگذاری و انتشار',verify:'بررسی سلامت سرور',updater:'به‌روزرسانی خودِ به‌روزرسان'};

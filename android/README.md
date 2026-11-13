@@ -25,7 +25,7 @@
 
 برای کار پایدار، کاربر باید محدودیت باتری را بردارد. برنامه این را یک بار پس از ورود می‌پرسد. در گوشی‌های شیائومی و مشابه، اجازهٔ شروع خودکار هم لازم است.
 
-آزمون سرتاسری روی شبیه‌ساز در `tests/android/emulator-e2e.mjs` ریپوی WIHM-Cloudflare است و نسخهٔ `assembleQa` را اجرا می‌کند.
+آزمون سرتاسری روی شبیه‌ساز در `tests/android/emulator-e2e.mjs` این ریپو است و نسخهٔ `assembleQa` را اجرا می‌کند.
 
 برای انتشار، `versionCode` را در `app/build.gradle` افزایش دهید. `versionName` از `package.json` ریشه خوانده می‌شود و یک APK یونیورسال همراه سرور و ویندوز با تگ `installer-v<نسخه>` منتشر می‌شود.
 
@@ -35,7 +35,7 @@
 
 ## 📌 معرفی پروژه
 
-این پروژه کلاینت بومی و **فوق‌سبک (Ultra-Lightweight)** برای پیام‌رسان ابری **[WIHM-Cloudflare (ابرانه)](https://github.com/DarkPoesidon/WIHM-Cloudflare)** است.
+این پروژه کلاینت بومی و **فوق‌سبک (Ultra-Lightweight)** برای پیام‌رسان ابری **[WIHM-Cloudflare (ابرانه)](https://github.com/DarkPoesidon/Abraneh)** است.
 
 در مقایسه با پیام‌رسان‌های متداول نظیر تلگرام (نسخه رسمی اندروید ~۷۵ تا ۱۰۰ مگابایت) یا برنامه‌های مبتنی بر کراس‌پلتفرم سنگین مانند Flutter و React Native (با حجم ۳۰ تا ۶۰ مگابایت)، این اپلیکیشن با مهندسی معکوس الگوهای بهینه و حذف تمامی وابستگی‌های زائد، با حجم **فقط ۱.۶ مگابایت (بیش از ۹۸٪ سبک‌تر)** پیاده‌سازی شده است.
 
@@ -77,7 +77,7 @@
 
 ## 🚀 دریافت فایل نصبی (APK)
 
-یک [APK یونیورسال امضاشده](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-messenger-android-universal.apk) در آخرین انتشار موجود است.
+یک [APK یونیورسال امضاشده](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-messenger-android-universal.apk) در آخرین انتشار موجود است.
 
 ---
 
@@ -101,5 +101,5 @@
 ---
 
 ## 📜 لایسنس
-توسعه‌داده‌شده برای پروژه [WIHM-Cloudflare](https://github.com/DarkPoesidon/WIHM-Cloudflare).
+توسعه‌داده‌شده برای پروژه [WIHM-Cloudflare](https://github.com/DarkPoesidon/Abraneh).
 مجوز انتشار تحت MIT License.

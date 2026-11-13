@@ -44,7 +44,7 @@
 
 فایل لازم `wihm-installer.zip` است؛ اگر از صفحهٔ ریلیز دانلود می‌کنید، **Source code** را به جای آن نگیرید. بعد از **Extract All** وارد پوشهٔ استخراج‌شده و سپس `WIHM-Installer` شوید؛ راه‌انداز را از داخل خود ZIP باز نکنید.
 
-1. [آخرین بستهٔ نصب‌کننده](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) را دانلود کنید. برای نصب قبلی، [راهنمای آپدیت](UPDATE.fa.md) را بخوانید.
+1. [آخرین بستهٔ نصب‌کننده](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-installer.zip) را دانلود کنید. برای نصب قبلی، [راهنمای آپدیت](UPDATE.fa.md) را بخوانید.
 2. روی فایل ZIP راست‌کلیک کنید و **Extract All** را بزنید. نصب‌کننده را از داخل ZIP اجرا نکنید.
 3. پوشهٔ `WIHM-Installer` را باز کنید و روی **Start-Windows.cmd** دوبار کلیک کنید. نمایش پسوند فایل‌ها ممکن است در ویندوز خاموش باشد؛ در این حالت نام فایل `Start-Windows` است.
 4. منتظر بمانید تا صفحهٔ فارسی در مرورگر باز شود. اگر Node.js لازم باشد، از سایت رسمی آن دریافت می‌شود؛ نیازی به نصب دستی یا دسترسی Administrator نیست.
@@ -55,7 +55,7 @@
 <div dir="ltr">
 
 ```powershell
-$setup = Join-Path $env:TEMP 'wihm-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.ps1' -OutFile $setup; powershell -NoProfile -ExecutionPolicy Bypass -File $setup
+$setup = Join-Path $env:TEMP 'wihm-install.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/DarkPoesidon/Abraneh/main/installer/install.ps1' -OutFile $setup; powershell -NoProfile -ExecutionPolicy Bypass -File $setup
 ```
 
 </div>
@@ -73,7 +73,7 @@ $setup = Join-Path $env:TEMP 'wihm-install.ps1'; Invoke-WebRequest 'https://raw.
 <div dir="ltr">
 
 ```bash
-apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
+apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/Abraneh/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
 ```
 
 </div>
@@ -92,7 +92,7 @@ apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && 
 <div dir="ltr">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o /tmp/wihm-install.sh && bash /tmp/wihm-install.sh
+curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/Abraneh/main/installer/install.sh -o /tmp/wihm-install.sh && bash /tmp/wihm-install.sh
 ```
 
 </div>

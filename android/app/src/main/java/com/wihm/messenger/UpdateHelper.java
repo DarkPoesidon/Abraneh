@@ -36,8 +36,9 @@ import java.util.concurrent.Executors;
 
 public class UpdateHelper {
     private static final String TAG = "UpdateHelper";
-    public static final String GITHUB_REPO = "DarkPoesidon/WIHM-Cloudflare";
-    public static final String GITHUB_RELEASES_API = "https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest";
+    public static final String GITHUB_REPO = "DarkPoesidon/Abraneh";
+    // By number, not name: GitHub keeps the number through a rename or a transfer. Same number as src/update-bundle.ts.
+    public static final String GITHUB_RELEASES_API = "https://api.github.com/repositories/1436869002/releases/latest";
     public static final String GITHUB_RELEASES_PAGE = "https://github.com/" + GITHUB_REPO + "/releases/latest";
     private static final String APK_NAME = "wihm-messenger-android-universal.apk";
     private static final String UPDATE_CHECK_PREF = "last_update_check_time";

@@ -57,7 +57,7 @@
 
 | نام | معنی و محل استفاده |
 | --- | --- |
-| `WIHM-Cloudflare` | نام ریپو و پوشهٔ دریافت‌شده از GitHub |
+| `Abraneh` | نام ریپو و پوشهٔ دریافت‌شده از GitHub |
 | `cloudflare-messenger` | نام پیش‌فرض برنامه در حساب Cloudflare؛ در خط `name` فایل `wrangler.toml` قرار دارد |
 | `messenger-db` | نام دیتابیس؛ دستورهای آمادهٔ این پروژه از همین نام استفاده می‌کنند |
 | `JWT_SECRET` | کلید محرمانهٔ سرور برای اعتبارسنجی ورود کاربران؛ با رمز حساب کاربری فرق دارد |
@@ -189,40 +189,40 @@ source ~/.bashrc
 
 ```bat
 cd /d "%USERPROFILE%"
-git clone https://github.com/DarkPoesidon/WIHM-Cloudflare.git
-cd WIHM-Cloudflare
+git clone https://github.com/DarkPoesidon/Abraneh.git
+cd Abraneh
 ```
 
 در macOS یا Ubuntu:
 
 ```bash
 cd ~
-git clone https://github.com/DarkPoesidon/WIHM-Cloudflare.git
-cd WIHM-Cloudflare
+git clone https://github.com/DarkPoesidon/Abraneh.git
+cd Abraneh
 ```
 
-Git برای دریافت این ریپوی عمومی نباید رمز حساب GitHub بخواهد. اگر گفت پوشهٔ `WIHM-Cloudflare` از قبل وجود دارد، دوباره روی همان پوشه clone نکنید؛ اگر قبلاً پروژه را دریافت کرده‌اید، فقط وارد همان پوشه شوید.
+Git برای دریافت این ریپوی عمومی نباید رمز حساب GitHub بخواهد. اگر گفت پوشهٔ `Abraneh` از قبل وجود دارد، دوباره روی همان پوشه clone نکنید؛ اگر قبلاً پروژه را دریافت کرده‌اید، فقط وارد همان پوشه شوید.
 
 برای دیدن فایل‌ها در Windows دستور `dir` و در مک یا لینوکس دستور `ls` را اجرا کنید. باید فایل‌های `package.json`، `wrangler.toml` و `schema.sql` و پوشه‌های `src` و `public` را ببینید. از این مرحله به بعد، همهٔ دستورهای پروژه را در همین پوشه اجرا کنید.
 
 اگر بعداً پنجره را بستید، برای برگشت به این مسیر در Windows:
 
 ```bat
-cd /d "%USERPROFILE%\WIHM-Cloudflare"
+cd /d "%USERPROFILE%\Abraneh"
 ```
 
 در مک یا لینوکس:
 
 ```bash
-cd ~/WIHM-Cloudflare
+cd ~/Abraneh
 ```
 
 ### روش دوم: دریافت ZIP
 
-1. [صفحهٔ پروژه](https://github.com/DarkPoesidon/WIHM-Cloudflare) را باز کنید.
+1. [صفحهٔ پروژه](https://github.com/DarkPoesidon/Abraneh) را باز کنید.
 2. دکمهٔ `Code` و سپس `Download ZIP` را بزنید.
 3. فایل ZIP را کامل استخراج کنید. در ویندوز روی فایل راست‌کلیک و `Extract All` را انتخاب کنید.
-4. وارد پوشهٔ استخراج‌شده شوید؛ نام معمول آن `WIHM-Cloudflare-main` است. همان پوشه‌ای را پیدا کنید که فایل `package.json` داخل آن قرار دارد.
+4. وارد پوشهٔ استخراج‌شده شوید؛ نام معمول آن `Abraneh-main` است. همان پوشه‌ای را پیدا کنید که فایل `package.json` داخل آن قرار دارد.
 5. در Windows، داخل همان پوشه روی نوار آدرس File Explorer کلیک کنید، `cmd` بنویسید و Enter بزنید. Command Prompt در همان مسیر باز می‌شود.
 6. در مک یا لینوکس، در Terminal بنویسید `cd `، پوشهٔ استخراج‌شده را از فایل‌منیجر به پنجره بکشید و Enter بزنید.
 
@@ -335,7 +335,7 @@ account_id = "YOUR_REAL_ACCOUNT_ID"
 
 عبارت `YOUR_REAL_ACCOUNT_ID` را با شناسهٔ واقعی جایگزین کنید. این خط باید بالای فایل و پیش از اولین بخشی باشد که با `[` شروع می‌شود؛ افزودن آن به انتهای فایل معنای دیگری در قالب TOML پیدا می‌کند. Account ID با Database ID فرق دارد.
 
-نام ریپو `WIHM-Cloudflare` است و نام پیش‌فرض Worker در این فایل `cloudflare-messenger`. لازم نیست این دو یکسان باشند. اگر قبلاً در همین حساب برنامهٔ دیگری به نام `cloudflare-messenger` دارید، پیش از اولین انتشار نامی مانند `wihm-chat-ali` برای خط `name` انتخاب کنید. دستورهای انتشار و کلید، نام را از همین فایل می‌خوانند. نام و حروف انتخاب‌شده را برای ادامه ثابت نگه دارید تا برنامهٔ دیگری را ناخواسته به‌روز نکنید.
+نام ریپو `Abraneh` است و نام پیش‌فرض Worker در این فایل `cloudflare-messenger`. لازم نیست این دو یکسان باشند. اگر قبلاً در همین حساب برنامهٔ دیگری به نام `cloudflare-messenger` دارید، پیش از اولین انتشار نامی مانند `wihm-chat-ali` برای خط `name` انتخاب کنید. دستورهای انتشار و کلید، نام را از همین فایل می‌خوانند. نام و حروف انتخاب‌شده را برای ادامه ثابت نگه دارید تا برنامهٔ دیگری را ناخواسته به‌روز نکنید.
 
 نام دیتابیس را برای دنبال‌کردن این راهنما `messenger-db` نگه دارید، چون دستورهای `db:init` داخل `package.json` از همین نام استفاده می‌کنند. اگر از قبل چنین دیتابیسی دارید، آن را حذف نکنید؛ بخش خطای «دیتابیس از قبل وجود دارد» را ببینید.
 
@@ -726,4 +726,4 @@ npm run dev -- --port 8788
 - [ ] بعد از بستن ترمینال، برنامهٔ آنلاین هنوز روی گوشی باز می‌شود.
 - [ ] از تنظیمات و کلید خود در محل خصوصی نسخهٔ پشتیبان دارم.
 
-برای برگشت به معرفی و فایل‌های پروژه: [README](https://github.com/DarkPoesidon/WIHM-Cloudflare).
+برای برگشت به معرفی و فایل‌های پروژه: [README](https://github.com/DarkPoesidon/Abraneh).

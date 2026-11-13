@@ -1,6 +1,9 @@
 import { UPDATE_PUBLIC_KEY } from './update-key.js';
 
-export const RELEASE_ROOT = 'https://github.com/DarkPoesidon/WIHM-Cloudflare/releases';
+export const RELEASE_ROOT = 'https://github.com/DarkPoesidon/Abraneh/releases';
+// GitHub keeps this number through a rename or a transfer, which the name above does not survive.
+// It is lost only if the repository is deleted. Android and Windows use the same number.
+export const REPOSITORY_ID = 1436869002;
 export const UPDATER_MARKER = 'wihm-updater-v1';
 export const assetTypes: Record<string,string> = { html:'text/html; charset=utf-8', css:'text/css; charset=utf-8', js:'application/javascript; charset=utf-8', json:'application/json; charset=utf-8', svg:'image/svg+xml', woff2:'font/woff2', txt:'text/plain; charset=utf-8', md:'text/markdown; charset=utf-8' };
 export interface UpdateBundle {
@@ -35,11 +38,25 @@ export async function verifyBundle(bytes: Uint8Array,signature: string,keyData=U
   for(const name of ['worker.mjs','updater.mjs','schema.sql','public/index.html','public/sw.js'])if(!Object.hasOwn(bundle.files,name))return fail();
   return bundle;
 }
+/** The signed update files. The signature is checked afterwards, so where they come from does not matter for trust. */
+export async function releaseFiles(version:string|undefined,fetcher:typeof fetch):Promise<[Uint8Array,Uint8Array]> {
+  const options={headers:{'User-Agent':'WIHM-Cloudflare-Updater'},signal:AbortSignal.timeout(30_000)};
+  const download=(url:(name:string)=>string)=>Promise.all([fetcher(url('wihm-update.json'),options).then(r=>limitedBytes(r,6_000_000)),fetcher(url('wihm-update.sig'),options).then(r=>limitedBytes(r,200))]);
+  const base=version?`${RELEASE_ROOT}/download/installer-v${version}`:`${RELEASE_ROOT}/latest/download`;
+  try { return await download(name=>base+'/'+name); }
+  catch(byName) {
+    // The name failed, as after a rename whose redirect is gone. The API finds the release by its number.
+    const response=await fetcher(`https://api.github.com/repositories/${REPOSITORY_ID}/releases/${version?'tags/installer-v'+version:'latest'}`,{...options,headers:{...options.headers,Accept:'application/vnd.github+json'}});
+    if(!response.ok){await response.body?.cancel();throw byName;}
+    const assets:any[]=(JSON.parse(new TextDecoder().decode(await limitedBytes(response,1_000_000))) as any)?.assets;
+    const link=(name:string)=>{const url=Array.isArray(assets)?assets.find(asset=>asset?.name===name)?.browser_download_url:null;if(typeof url!=='string'||!url.startsWith('https://'))throw byName;return url;};
+    return download(link);
+  }
+}
 export async function downloadBundle(version?:string,fetcher:typeof fetch=fetch) {
   if(version&&!validVersion(version))throw new Error('شمارهٔ نسخه معتبر نیست.');
   const base=version?`${RELEASE_ROOT}/download/installer-v${version}`:`${RELEASE_ROOT}/latest/download`;
-  const options={headers:{'User-Agent':'WIHM-Cloudflare-Updater'},signal:AbortSignal.timeout(30_000)};
-  const [payload,signature]=await Promise.all([fetcher(base+'/wihm-update.json',options).then(r=>limitedBytes(r,6_000_000)),fetcher(base+'/wihm-update.sig',options).then(r=>limitedBytes(r,200))]);
+  const [payload,signature]=await releaseFiles(version,fetcher);
   const bundle=await verifyBundle(payload,new TextDecoder().decode(signature));
   if(version&&version!==bundle.version)throw new Error('نسخهٔ بسته با نسخهٔ انتخاب‌شده یکسان نیست.');
   return {bundle,digest:await sha256(payload)};

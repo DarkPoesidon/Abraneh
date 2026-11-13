@@ -54,4 +54,4 @@
 
 گفتگوی امن از دکمهٔ «+» شروع می‌شود و از MLS **آزمایشی** استفاده می‌کند؛ گفتگوهای عادی، گروه‌ها و کانال‌ها رمزگذاری سرتاسری ندارند. [تفاوت و محدودیت‌ها](ADVANCED.fa.md#معنای-رمزگذاری-آزمایشی).
 
-[صفحهٔ اصلی](https://github.com/DarkPoesidon/WIHM-Cloudflare) · [دانلود نصب‌کننده](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest) · [پوستر و متن تلگرام](https://github.com/DarkPoesidon/WIHM-Cloudflare/tree/main/artifacts/releases/1.5.0)
+[صفحهٔ اصلی](https://github.com/DarkPoesidon/Abraneh) · [دانلود نصب‌کننده](https://github.com/DarkPoesidon/Abraneh/releases/latest) · [پوستر و متن تلگرام](https://github.com/DarkPoesidon/Abraneh/tree/main/artifacts/releases/1.5.0)

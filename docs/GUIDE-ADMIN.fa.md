@@ -62,7 +62,7 @@
 
 ### ویندوز
 
-۱. [`wihm-installer.zip`](https://github.com/DarkPoesidon/WIHM-Cloudflare/releases/latest/download/wihm-installer.zip) را دانلود کنید. **Source code** را نگیرید.
+۱. [`wihm-installer.zip`](https://github.com/DarkPoesidon/Abraneh/releases/latest/download/wihm-installer.zip) را دانلود کنید. **Source code** را نگیرید.
 
 ۲. روی فایل راست‌کلیک کنید و **Extract All** را بزنید. از داخل ZIP اجرا نکنید.
 
@@ -81,7 +81,7 @@
 <div dir="ltr">
 
 ```bash
-apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
+apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/Abraneh/main/installer/install.sh -o "$HOME/wihm-install.sh" && bash "$HOME/wihm-install.sh"
 ```
 
 </div>
@@ -97,7 +97,7 @@ apt-get update && apt-get -y -o Dpkg::Options::=--force-confold dist-upgrade && 
 <div dir="ltr">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/installer/install.sh -o /tmp/wihm-install.sh && bash /tmp/wihm-install.sh
+curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/Abraneh/main/installer/install.sh -o /tmp/wihm-install.sh && bash /tmp/wihm-install.sh
 ```
 
 </div>
@@ -289,6 +289,6 @@ curl -fsSL https://raw.githubusercontent.com/DarkPoesidon/WIHM-Cloudflare/main/i
 | همهٔ کاربران خطای «عملیات سرویس کامل نشد» می‌بینند | احتمالاً [سقف روزانهٔ D1](#limits) پر شده است. داده‌ها سالم‌اند. تا ۰۰:۰۰ UTC صبر کنید یا پلن پولی بگیرید، و بعد سرور را به‌روز کنید |
 | به‌روزرسانی سرور فعال نیست | نصب‌کننده را یک بار با همان نام اجرا کنید و گزینهٔ به‌روزرسانی از داخل پیام‌رسان را روشن کنید |
 
-اگر گزارش خطا می‌فرستید، **کد دسترسی، رمز، کد مدیریت و لینک `127.0.0.1` را نفرستید**. برای گزارش مشکل از [Issues](https://github.com/DarkPoesidon/WIHM-Cloudflare/issues) استفاده کنید.
+اگر گزارش خطا می‌فرستید، **کد دسترسی، رمز، کد مدیریت و لینک `127.0.0.1` را نفرستید**. برای گزارش مشکل از [Issues](https://github.com/DarkPoesidon/Abraneh/issues) استفاده کنید.
 
 </div>
