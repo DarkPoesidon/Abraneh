@@ -1693,6 +1693,8 @@
   function applyAppearance(theme,size) {
     const light=theme==='light'||(theme==='system'&&window.matchMedia?.('(prefers-color-scheme: light)').matches);
     if(document.documentElement?.dataset) { document.documentElement.dataset.theme=light?'light':'dark'; document.documentElement.dataset.fontSize=size; }
+    // The Android app colors the system bars to match. Older apps and the desktop app have no such call.
+    try { window.Android?.setTheme?.(light); } catch {}
   }
   window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>applyAppearance(profile.theme,profile.font_size));
   byId('btn-settings').addEventListener('click',()=>{closeMainMenu();settings().catch(featureError);});

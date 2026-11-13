@@ -84,6 +84,10 @@
             android:foregroundServiceType="remoteMessaging" />
 
         <receiver
+            android:name=".NotificationActions"
+            android:exported="false" />
+
+        <receiver
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="true">

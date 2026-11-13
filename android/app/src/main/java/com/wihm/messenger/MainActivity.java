@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Menu;
@@ -35,6 +36,8 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
 
     /** While on screen the page handles new messages and calls itself. */
     static volatile boolean visible;
+    private static final String KEY_LIGHT_THEME = "light_theme";
 
     private boolean pageLoaded;
     private final List<String> pendingScripts = new ArrayList<>();
@@ -162,6 +166,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         if (WebViewCheck.stopIfMissing(this)) return;
         setContentView(R.layout.activity_main);
+        applySystemBars(getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_LIGHT_THEME, false), false);
 
         NotificationHelper.createNotificationChannel(this);
         checkAndRequestNotificationPermission();
@@ -190,10 +195,24 @@ public class MainActivity extends AppCompatActivity {
         handleIncomingIntent(getIntent());
     }
 
+    /** The status and navigation bars follow the page's theme. It is saved so the next start opens in it. */
+    void applySystemBars(boolean light, boolean save) {
+        if (save) getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_LIGHT_THEME, light).apply();
+        // Dark icons need Android 6 on the status bar and Android 8 on the navigation bar. Older versions keep dark bars.
+        boolean lightStatus = light && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
+        boolean lightNavigation = light && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
+        getWindow().setStatusBarColor(lightStatus ? Color.WHITE : ContextCompat.getColor(this, R.color.status_bar_color));
+        getWindow().setNavigationBarColor(lightNavigation ? Color.WHITE : ContextCompat.getColor(this, R.color.nav_bar_color));
+        WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        bars.setAppearanceLightStatusBars(lightStatus);
+        bars.setAppearanceLightNavigationBars(lightNavigation);
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
         visible = true;
+        NotificationHelper.clearMessages(this);
         WihmNotificationService.stopRinging(this);
         tellPageVisibility();
     }

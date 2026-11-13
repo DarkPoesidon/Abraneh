@@ -302,7 +302,7 @@ public class WihmNotificationService extends Service {
         } else if (!MainActivity.visible) {
             if (!event.messageId.isEmpty()) prefs().edit().putString("last_notified_" + event.chatId, event.messageId).apply();
             boolean hidden = "پیام تازه در ابرانه".equals(event.title);
-            NotificationHelper.showNotification(getApplicationContext(), hidden ? getString(R.string.message_new) : event.title, hidden ? getString(R.string.message_open) : event.body, event.chatId);
+            NotificationHelper.showMessage(getApplicationContext(), hidden ? getString(R.string.message_new) : event.title, hidden ? getString(R.string.message_open) : event.body, event.chatId, UrlRules.isChatId(event.chatId) ? event.messageId : "");
         }
     }
 
@@ -321,7 +321,7 @@ public class WihmNotificationService extends Service {
         call = null;
         handler.removeCallbacks(ringTimeout);
         ended.stop(this);
-        if (missed) NotificationHelper.showNotification(getApplicationContext(), getString(R.string.call_missed), ended.caller, ended.chatId);
+        if (missed) NotificationHelper.showPlain(getApplicationContext(), getString(R.string.call_missed), ended.caller, ended.chatId);
     }
 
     private void declineCall() {
@@ -434,7 +434,7 @@ public class WihmNotificationService extends Service {
             prefs.edit().putString(key, messageId).apply();
             // Text stays out, because this path can't see the user's message preview setting.
             if (!MainActivity.visible) {
-                NotificationHelper.showNotification(getApplicationContext(), getString(R.string.message_new), getString(R.string.message_open), chatId);
+                if (UrlRules.isChatId(chatId)) NotificationHelper.showMessage(getApplicationContext(), getString(R.string.message_new), getString(R.string.message_open), chatId, messageId);
             }
         }
     }
