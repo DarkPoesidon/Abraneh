@@ -310,7 +310,16 @@ test('device revocation notifies live sockets and rejects legacy tokens first us
   assert.equal((await api('/api/auth/me', { token: user.token })).status, 401);
 });
 
+// Rate limits count in fixed windows aligned to the clock. A test that crosses a window edge
+// sees its count reset, so tests that need a limit to trip start clear of the next edge.
+// Hour edges are also 15-minute edges, so clearing the 15-minute edge covers both.
+async function clearOfWindowEdge(windowMs = 15 * 60_000, needMs = 30_000) {
+  const left = windowMs - Date.now() % windowMs;
+  if (left < needMs) await new Promise(resolve => setTimeout(resolve, left + 50));
+}
+
 test('login and registration limits survive independent requests and return actionable 429 errors', async () => {
+  await clearOfWindowEdge();
   for (let i = 0; i < 15; i++) assert.equal((await api('/api/auth/login', { body: { username: 'rate_unknown', password: 'incorrect' }, headers: { 'CF-Connecting-IP': '192.0.2.44' } })).status, 401);
   const limited = await api('/api/auth/login', { body: { username: 'rate_unknown', password: 'incorrect' }, headers: { 'CF-Connecting-IP': '192.0.2.44' } });
   assert.equal(limited.status, 429); assert.match(limited.data.error, /۱۵/);
@@ -569,6 +578,7 @@ test('pages refuse framing and a token in the address is not accepted', async ()
 });
 
 test('login guesses for one name are capped across addresses', async () => {
+  await clearOfWindowEdge();
   await account('capped_login');
   const attempt = index => api('/api/auth/login', { body: { username: 'capped_login', password: 'wrong-password' }, headers: { 'CF-Connecting-IP': '203.0.113.' + index } });
   for (let index = 0; index < 50; index++) assert.equal((await attempt(index)).status, 401);
