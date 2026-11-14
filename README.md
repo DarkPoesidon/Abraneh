@@ -35,14 +35,16 @@
 ## شروع
 
 - **می‌خواهم پیام‌رسان بسازم:** [راهنمای کامل صاحب سرور](docs/GUIDE-ADMIN.fa.md)، از ساخت حساب کلادفلر تا پایان کار.
-- **لینک پیام‌رسان را گرفته‌ام:** [راهنمای کامل کاربران](docs/GUIDE-USER.fa.md).
+- **لینک پیام‌رسان را گرفته‌ام:** [راهنمای کامل کاربران](docs/GUIDE-USER.fa.md)؛ اگر لینک دعوت گرفته‌اید، اول با همان لینک در مرورگر حساب بسازید و بعد برنامه را نصب کنید.
+- **English:** [owner's guide](docs/GUIDE-ADMIN.en.md) · [user guide](docs/GUIDE-USER.en.md)
 
 | کار شما | راهنما |
 | --- | --- |
-| ساخت پیام‌رسان با رایانه یا فقط گوشی اندروید | [نصب آسان](docs/EASY-INSTALL.fa.md) |
-| استفاده از پیام‌رسان | [راهنمای روزانه](docs/DAILY-USE.fa.md) |
-| گرفتن نسخه‌های جدید | [به‌روزرسانی](docs/AUTO-UPDATE.fa.md) · [آپدیت بدون حذف اطلاعات](docs/UPDATE.fa.md) |
-| مدیریت کاربران و وضعیت سرویس | [مدیریت سرویس](docs/SERVICE-MANAGEMENT.fa.md) |
+| ساخت پیام‌رسان با رایانه یا فقط گوشی اندروید | [صاحب سرور: از ساخت حساب کلادفلر تا دعوت دوستان](docs/GUIDE-ADMIN.fa.md) |
+| ثبت‌نام با لینک دعوت، نصب برنامه و استفاده | [راهنمای کاربران](docs/GUIDE-USER.fa.md) |
+| گرفتن نسخه‌های جدید | [سرور](docs/GUIDE-ADMIN.fa.md#update) · [برنامه‌ها](docs/GUIDE-USER.fa.md#updates) |
+| مدیریت کاربران، دعوت‌نامه و پشتیبان | [کارهای روزانهٔ مدیر](docs/GUIDE-ADMIN.fa.md#manage) |
+| اگر از ایران استفاده می‌کنید | [صاحب سرور](docs/GUIDE-ADMIN.fa.md#iran) · [کاربران](docs/GUIDE-USER.fa.md#iran) |
 | ارتباط سرورها، امنیت و پشتیبان | [امکانات پیشرفته](docs/ADVANCED.fa.md) |
 | خواندن کانال تلگرام | [آینهٔ کانال](docs/TELEGRAM.fa.md) |
 | نصب دستی و توسعه | [راهنمای توسعه‌دهندگان](docs/DEVELOPMENT.fa.md) |
@@ -53,8 +55,8 @@
 - **گفتگوی امن:** گفتگوی خصوصی رمزگذاری‌شدهٔ سرتاسری از دکمهٔ «+»، در همان صفحهٔ چت، با درخواست و قبول، کد امنیتی و پشتیبانی از چند دستگاه. فعلاً فقط متن دارد و آزمایشی است.
 - **گروه و کانال:** نقش‌های مالک، مدیر و عضو، دعوت قابل لغو، کانال عمومی و خصوصی، و جستجو و عضویت در کانال‌های سرورهای دیگر.
 - **تماس و رسانه:** تماس صوتی و تصویری، پیام صوتی و تصویری، و ارسال تصویر و فایل. هر بار یک فایل را انتخاب و پیش‌نمایش کنید و سپس **ارسال** را بزنید.
-- **برنامه‌ها:** وب، اندروید و ویندوز، با اعلان حتی وقتی پنجرهٔ برنامه بسته است.
-- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، طراحی نزدیک به تلگرام، باز شدن منوی گفتگو از پایین با نگه‌داشتن انگشت، و دکمهٔ بک مثل برنامه‌های استاندارد.
+- **برنامه‌ها:** وب، اندروید و ویندوز، با اعلان حتی وقتی پنجرهٔ برنامه بسته است. در اندروید: پاسخ از داخل اعلان، قفل برنامه با اثرانگشت یا رمز گوشی، و گفتگوها در بخش «گفتگوها»ی اعلان‌های اندروید ۱۱ به بالا. در ویندوز: نقطهٔ قرمز پیام نخوانده روی نوار وظیفه، نوار عنوان هم‌رنگ پوسته و به خاطر سپردن جای پنجره.
+- **زبان و ظاهر:** فارسی و انگلیسی، تم تیره و روشن، طراحی نزدیک به تلگرام، باز شدن منوی گفتگو از پایین با نگه‌داشتن انگشت، دکمهٔ بک مثل برنامه‌های استاندارد، و کشیدن گفتگو به کنار برای برگشت به فهرست.
 - **مدیریت:** پنل مدیر، گزارش مزاحمت، ثبت‌نام آزاد یا دعوتی، لینک بازیابی رمز برای کاربران، پشتیبان و بازگردانی.
 - **شبکه:** پشتیبانی از پروکسی SOCKS5 و HTTP در برنامه‌های اندروید و ویندوز.
 
@@ -107,8 +109,10 @@ Filter the chat list by **All**, **Unread**, or **Groups**. Each chat shows a on
 
 Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Secure chats start from the plus button and use MLS for text. They are experimental and have had no independent audit. Without comparing the security code, a server could sit between two people at first contact, and the app's code comes from the server.
 
+**Guides:** [owner's guide](docs/GUIDE-ADMIN.en.md), from creating a Cloudflare account to inviting friends, and [user guide](docs/GUIDE-USER.en.md), from an invitation link to every feature of the apps.
+
 Licensed under [PolyForm Noncommercial 1.0.0](LICENSE): free for noncommercial use, and commercial use needs separate permission. Anyone who passes the code on must keep the license and the Required Notice in [NOTICE](NOTICE). The name and logo are not licensed; see [TRADEMARK.md](TRADEMARK.md).
 
 **Official sources:** releases are published only at https://github.com/DarkPoesidon/Abraneh/releases and are immutable. From 1.7.27 every file has a GitHub build attestation: `gh attestation verify <file> --repo DarkPoesidon/Abraneh`. Android signing certificate SHA-256: `9a2de616d39c69fa2b91be6e74177d28ca73f65d96e227e13451e6610261f549` (Android 9+) and `04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99` (Android 5–8). Report security issues privately: [SECURITY.md](SECURITY.md).
 
- Not affiliated with Telegram.
+Not affiliated with Telegram.
