@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 export function historyOptions(params: URLSearchParams) {
   const limit = Number(params.get('limit') || 50);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('تعداد پیام‌ها باید بین ۱ تا ۱۰۰ باشد.');

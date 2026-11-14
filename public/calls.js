@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 (() => {
   const directIce = [{ urls: 'stun:stun.l.google.com:19302' }];
   // Each note is [frequency in Hz, start in seconds, length in seconds].

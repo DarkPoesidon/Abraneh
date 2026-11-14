@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 const { app, dialog, net, shell } = require('electron');
 const { createHash } = require('node:crypto');
 const { writeFile } = require('node:fs/promises');

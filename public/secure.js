@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // Experimental RFC 9420 text chats. Device verification is an application trust boundary.
 // Every pair of devices has its own two-member MLS group, as WhatsApp does with Signal sessions. A shared group
 // would need one ordered list of commits, and these mailboxes, which can span servers, have no such order.

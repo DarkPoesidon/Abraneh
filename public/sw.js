@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 const CACHE_NAME = 'cloudflare-messenger-1.7.26';
 const ASSETS_TO_CACHE = [
   '/',

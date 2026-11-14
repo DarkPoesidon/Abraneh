@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { Env, JwtPayload } from './types.js';
 import { APP_VERSION } from './version.js';
 import { inputJson, jsonResponse, InputError } from './http.js';

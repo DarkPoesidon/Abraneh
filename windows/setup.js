@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 const byId = id => document.getElementById(id);
 
 window.wihmSetup.load().then(({ strings, language, server, proxy, error }) => {

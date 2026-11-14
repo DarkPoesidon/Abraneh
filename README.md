@@ -66,13 +66,24 @@
 - در اولین تماس، بدون مقایسهٔ کد امنیتی، سرور در تئوری می‌تواند میان دو نفر قرار بگیرد. در نسخهٔ وب و اپ‌هایی که صفحه را از سرور می‌گیرند هم، صاحب سرور کد برنامه را در اختیار دارد.
 - برای گزارش آسیب‌پذیری، موضوع را به‌صورت خصوصی از [Security Advisories](https://github.com/DarkPoesidon/Abraneh/security/advisories/new) بفرستید.
 
+## منابع رسمی
+
+نسخهٔ رسمی ابرانه فقط از این مخزن منتشر می‌شود: **https://github.com/DarkPoesidon/Abraneh**. اگر برنامه یا نصب‌کننده را از جای دیگری گرفته‌اید، ممکن است تغییر داده شده باشد.
+
+- **همهٔ فایل‌ها** در [صفحهٔ نسخه‌ها](https://github.com/DarkPoesidon/Abraneh/releases) هستند و فایل `SHA256SUMS` کنار آن‌هاست. انتشارها تغییرناپذیرند و پس از انتشار عوض نمی‌شوند.
+- **گواهی ساخت:** هر فایل از نسخهٔ ۱.۷.۲۷ به بعد گواهی امضاشدهٔ گیت‌هاب دارد که نشان می‌دهد از کد همین مخزن ساخته شده است. برای بررسی: `gh attestation verify <file> --repo DarkPoesidon/Abraneh`
+- **امضای برنامهٔ اندروید:** اثرانگشت SHA-256 گواهی امضا برای اندروید ۹ به بعد `9a2de616d39c69fa2b91be6e74177d28ca73f65d96e227e13451e6610261f549` و برای اندروید ۵ تا ۸ `04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99` است.
+- **نام و نشان:** «ابرانه» و نشان آن جزو مجوز کد نیستند. [سیاست نام و نشان](TRADEMARK.md) را ببینید. کپی‌های بی‌نام‌ونشان یا تغییرنام‌داده‌شده را در [Issues](https://github.com/DarkPoesidon/Abraneh/issues) گزارش دهید.
+
 ## مجوز
 
 این پروژه با مجوز **[PolyForm Noncommercial 1.0.0](LICENSE)** منتشر شده است، پس متن‌باز به معنای رسمی آن نیست. خلاصهٔ زیر جای متن انگلیسی مجوز را نمی‌گیرد:
 
 - **مجاز:** استفاده، تغییر، میزبانی و بازنشر برای کار شخصی و غیرتجاری، و استفادهٔ سازمان‌های غیرانتفاعی مطابق متن مجوز.
 - **بدون اجازهٔ جداگانه مجاز نیست:** فروش، ارائهٔ پولی، یا هر استفادهٔ تجاری دیگر.
-- **برای بازنشر:** متن مجوز و خط Required Notice باید همراه نرم‌افزار بماند.
+- **برای بازنشر:** متن مجوز و خط Required Notice در فایل [NOTICE](NOTICE) باید همراه نرم‌افزار بماند. انتشار بدون این‌ها، یا با حذف ذکر منبع، حق استفاده را لغو می‌کند.
+- **نام و نشان:** مجوز کد، حق استفاده از نام «ابرانه» و نشان آن را نمی‌دهد. [TRADEMARK.md](TRADEMARK.md)
+- **مشارکت:** پیش از فرستادن کد، [CONTRIBUTING.md](CONTRIBUTING.md) را بخوانید.
 
 برای مجوز تجاری، در [Issues](https://github.com/DarkPoesidon/Abraneh/issues) پیام بگذارید. مجوز کتابخانه‌ها و فونت‌ها در [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) آمده است. این پروژه وابستگی یا ارتباطی با تلگرام ندارد.
 
@@ -96,4 +107,8 @@ Filter the chat list by **All**, **Unread**, or **Groups**. Each chat shows a on
 
 Normal chats and groups are **not end-to-end encrypted**, and the server owner's Cloudflare account stores them. Secure chats start from the plus button and use MLS for text. They are experimental and have had no independent audit. Without comparing the security code, a server could sit between two people at first contact, and the app's code comes from the server.
 
-Licensed under [PolyForm Noncommercial 1.0.0](LICENSE): free for noncommercial use, and commercial use needs separate permission. Not affiliated with Telegram.
+Licensed under [PolyForm Noncommercial 1.0.0](LICENSE): free for noncommercial use, and commercial use needs separate permission. Anyone who passes the code on must keep the license and the Required Notice in [NOTICE](NOTICE). The name and logo are not licensed; see [TRADEMARK.md](TRADEMARK.md).
+
+**Official sources:** releases are published only at https://github.com/DarkPoesidon/Abraneh/releases and are immutable. From 1.7.27 every file has a GitHub build attestation: `gh attestation verify <file> --repo DarkPoesidon/Abraneh`. Android signing certificate SHA-256: `9a2de616d39c69fa2b91be6e74177d28ca73f65d96e227e13451e6610261f549` (Android 9+) and `04b33140af1dfc333663f19ac5662b9ef2a3147b1105fb243116ff6a243a2c99` (Android 5–8). Report security issues privately: [SECURITY.md](SECURITY.md).
+
+ Not affiliated with Telegram.

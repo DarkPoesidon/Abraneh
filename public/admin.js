@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // The service admin's panel. Direct messages never appear here unless someone reports one.
 (() => {
   const byId = id => document.getElementById(id);

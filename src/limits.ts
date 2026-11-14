@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { Env } from './types.js';
 
 export async function allowRequest(env: Env, scope: string, identity: string, maximum: number, windowMs: number): Promise<boolean> {

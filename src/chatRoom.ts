@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { handleCall, closeCall, callInbox, activeCall, CallEvent, CallIdentity } from './calls.js';
 import { withOperation } from './maintenance.js';
 import { ROOM_BACKUP_TABLES, roomBackupPage, restoreRoomTable } from './room-backup.js';

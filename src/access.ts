@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { Env } from './types.js';
 
 export const SESSION_VERSION_SQL = `NOT EXISTS (SELECT 1 FROM service_user_state disabled WHERE disabled.user_id=s.user_id AND disabled.disabled_at IS NOT NULL) AND COALESCE((SELECT password_version FROM session_security ss WHERE ss.session_id = s.id),1) = COALESCE((SELECT password_version FROM account_security ac WHERE ac.user_id = s.user_id),1)`;

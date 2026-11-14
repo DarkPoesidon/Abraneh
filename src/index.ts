@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { publicChannels, handleChannels, scheduledChannels } from './channels.js';
 import { handleCallRequests, userInbox } from './calls.js';
 import { registerNativeDevice } from './push.js';
