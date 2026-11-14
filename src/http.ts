@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 export function corsResponse(body: BodyInit | null, status = 200, headers: HeadersInit = {}): Response {
   const merged = new Headers(headers);
   merged.set('Access-Control-Allow-Origin', '*');

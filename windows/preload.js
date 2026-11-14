@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // Runs in the setup page and the server's page. The web client already talks to native apps through window.Android.
 const { contextBridge, ipcRenderer } = require('electron');
 

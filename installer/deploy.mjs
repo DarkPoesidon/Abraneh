@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { randomBytes, createHash, createECDH } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { extname, join } from 'node:path';

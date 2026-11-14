@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { assetTypes, decode64, encode64, sha256, newer, validVersion, UpdateBundle, UPDATER_MARKER } from './update-bundle.js';
 
 export interface UpdaterEnv {

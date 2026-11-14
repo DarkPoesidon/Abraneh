@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 import { UPDATE_PUBLIC_KEY } from './update-key.js';
 
 export const RELEASE_ROOT = 'https://github.com/DarkPoesidon/Abraneh/releases';

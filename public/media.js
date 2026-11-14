@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 (() => {
   const KINDS = {
     voice: { label: 'پیام صوتی', types: ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'], constraints: { audio: true }, options: { audioBitsPerSecond: 32000 }, maxMs: 300_000, maxBytes: 4 * 1048576 },

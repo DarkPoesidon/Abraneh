@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 const $ = id => document.getElementById(id);
 // Official Cloudflare template URL: the account owner still approves the token.
 const tokenTemplate = new URL('https://dash.cloudflare.com/profile/api-tokens');

@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // shortcut: English translates what the page shows, so the code keeps one source language.
 // A new Persian string must also be added here; tests/i18n.test.cjs fails when one is missing.
 (() => {

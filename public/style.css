@@ -7,6 +7,7 @@
 }
 
 :root {
+  --abraneh-origin: "DarkPoesidon/Abraneh";
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
   --bg-card: #334155;
@@ -1584,3 +1585,5 @@ dialog.call-dialog::backdrop { background:rgb(0 0 0 / .75); }
   #active-chat-wrapper { will-change:transform; touch-action:pan-y; }
 }
 @media (prefers-reduced-motion: reduce) { .chat-item:active, .settings-row:active, .menu-item:active { transform:none; } }
+.app-source { display:block; text-align:center; padding:0 0 4px; font-size:.65rem; color:var(--text-muted); text-decoration:none; }
+.app-source:hover, .app-source:focus-visible { color:var(--accent-text); }

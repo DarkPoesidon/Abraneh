@@ -1,3 +1,4 @@
+/*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // No Wrangler, workerd, npm dependencies, or native extensions at install time.
 const BASE = 'https://api.cloudflare.com/client/v4';
 
