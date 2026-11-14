@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 
 const directory = resolve(process.argv[2] || 'dist/WIHM-Installer');
-for(const guide of ['راهنما.md','docs/START-HERE.fa.md','docs/EASY-INSTALL.fa.md','docs/DAILY-USE.fa.md','docs/ADVANCED.fa.md','docs/GUIDE-ADMIN.fa.md','docs/GUIDE-USER.fa.md']){
+for(const guide of ['راهنما.md','docs/START-HERE.fa.md','docs/EASY-INSTALL.fa.md','docs/DAILY-USE.fa.md','docs/ADVANCED.fa.md','docs/GUIDE-ADMIN.fa.md','docs/GUIDE-USER.fa.md','docs/GUIDE-ADMIN.en.md','docs/GUIDE-USER.en.md']){
   for(const [,target]of (await readFile(resolve(directory,guide),'utf8')).matchAll(/\]\(([^)]+)\)/g))if(!/^(?:https?:|mailto:|#)/.test(target))await readFile(resolve(directory,guide,'..',decodeURIComponent(target.split('#')[0])));
 }
 const metadata = JSON.parse(await readFile(directory + '/build.json', 'utf8'));
