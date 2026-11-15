@@ -3,6 +3,7 @@ package com.wihm.messenger;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.widget.Toast;
 import androidx.core.content.ContextCompat;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
@@ -50,13 +51,20 @@ final class ProxySettings {
         return new OkHttpClient.Builder().proxy(current(context)).build();
     }
 
+    /** Old WebView builds can't take a proxy, so pages would go out directly while the inbox socket uses it. */
+    static boolean webViewSupported() {
+        return WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE);
+    }
+
     /** Runs next once the WebView uses the saved proxy, so no request leaves before it applies. */
     static void applyToWebView(Context context, Runnable next) {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+        Proxy proxy = current(context);
+        if (!webViewSupported()) {
+            // The WebView may have been downgraded after the proxy was saved, so say pages bypass it.
+            if (proxy != Proxy.NO_PROXY) Toast.makeText(context, R.string.proxy_unsupported, Toast.LENGTH_LONG).show();
             next.run();
             return;
         }
-        Proxy proxy = current(context);
         ProxyController controller = ProxyController.getInstance();
         if (proxy == Proxy.NO_PROXY) {
             controller.clearProxyOverride(ContextCompat.getMainExecutor(context), next);

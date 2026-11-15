@@ -135,10 +135,13 @@ public class ServerConfigActivity extends AppCompatActivity {
     }
 
     private boolean proxyFieldsValid() {
-        if (!checkProxy.isChecked() || ProxySettings.valid(typedProxyHost(), typedProxyPort())) return true;
+        if (!checkProxy.isChecked()) return true;
+        int error = !ProxySettings.webViewSupported() ? R.string.proxy_unsupported
+                : !ProxySettings.valid(typedProxyHost(), typedProxyPort()) ? R.string.proxy_invalid : 0;
+        if (error == 0) return true;
         txtStatus.setVisibility(View.VISIBLE);
         txtStatus.setTextColor(Color.parseColor("#ef4444"));
-        txtStatus.setText(R.string.proxy_invalid);
+        txtStatus.setText(error);
         return false;
     }
 

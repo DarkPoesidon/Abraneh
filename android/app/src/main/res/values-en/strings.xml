@@ -50,6 +50,7 @@
     <string name="proxy_port">Port</string>
     <string name="proxy_help">A SOCKS5 or HTTP proxy with no username or password. MTProto proxies only work with Telegram itself, not here. Call audio and video do not go through the proxy.</string>
     <string name="proxy_invalid">The proxy address or port is invalid.</string>
+    <string name="proxy_unsupported">This phone\'s Android System WebView can\'t use a proxy, so pages open without it. Update WebView from Google Play, or use a VPN.</string>
     <string name="download_saved">%1$s saved to Downloads</string>
     <string name="download_failed">Could not download the file.</string>
     <string name="no_file_picker">No app to choose a file with</string>
