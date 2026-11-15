@@ -71,7 +71,20 @@ public class UpdateHelper {
 
     /** Returns the latest published release. */
     private static JSONObject fetchLatestRelease(Context context) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_RELEASES_API).openConnection(ProxySettings.current(context));
+        try {
+            return fetchRelease(context, GITHUB_RELEASES_API);
+        } catch (Exception github) {
+            // Where GitHub is filtered, the same release comes through the user's server.
+            // That server can't swap the APK: Android only installs an update signed with this app's key.
+            String server = context.getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                    .getString(ServerConfigActivity.KEY_SERVER_URL, "");
+            if (server.isEmpty()) throw github;
+            return fetchRelease(context, server + "/apps/latest.json");
+        }
+    }
+
+    private static JSONObject fetchRelease(Context context, String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection(ProxySettings.current(context));
         try {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "WIHM-Android-Messenger");
@@ -81,7 +94,7 @@ public class UpdateHelper {
 
             int responseCode = conn.getResponseCode();
             if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw new Exception("GitHub API HTTP " + responseCode);
+                throw new Exception("Release HTTP " + responseCode);
             }
 
             StringBuilder sb = new StringBuilder();

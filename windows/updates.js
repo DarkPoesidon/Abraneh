@@ -3,7 +3,7 @@ const { app, dialog, net, shell } = require('electron');
 const { createHash } = require('node:crypto');
 const { writeFile } = require('node:fs/promises');
 const { join } = require('node:path');
-const { availableUpdate, checksumFor } = require('./rules');
+const { availableUpdate, checksumFor, sumsSigned } = require('./rules');
 
 // By number, not name: GitHub keeps the number through a rename or a transfer. Same number as src/update-bundle.ts.
 const RELEASES = 'https://api.github.com/repositories/1436869002/releases/latest';
@@ -23,14 +23,27 @@ async function download(url, window) {
   return Buffer.concat(chunks);
 }
 
+/** GitHub first; where it is filtered, the same release through the user's server. */
+async function latestRelease(server) {
+  try {
+    const response = await net.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'WIHM-Windows' } });
+    if (response.ok) return { release: await response.json(), viaServer: false };
+  } catch (error) {
+    if (!server) throw error;
+  }
+  if (!server) throw new Error('GitHub did not answer');
+  const response = await net.fetch(server + '/apps/latest.json');
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return { release: await response.json(), viaServer: true };
+}
+
 /** interactive says whether to report "no update" and errors, which a background check keeps quiet. */
-async function checkForUpdate(t, interactive, window) {
+async function checkForUpdate(t, interactive, window, server) {
   if (busy) return;
   busy = true;
   try {
-    const response = await net.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'WIHM-Windows' } });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    const release = availableUpdate(await response.json(), app.getVersion());
+    const { release: latest, viaServer } = await latestRelease(server);
+    const release = availableUpdate(latest, app.getVersion());
     if (!release) {
       if (interactive) await dialog.showMessageBox({ message: t('noUpdate') });
       return;
@@ -38,7 +51,10 @@ async function checkForUpdate(t, interactive, window) {
     const { response: choice } = await dialog.showMessageBox({ message: t('updateReady', release.version), buttons: [t('update'), t('later')], defaultId: 0, cancelId: 1 });
     if (choice !== 0) return;
     dialog.showMessageBox({ message: t('downloading') });
-    const expected = checksumFor(await (await net.fetch(release.sumsUrl)).text(), release.name);
+    const sums = await (await net.fetch(release.sumsUrl)).text();
+    // A server only relays the files, so it must not be able to choose them: the release key signs the sums.
+    if ((viaServer || release.sigUrl) && !(release.sigUrl && sumsSigned(release.tag, sums, await (await net.fetch(release.sigUrl)).text()))) throw new Error(t('badUpdate'));
+    const expected = checksumFor(sums, release.name);
     const bytes = await download(release.setupUrl, window);
     if (!expected || createHash('sha256').update(bytes).digest('hex') !== expected) throw new Error(t('badUpdate'));
     const file = join(app.getPath('temp'), release.name);

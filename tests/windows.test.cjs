@@ -27,8 +27,9 @@ test('updates come from a complete newer shared release', () => {
   const sums = { name: 'SHA256SUMS', browser_download_url: 'sums' };
   const release = { tag_name: 'installer-v1.8.0', assets: [setup, sums] };
   assert.deepEqual(availableUpdate(release, '1.7.22'), {
-    version: '1.8.0', name: setup.name, setupUrl: 'setup', sumsUrl: 'sums',
+    version: '1.8.0', tag: 'installer-v1.8.0', name: setup.name, setupUrl: 'setup', sumsUrl: 'sums', sigUrl: null,
   });
+  assert.equal(availableUpdate({ ...release, assets: [setup, sums, { name: 'SHA256SUMS.sig', browser_download_url: 'sig' }] }, '1.7.22').sigUrl, 'sig');
   for (const invalid of [
     { tag_name: 'windows-v1.8.0' }, { draft: true }, { prerelease: true },
     { tag_name: 'installer-v1.8.0-rc.1' }, { assets: [setup] }, { assets: [sums] },
@@ -58,4 +59,40 @@ test('the unread label', () => {
   const { unreadLabel } = require('../windows/rules.js');
   assert.equal(unreadLabel(0), ''); assert.equal(unreadLabel(-2), ''); assert.equal(unreadLabel(NaN), '');
   assert.equal(unreadLabel(3), '3'); assert.equal(unreadLabel(99), '99'); assert.equal(unreadLabel(250), '99+');
+});
+
+test('sums fetched through a server are trusted only with the release signature for that tag', async () => {
+  const { sumsSigned, UPDATE_PUBLIC_KEY } = require('../windows/rules.js');
+  const { generateKeyPairSync, sign } = require('node:crypto');
+  const { readFileSync } = require('node:fs');
+  const { sumsMessage } = await import('../scripts/sign-sums.mjs');
+  assert.equal(UPDATE_PUBLIC_KEY, readFileSync('src/update-key.ts', 'utf8').match(/UPDATE_PUBLIC_KEY = '([^']+)'/)[1], 'Windows must trust the same release key as the server');
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const pub = publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+  const sums = 'a'.repeat(64) + '  wihm-messenger-windows-setup.exe\n';
+  // The script and the app must build the same message, or no published signature would ever check.
+  const signature = sign(null, sumsMessage('installer-v1.8.0', sums), privateKey).toString('base64') + '\n';
+  assert.equal(sumsSigned('installer-v1.8.0', sums, signature, pub), true);
+  assert.equal(sumsSigned('installer-v1.9.0', sums, signature, pub), false, 'an older release relabelled as newer');
+  assert.equal(sumsSigned('installer-v1.8.0', sums.replace('a', 'b'), signature, pub), false, 'a swapped file');
+  assert.equal(sumsSigned('installer-v1.8.0', sums, signature), false, 'a key other than the release key');
+  assert.equal(sumsSigned('installer-v1.8.0', sums, 'not base64 !', pub), false);
+});
+
+test('a server address list counts only when signed for this challenge, by the pinned key once there is one', () => {
+  const { signedAddresses } = require('../windows/rules.js');
+  const { generateKeyPairSync, sign } = require('node:crypto');
+  const pair = () => { const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' }); return { privateKey, key: publicKey.export({ type: 'spki', format: 'der' }).toString('base64') }; };
+  const server = pair(), other = pair(), challenge = 'c'.repeat(43);
+  const signed = (by, addresses, forChallenge = challenge) => ({ format: 'wihm-addresses/1', publicKey: by.key, addresses,
+    signature: sign('sha256', Buffer.from(`wihm-addresses/1\n${forChallenge}\n${addresses.join('\n')}`), { key: by.privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64') });
+  const list = ['https://a.example', 'https://b.example'];
+  assert.deepEqual(signedAddresses(challenge, signed(server, list)), list, 'first contact pins whatever key signs');
+  assert.deepEqual(signedAddresses(challenge, signed(server, list), server.key), list);
+  assert.equal(signedAddresses(challenge, signed(other, list), server.key), null, 'another server, such as a lapsed domain');
+  assert.equal(signedAddresses(challenge, signed(server, list, 'd'.repeat(43)), server.key), null, 'a replayed answer');
+  assert.equal(signedAddresses(challenge, { ...signed(server, list), addresses: [...list, 'https://evil.example'] }, server.key), null);
+  assert.equal(signedAddresses(challenge, signed(server, ['https://a.example/path']), server.key), null);
+  assert.equal(signedAddresses(challenge, signed(server, ['ftp://a.example']), server.key), null);
+  assert.equal(signedAddresses(challenge, null), null);
 });

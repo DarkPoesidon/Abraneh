@@ -149,6 +149,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          WIHM_UPDATE_SIGNING_KEY: ${{ secrets.WIHM_UPDATE_SIGNING_KEY }}
         run: |
           version="${GITHUB_REF_NAME#installer-v}"
           files="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
@@ -165,6 +166,8 @@ jobs:
               wihm-messenger-android-universal.apk wihm-messenger-windows-setup.exe
             for asset do test -s "$asset" || exit 1; done
             sha256sum "$@" > SHA256SUMS
-            gh release create "$GITHUB_REF_NAME" "$@" SHA256SUMS --repo "$GITHUB_REPOSITORY" \
+            # Apps fetched through a server check this, so that server can't swap in a file.
+            node ../scripts/sign-sums.mjs "$GITHUB_REF_NAME" SHA256SUMS > SHA256SUMS.sig
+            gh release create "$GITHUB_REF_NAME" "$@" SHA256SUMS SHA256SUMS.sig --repo "$GITHUB_REPOSITORY" \
               --verify-tag --latest --title "ابرانه $version" --notes-file ../notes.md
           )

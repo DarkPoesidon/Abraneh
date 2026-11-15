@@ -50,6 +50,7 @@
     <string name="proxy_port">پورت</string>
     <string name="proxy_help">پراکسی SOCKS5 یا HTTP بدون نام کاربری و رمز. پراکسی MTProto مخصوص تلگرام است و اینجا کار نمی‌کند. صدا و تصویر تماس از پراکسی نمی‌گذرد.</string>
     <string name="proxy_invalid">نشانی یا پورت پراکسی معتبر نیست.</string>
+    <string name="server_moved">این نشانی سرور باز نشد؛ برنامه به %1$s رفت که نشانی دیگر همین سرور است. اگر خواست، یک بار دوباره وارد شوید.</string>
     <string name="proxy_unsupported">نسخهٔ Android System WebView این گوشی پراکسی را پشتیبانی نمی‌کند و صفحه‌ها بدون پراکسی باز می‌شوند. WebView را از Google Play به‌روز کنید یا از VPN استفاده کنید.</string>
     <string name="download_saved">%1$s در Downloads ذخیره شد</string>
     <string name="download_failed">دریافت فایل انجام نشد.</string>

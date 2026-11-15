@@ -227,6 +227,7 @@ public class ServerConfigActivity extends AppCompatActivity {
         }
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        if (!AddressFailover.known(this, url)) AddressFailover.forget(this);
         prefs.edit().putString(KEY_SERVER_URL, url)
                 .putBoolean(ProxySettings.KEY_ENABLED, checkProxy.isChecked())
                 .putString(ProxySettings.KEY_TYPE, radioSocks.isChecked() ? ProxySettings.SOCKS5 : ProxySettings.HTTP)
