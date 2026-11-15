@@ -7,6 +7,24 @@
   const CACHED_NOTES = 40, BARS = 36, MiB = 1048576;
   const LIMITS = { image: 16 * MiB, file: 32 * MiB };
   const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  const IMAGE_SIDE = 1600, IMAGE_QUALITY = 0.82;
+  // Per device, since a phone on metered data and a desktop on Wi-Fi want different answers.
+  const autoImages = () => { try { return localStorage.getItem('wihm_auto_images') !== '0'; } catch { return true; } };
+  // Phone photos are often several MB; at 1600px WebP they drop to a few hundred KB on slow, metered links.
+  // GIFs keep their animation, and any failure or larger result sends the original unchanged.
+  async function shrinkImage(file) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || typeof createImageBitmap !== 'function') return file;
+    try {
+      const bitmap = await createImageBitmap(file), scale = Math.min(1, IMAGE_SIDE / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size <= MiB) { bitmap.close(); return file; }
+      const canvas = create('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', IMAGE_QUALITY));
+      // Browsers without WebP encoding return PNG instead, which is usually larger.
+      if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return file;
+      return new File([blob], (file.name.replace(/\.[^.]*$/, '') || 'image') + '.webp', { type: 'image/webp' });
+    } catch { return file; }
+  }
   const fileLabel = msg => msg.text.replace(/^(📎|🖼) /, '');
   const fileSize = bytes => bytes < MiB ? Math.max(1, Math.round(bytes / 1024)).toLocaleString('fa-IR') + ' کیلوبایت' : (bytes / MiB).toLocaleString('fa-IR', { maximumFractionDigits: 1 }) + ' مگابایت';
   const clock = ms => { const seconds = Math.round(ms / 1000); return Math.floor(seconds / 60).toLocaleString('fa-IR') + ':' + (seconds % 60).toLocaleString('fa-IR', { minimumIntegerDigits: 2 }); };
@@ -75,11 +93,14 @@
       const dropZone = footer.parentElement;
       dropZone?.addEventListener('dragover', event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
       dropZone?.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (file) { event.preventDefault(); reviewFile(file); } });
-      function reviewFile(file) {
+      async function reviewFile(original) {
         const chat = getChat();
-        if (!file || !chat || recording || pending || !canRecord()) return;
+        if (!original || !chat || recording || pending || !canRecord()) return;
+        if (!original.size) { notify('این فایل خالی است.'); return; }
+        const file = await shrinkImage(original);
+        // The person may have switched chats or started recording while the image was shrinking.
+        if (getChat()?.id !== chat.id || recording || pending || !canRecord()) return;
         const kind = IMAGE_TYPES.includes(file.type) && file.size <= LIMITS.image ? 'image' : 'file';
-        if (!file.size) { notify('این فایل خالی است.'); return; }
         if (file.size > LIMITS[kind]) { notify('حجم فایل بیشتر از ۳۲ مگابایت است.'); return; }
         pending = { attachment: true, blob: file, chatId: chat.id, kind, mime: file.type || 'application/octet-stream', durationMs: 0, name: file.name, clientMsgId: 'cli_' + crypto.randomUUID() };
         name.textContent = file.name + ' · ' + fileSize(file.size);
@@ -221,9 +242,14 @@
       function buildImage(msg) {
         const name = fileLabel(msg), root = create('button', 'image-note'), image = create('img'); root.type = 'button'; root.dataset.state = 'loading'; root.setAttribute('aria-label', 'نمایش تصویر ' + name); root.append(image);
         const load = async () => { try { root.url = URL.createObjectURL(await download(msg)); image.alt = name; image.src = root.url; delete root.dataset.state; } catch { root.dataset.state = 'failed'; } };
+        let hint = null;
+        if (!autoImages()) {
+          root.dataset.state = 'manual'; root.setAttribute('aria-label', 'دریافت تصویر ' + name);
+          hint = create('span', 'image-manual'); hint.textContent = 'دریافت تصویر · ' + fileSize(msg.media.size); root.append(hint);
         // Only images that scroll into view are fetched, so opening a long chat stays cheap.
-        if (typeof IntersectionObserver === 'function') { const seen = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { seen.disconnect(); load(); } }); seen.observe(root); } else load();
-        root.addEventListener('click', () => { if (!root.url) return; large.src = root.url; large.alt = name; saveLarge.onclick = () => saveFile(msg, name).catch(error => notify(error.message)); lightbox.showModal(); });
+        } else if (typeof IntersectionObserver === 'function') { const seen = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { seen.disconnect(); load(); } }); seen.observe(root); } else load();
+        root.addEventListener('click', () => {
+          if (!root.url) { if (hint) { hint.remove(); hint = null; root.dataset.state = 'loading'; root.setAttribute('aria-label', 'نمایش تصویر ' + name); load(); } return; } large.src = root.url; large.alt = name; saveLarge.onclick = () => saveFile(msg, name).catch(error => notify(error.message)); lightbox.showModal(); });
         return root;
       }
       function evict() {

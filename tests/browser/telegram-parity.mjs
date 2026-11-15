@@ -119,15 +119,45 @@ try {
     await owner.locator('.media-recorder .media-cancel').click();
     assert.equal(await owner.locator('.file-note .file-name', { hasText: 'preview.txt' }).count(), 0);
   }
+  // A large photo is shrunk to WebP before it leaves the device.
+  await owner.locator('.message-input').evaluate(async input => {
+    const canvas = document.createElement('canvas'); canvas.width = 3200; canvas.height = 2400;
+    // Photo-like gradients with grain; flat colors would make the PNG smaller than WebP, and the original is then kept.
+    const context = canvas.getContext('2d'), pixels = context.createImageData(3200, 2400);
+    for (let i = 0; i < pixels.data.length; i += 4) { const x = (i / 4) % 3200, y = Math.floor(i / 4 / 3200), grain = (i * 2654435761 >>> 24) & 31; pixels.data.set([x / 13 + grain, y / 10 + grain, (x + y) / 22 + grain, 255], i); }
+    context.putImageData(pixels, 0, 0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const data = new DataTransfer(); data.items.add(new File([blob], 'big.png', { type: 'image/png' }));
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+  });
+  await owner.locator('.attachment-details', { hasText: 'big.webp' }).waitFor();
+  await owner.locator('.media-recorder .media-send').click();
+  await owner.locator('.image-note img[alt="big.webp"]').waitFor();
+  const shrunk = await owner.evaluate(async ({ chatId, token }) => {
+    const list = await (await fetch(`/api/chats/${chatId}/messages`, { headers: { Authorization: 'Bearer ' + token } })).json();
+    const message = (list.data || list).find(row => row.text === '🖼 big.webp');
+    const bitmap = await createImageBitmap(await (await fetch(`/api/chats/${chatId}/media/${message.id}`, { headers: { Authorization: 'Bearer ' + token } })).blob());
+    return { mime: message.media.mime, width: bitmap.width, height: bitmap.height };
+  }, { chatId, token: fixture.owner.token });
+  assert.deepEqual(shrunk, { mime: 'image/webp', width: 1600, height: 1200 });
 
   await peer.goto(fixture.origin); await peer.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
   await peer.locator('.file-note .file-name', { hasText: 'report.pdf' }).waitFor();
-  await peer.locator('.image-note img[src^="blob:"]').waitFor({ timeout: 15000 });
+  await peer.locator('.image-note img[alt="photo.png"][src^="blob:"]').waitFor({ timeout: 15000 });
   await shot(peer, 'files');
   const [download] = await Promise.all([peer.waitForEvent('download'), peer.locator('.file-note').click()]);
   assert.equal(download.suggestedFilename(), 'report.pdf');
-  await peer.locator('.image-note').click(); assert.equal(await peer.locator('.image-viewer').isVisible(), true);
+  await peer.locator('.image-note', { has: peer.locator('img[alt="photo.png"]') }).click(); assert.equal(await peer.locator('.image-viewer').isVisible(), true);
   await peer.locator('.image-viewer button', { hasText: 'بستن' }).click();
+  // With automatic images off, nothing downloads until a tap.
+  await peer.evaluate(() => localStorage.setItem('wihm_auto_images', '0'));
+  await peer.reload(); await peer.locator(`.chat-item[data-chat-id="${chatId}"]`).click();
+  const manual = peer.locator('.image-note[data-state="manual"]');
+  await manual.first().waitFor();
+  assert.equal(await peer.locator('.image-note img[src^="blob:"]').count(), 0);
+  await manual.first().click();
+  await peer.locator('.image-note img[src^="blob:"]').first().waitFor();
+  await peer.evaluate(() => localStorage.removeItem('wihm_auto_images'));
   console.log('ok: files and images send, show and save');
 
   // A report reaches the admin, who acts on it from the panel.

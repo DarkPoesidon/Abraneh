@@ -70,8 +70,8 @@ public class UpdateHelper {
     }
 
     /** Returns the latest published release. */
-    private static JSONObject fetchLatestRelease() throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_RELEASES_API).openConnection();
+    private static JSONObject fetchLatestRelease(Context context) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_RELEASES_API).openConnection(ProxySettings.current(context));
         try {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "WIHM-Android-Messenger");
@@ -107,7 +107,7 @@ public class UpdateHelper {
 
         executor.execute(() -> {
             try {
-                JSONObject release = fetchLatestRelease();
+                JSONObject release = fetchLatestRelease(activity);
                 String currentVersion = getAppVersion(activity);
                 String releaseVersion = UrlRules.androidReleaseVersion(release.optString("tag_name"));
                 String latestVersion = releaseVersion == null ? currentVersion : releaseVersion;

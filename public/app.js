@@ -1892,6 +1892,8 @@
         <div class="field-pair settings-appearance-fields"><label>ظاهر<select id="profile-theme" class="form-input"><option value="dark">تیره</option><option value="light">روشن</option><option value="system">هماهنگ با دستگاه</option></select></label><label>اندازهٔ نوشته<select id="profile-font" class="form-input"><option value="small">کوچک</option><option value="normal">معمولی</option><option value="large">بزرگ</option></select></label></div>
         <div class="settings-notification-fields"><label class="check-label"><input id="profile-preview" type="checkbox" ${profile.notification_preview?'checked':''}>نمایش متن پیام در اعلان</label>
         <p class="session-help">با خاموش بودن این گزینه، اعلان فقط دریافت پیام تازه را نشان می‌دهد.</p></div>
+        <div class="settings-data-fields"><label class="check-label"><input id="device-auto-images" type="checkbox">دریافت خودکار تصویرها روی این دستگاه</label>
+        <p class="session-help">با خاموش بودن این گزینه، هر تصویر فقط با لمس آن دریافت می‌شود و مصرف اینترنت کم می‌شود.</p></div>
         <button class="btn-primary" type="submit">ذخیرهٔ تنظیمات</button>
       </form>
       ${notificationSectionHtml}
@@ -1899,6 +1901,7 @@
       `);
     featureContent.dataset.settingsPage=section;byId('btn-settings-back').hidden=false;
     byId('profile-theme').value=profile.theme||'dark'; byId('profile-font').value=profile.font_size||'normal';
+    try{byId('device-auto-images').checked=localStorage.getItem('wihm_auto_images')!=='0';}catch{byId('device-auto-images').checked=true;}
     if(byId('notification-state'))byId('notification-state').textContent=!('Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator)?'این مرورگر اعلان پس‌زمینه را پشتیبانی نمی‌کند.':!profile.pushConfigured?'کلید اعلان سرور تنظیم نیست؛ نصب‌کنندهٔ جدید را با همان نام اجرا کنید.':`اجازهٔ مرورگر: ${{granted:'فعال',denied:'مسدود؛ از تنظیمات مرورگر باز کنید',default:'هنوز درخواست نشده'}[Notification.permission]}`;
     bind('profile-file',async e=> {
       const file=e.target.files[0]; if(!file) return; if(file.size>8*1024*1024) throw new Error('عکس حداکثر ۸ مگابایت انتخاب کنید.');
@@ -1907,7 +1910,7 @@
       avatarDraft=canvas.toDataURL('image/webp',.8); if(avatarDraft.length>48000) throw new Error('عکس کوچکتری انتخاب کنید.'); byId('profile-avatar').innerHTML=avatarHtml(avatarDraft,currentUser.displayName);
     },'change');
     bind('remove-avatar',()=>{avatarDraft='';byId('profile-avatar').innerHTML=avatarHtml('',currentUser.displayName);});
-    bind('profile-form',async()=>{await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
+    bind('profile-form',async()=>{try{localStorage.setItem('wihm_auto_images',byId('device-auto-images').checked?'1':'0');}catch{/* Device storage is optional. */}await saveProfile();byId('feature-status').textContent='تنظیمات ذخیره شد.';},'submit');
     if(section==='profile') {
     const usernameForm=document.createElement('form');usernameForm.id='username-form';usernameForm.className='feature-form feature-section';usernameForm.innerHTML='<label>نام کاربری<input id="profile-username" class="form-input" dir="ltr" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="off" autocapitalize="off"></label><p class="session-help">با این نام وارد می‌شوید و دیگران پیدایتان می‌کنند. اگر با سرورهای دیگر گفتگوی امن دارید، نشانی شما هم عوض می‌شود و باید نشانی تازه را به مخاطبان بدهید.</p><button class="quiet-button" type="submit">ذخیرهٔ نام کاربری</button>';
     byId('profile-form').after(usernameForm);byId('profile-username').value=currentUser.username||'';
@@ -2255,6 +2258,8 @@
     byId('registration-mode').value=settings.registration;
     const callSettings = document.createElement('button'); callSettings.id = 'service-call-settings'; callSettings.type = 'button'; callSettings.className = 'quiet-button'; callSettings.textContent = 'تنظیم اتصال تماس (TURN)';
     byId('service-form').after(callSettings); callSettings.addEventListener('click', () => turnSettings().catch(featureError));
+    // Without TURN, calls behind carrier NAT often fail, so say so before anyone opens the call settings.
+    api('/api/service/calls').then(config => { if (config.configured || !callSettings.isConnected) return; const note = document.createElement('p'); note.className = 'session-help danger-text'; note.textContent = 'واسط تماس (TURN) تنظیم نشده است؛ تماس با اینترنت موبایل و بسیاری از شبکه‌ها وصل نمی‌شود.'; callSettings.after(note); }).catch(() => {});
     bind('service-overview',()=>extras?.management());
     bind('service-form',async()=>{await patch('/api/service/settings',{registration:byId('registration-mode').value});byId('feature-status').textContent='وضعیت ثبت‌نام ذخیره شد.';},'submit');bind('registration-invites',()=>invitesView());
     bind('service-reports',()=>admin?.reports());
