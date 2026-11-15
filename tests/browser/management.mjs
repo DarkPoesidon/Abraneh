@@ -17,5 +17,16 @@ try{
   await page.locator('#btn-close-feature').click();await page.locator('#btn-main-menu').click();await page.locator('#btn-menu-settings').click();await page.locator('#settings-discovery').click();await page.locator('#discovery-address').waitFor();await page.locator('#discovery-enabled').check();await page.locator('#discovery-privacy button').click();await page.waitForFunction(()=>document.getElementById('feature-status').textContent.includes('ذخیره شد'));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`${directory}/discovery-${width}.png`});results.push({width,overview:true,userDisableEnable:true,discoveryPrivacy:true});await context.close();
  }
+ {
+  // The owner lists the server's other addresses; the apps fail over to them.
+  const context=await browser.newContext({viewport:{width:375,height:820},locale:'fa-IR'});await context.addInitScript(owner=>{localStorage.setItem('cf_msg_token',owner.token);localStorage.setItem('cf_msg_user',JSON.stringify(owner.user));},fixture.owner);
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(fixture.origin);await page.locator('[data-chat-id="design-team"]').waitFor();
+  await page.locator('#btn-main-menu').click();await page.locator('#btn-menu-settings').click();await page.locator('#settings-admin').click();await page.locator('#service-address-settings').click();
+  const list=page.locator('#addresses-list');await list.waitFor();assert.equal(await list.inputValue(),fixture.origin);
+  await list.fill(fixture.origin+'\nhttps://chat.example.com');await page.locator('#addresses-form button').click();
+  await page.locator('#feature-status',{hasText:'نشانی‌ها ذخیره شد'}).waitFor();assert.equal(await list.inputValue(),fixture.origin+'\nhttps://chat.example.com');
+  await list.fill('http://insecure.example');await page.locator('#addresses-form button').click();await page.locator('#feature-status',{hasText:'HTTPS'}).waitFor();
+  await page.screenshot({path:`${directory}/addresses.png`});await context.close();
+ }
  assert.deepEqual(errors,[]);await writeFile(directory+'/results.json',JSON.stringify({results,errors},null,2));console.log(JSON.stringify({passed:true,results,errors}));
 }finally{await browser.close();await fixture.close();}

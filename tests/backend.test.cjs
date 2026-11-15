@@ -584,3 +584,29 @@ test('login guesses for one name are capped across addresses', async () => {
   for (let index = 0; index < 50; index++) assert.equal((await attempt(index)).status, 401);
   assert.equal((await attempt(60)).status, 429);
 });
+
+test('a server signs its address list for a fresh challenge, and only the owner edits it', async () => {
+  const { createPublicKey, verify, randomBytes: random } = require('node:crypto');
+  const owner = await account('service_owner'), other = await account('address_other');
+  await api('/api/service/claim', { token: owner.token, body: { code: adminCode } });
+  const challenge = random(32).toString('base64url');
+  const signed = async () => (await api('/api/addresses?challenge=' + challenge)).data;
+  const check = data => verify('sha256', Buffer.from(`wihm-addresses/1\n${challenge}\n${data.addresses.join('\n')}`),
+    { key: createPublicKey({ key: Buffer.from(data.publicKey, 'base64'), format: 'der', type: 'spki' }), dsaEncoding: 'ieee-p1363' }, Buffer.from(data.signature, 'base64'));
+  const first = await signed();
+  assert.equal(first.format, 'wihm-addresses/1'); assert.equal(first.addresses.length, 1); assert.ok(check(first));
+  assert.equal((await api('/api/addresses?challenge=short')).status, 400);
+
+  assert.equal((await api('/api/service/addresses', { token: other.token, method: 'PUT', body: { addresses: ['https://other.example'] } })).status, 403);
+  for (const bad of ['http://chat.example', 'https://chat.example/path', 'https://chat.example:8443', 'https://user:pw@chat.example', 'not a url'])
+    assert.equal((await api('/api/service/addresses', { token: owner.token, method: 'PUT', body: { addresses: [bad] } })).status, 400, bad);
+  assert.equal((await api('/api/service/addresses', { token: owner.token, method: 'PUT', body: { addresses: Array.from({ length: 6 }, (_, i) => `https://a${i}.example`) } })).status, 400);
+  const saved = await api('/api/service/addresses', { token: owner.token, method: 'PUT', body: { addresses: ['https://chat.example.com/', first.addresses[0], 'https://chat.example.com'] } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.data.addresses, [first.addresses[0], 'https://chat.example.com']);
+  const second = await signed();
+  assert.deepEqual(second.addresses, saved.data.addresses); assert.equal(second.publicKey, first.publicKey, 'the key stays the same'); assert.ok(check(second));
+  assert.ok(!check({ ...second, addresses: [...second.addresses, 'https://evil.example'] }), 'the list cannot be extended');
+  // The Windows app checks the same message the Worker signs.
+  assert.deepEqual(require('../windows/rules.js').signedAddresses(challenge, second, first.publicKey), second.addresses);
+});

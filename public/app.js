@@ -2258,11 +2258,22 @@
     byId('registration-mode').value=settings.registration;
     const callSettings = document.createElement('button'); callSettings.id = 'service-call-settings'; callSettings.type = 'button'; callSettings.className = 'quiet-button'; callSettings.textContent = 'تنظیم اتصال تماس (TURN)';
     byId('service-form').after(callSettings); callSettings.addEventListener('click', () => turnSettings().catch(featureError));
+    const addressSettings = document.createElement('button'); addressSettings.id = 'service-address-settings'; addressSettings.type = 'button'; addressSettings.className = 'quiet-button'; addressSettings.textContent = 'نشانی‌های دیگر این سرور';
+    callSettings.after(addressSettings); addressSettings.addEventListener('click', () => addressSettingsView().catch(featureError));
     // Without TURN, calls behind carrier NAT often fail, so say so before anyone opens the call settings.
     api('/api/service/calls').then(config => { if (config.configured || !callSettings.isConnected) return; const note = document.createElement('p'); note.className = 'session-help danger-text'; note.textContent = 'واسط تماس (TURN) تنظیم نشده است؛ تماس با اینترنت موبایل و بسیاری از شبکه‌ها وصل نمی‌شود.'; callSettings.after(note); }).catch(() => {});
     bind('service-overview',()=>extras?.management());
     bind('service-form',async()=>{await patch('/api/service/settings',{registration:byId('registration-mode').value});byId('feature-status').textContent='وضعیت ثبت‌نام ذخیره شد.';},'submit');bind('registration-invites',()=>invitesView());
     bind('service-reports',()=>admin?.reports());
+  }
+  async function addressSettingsView() {
+    const { addresses } = await api('/api/service/addresses');
+    showFeature('نشانی‌های دیگر این سرور', `<form id="addresses-form" class="feature-form"><p class="session-help">اگر یک نشانی روی اینترنت کاربران بسته شود، برنامه‌های اندروید و ویندوز خودکار به نشانی دیگری از همین سرور می‌روند و فقط یک بار دوباره وارد حساب می‌شوند. هر نشانی باید به همین سرور وصل باشد، مثل دامنهٔ شخصی و نشانی workers.dev.</p><label>یک نشانی در هر خط<textarea id="addresses-list" class="form-input" dir="ltr" rows="5">${escapeHtml(addresses.join('\n'))}</textarea></label><button class="btn-primary" type="submit">ذخیرهٔ نشانی‌ها</button></form>`);
+    bind('addresses-form', async () => {
+      const list = byId('addresses-list').value.split('\n').map(value => value.trim()).filter(Boolean);
+      const saved = await api('/api/service/addresses', { method: 'PUT', body: JSON.stringify({ addresses: list }) });
+      byId('addresses-list').value = saved.addresses.join('\n'); byId('feature-status').textContent = 'نشانی‌ها ذخیره شد.';
+    }, 'submit');
   }
   async function turnSettings() {
     const config = await api('/api/service/calls');

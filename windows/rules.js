@@ -1,6 +1,9 @@
 /*! Copyright (c) 2026 DarkPoesidon. Abraneh: https://github.com/DarkPoesidon/Abraneh. PolyForm Noncommercial 1.0.0; see LICENSE and NOTICE. */
 // Pure rules, free of Electron so they can be unit tested.
+const { createPublicKey, verify } = require('node:crypto');
 const TAG_PREFIX = 'installer-v';
+// Same key as src/update-key.ts; a test keeps them equal.
+const UPDATE_PUBLIC_KEY = 'MCowBQYDK2VwAyEAjipJMcUoo4oTBbFGkty3JyicdQETx8uivkYM2izr6DM=';
 const HOST = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 
 /** Returns the server's origin, or null. Plain http is only for this computer. */
@@ -42,8 +45,39 @@ function availableUpdate(release, current) {
   const name = 'wihm-messenger-windows-setup.exe';
   const setup = release.assets.find(asset => asset.name === name);
   const sums = release.assets.find(asset => asset.name === 'SHA256SUMS');
+  const signature = release.assets.find(asset => asset.name === 'SHA256SUMS.sig');
   if (!setup?.browser_download_url || !sums?.browser_download_url) return null;
-  return { version, name, setupUrl: setup.browser_download_url, sumsUrl: sums.browser_download_url };
+  return { version, tag: release.tag_name, name, setupUrl: setup.browser_download_url, sumsUrl: sums.browser_download_url, sigUrl: signature?.browser_download_url || null };
+}
+
+/** Whether SHA256SUMS was signed by the release key for this tag, so files fetched through a server can be trusted. */
+function sumsSigned(tag, sums, signature, publicKey = UPDATE_PUBLIC_KEY) {
+  try {
+    const key = createPublicKey({ key: Buffer.from(publicKey, 'base64'), format: 'der', type: 'spki' });
+    // Same message as scripts/sign-sums.mjs; the tag stops an older signed release passing as a newer one.
+    const message = Buffer.concat([Buffer.from(`wihm-sha256sums/1 ${tag}\n`), Buffer.from(String(sums))]);
+    return verify(null, message, key, Buffer.from(String(signature).trim(), 'base64'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The addresses a server signed for this challenge, or null. With a pinned key the server must sign with it,
+ * so only another address of the same server passes; src/addresses.ts builds the same message.
+ */
+function signedAddresses(challenge, data, pinnedKey) {
+  try {
+    if (!data || data.format !== 'wihm-addresses/1' || !Array.isArray(data.addresses) || typeof data.publicKey !== 'string') return null;
+    if (pinnedKey && data.publicKey !== pinnedKey) return null;
+    const addresses = data.addresses.map(address => serverOrigin(address));
+    if (!addresses.length || addresses.some((address, i) => !address || address !== data.addresses[i])) return null;
+    const key = createPublicKey({ key: Buffer.from(data.publicKey, 'base64'), format: 'der', type: 'spki' });
+    const message = Buffer.from(`wihm-addresses/1\n${challenge}\n${addresses.join('\n')}`);
+    return verify('sha256', message, { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(String(data.signature), 'base64')) ? addresses : null;
+  } catch {
+    return null;
+  }
 }
 
 function checksumFor(sums, name) {
@@ -70,4 +104,4 @@ function unreadLabel(count) {
   return value > 99 ? '99+' : String(value);
 }
 
-module.exports = { serverOrigin, proxyRule, isNewer, availableUpdate, checksumFor, windowBounds, unreadLabel };
+module.exports = { UPDATE_PUBLIC_KEY, serverOrigin, proxyRule, isNewer, availableUpdate, sumsSigned, signedAddresses, checksumFor, windowBounds, unreadLabel };

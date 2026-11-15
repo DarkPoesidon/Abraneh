@@ -70,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
     private Button btnChangeServer;
 
     private String currentServerUrl = "";
+    private final java.util.concurrent.ExecutorService addressExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private boolean addressesLearned = false;
+    private long lastFailover = 0;
     private WebAppInterface pageInterface;
 
     String serverUrl() {
@@ -431,6 +434,12 @@ public class MainActivity extends AppCompatActivity {
                 // Inject bridge script to catch notifications, telegram links and clipboard
                 injectNativeBridge(view);
                 pageLoaded = true;
+                if (!addressesLearned && UrlRules.sameOrigin(url, currentServerUrl)) {
+                    addressesLearned = true;
+                    final String server = currentServerUrl;
+                    final Context app = getApplicationContext();
+                    addressExecutor.execute(() -> AddressFailover.remember(app, server));
+                }
                 // A new page has not reported yet, and may never if it is an older version.
                 backCallback.setEnabled(true);
                 view.evaluateJavascript(visibilityScript(), null);
@@ -443,6 +452,7 @@ public class MainActivity extends AppCompatActivity {
                 super.onReceivedError(view, request, error);
                 if (request.isForMainFrame()) {
                     showErrorLayout();
+                    failOver();
                 }
             }
         });
@@ -915,6 +925,25 @@ public class MainActivity extends AppCompatActivity {
         btnChangeServer.setOnClickListener(v -> openServerConfig());
     }
 
+    /** Moves a failed server page to another address of the same server; at most once a minute, so a flaky pair can't ping-pong. */
+    private void failOver() {
+        long now = SystemClock.elapsedRealtime();
+        if ((lastFailover != 0 && now - lastFailover < 60_000) || currentServerUrl == null || currentServerUrl.isEmpty()) return;
+        lastFailover = now;
+        final String failed = currentServerUrl;
+        final Context app = getApplicationContext();
+        addressExecutor.execute(() -> {
+            final String next = AddressFailover.findAlternate(app, failed);
+            runOnUiThread(() -> {
+                // The user may have picked another server while this ran.
+                if (next == null || isFinishing() || !failed.equals(currentServerUrl)) return;
+                Toast.makeText(this, getString(R.string.server_moved, next), Toast.LENGTH_LONG).show();
+                saveAndReloadServer(next);
+                WihmNotificationService.proxyChanged(this);
+            });
+        });
+    }
+
     private void showErrorLayout() {
         webView.setVisibility(View.GONE);
         errorLayout.setVisibility(View.VISIBLE);
@@ -1101,6 +1130,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void saveAndReloadServer(String url) {
+        if (!AddressFailover.known(this, url)) AddressFailover.forget(this);
+        addressesLearned = false;
         currentServerUrl = url;
         SharedPreferences prefs = getSharedPreferences(ServerConfigActivity.PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit().putString(ServerConfigActivity.KEY_SERVER_URL, url).apply();

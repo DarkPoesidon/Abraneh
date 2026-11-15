@@ -2,7 +2,8 @@
 const { app, BrowserWindow, Menu, Notification, Tray, clipboard, ipcMain, nativeImage, nativeTheme, net, screen, session, shell } = require('electron');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { serverOrigin, proxyRule, windowBounds, unreadLabel } = require('./rules');
+const { randomBytes } = require('node:crypto');
+const { serverOrigin, proxyRule, windowBounds, unreadLabel, signedAddresses } = require('./rules');
 const { checkForUpdate } = require('./updates');
 
 const STRINGS = {
@@ -133,6 +134,48 @@ function openPage() {
   else window.loadFile(join(__dirname, 'setup.html'));
 }
 
+/** Asks a server for its addresses with a fresh challenge; null unless it signs with the pinned key, if there is one. */
+async function askAddresses(server, pinnedKey) {
+  const challenge = randomBytes(32).toString('base64url');
+  const response = await net.fetch(`${server}/api/addresses?challenge=${challenge}`, { signal: AbortSignal.timeout(8000) });
+  const data = response.ok ? await response.json() : null;
+  const addresses = signedAddresses(challenge, data, pinnedKey);
+  return addresses && { addresses, key: data.publicKey };
+}
+
+/** Learns this server's other addresses, pinning its key on first contact. */
+async function rememberAddresses() {
+  const server = config.server;
+  try {
+    const known = await askAddresses(server, config.addressKey);
+    if (!known || config.server !== server) return;
+    config = { ...config, addresses: known.addresses, addressKey: known.key };
+    saveConfig();
+  } catch { /* Older servers have no address list; failover just stays off. */ }
+}
+
+let failingOver = false, lastFailover = 0;
+/** Moves to the first other address that proves it is the same server; at most once a minute, so a flaky pair can't ping-pong. */
+async function failOver() {
+  if (failingOver || !config.addressKey || Date.now() - lastFailover < 60_000) return false;
+  failingOver = true; lastFailover = Date.now();
+  try {
+    for (const address of config.addresses || []) {
+      if (address === config.server) continue;
+      try {
+        if (!await askAddresses(address, config.addressKey)) continue;
+        config = { ...config, server: address };
+        saveConfig();
+        window.loadURL(address);
+        return true;
+      } catch { /* Try the next address. */ }
+    }
+    return false;
+  } finally {
+    failingOver = false;
+  }
+}
+
 function openSetup(error = '') {
   setupError = error;
   window.loadFile(join(__dirname, 'setup.html'));
@@ -151,7 +194,13 @@ function createWindow() {
   for (const state of ['show', 'hide', 'minimize', 'restore']) window.on(state, reportHidden);
   const contents = window.webContents;
   contents.on('did-finish-load', reportHidden);
-  contents.on('did-fail-load', (_event, code, _text, _url, isMainFrame) => { if (isMainFrame && code !== -3) openSetup(t('loadFailed')); });
+  contents.on('did-finish-load', () => { if (onServerPage(contents.getURL())) rememberAddresses(); });
+  contents.on('did-fail-load', (_event, code, _text, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return;
+    // Only a failed server page moves on; one failover per failure, so two blocked addresses can't loop.
+    const fromServer = !!config.server && url.startsWith(config.server);
+    (fromServer ? failOver() : Promise.resolve(false)).then(moved => { if (!moved) openSetup(t('loadFailed')); });
+  });
   contents.on('will-navigate', (event, url) => {
     if (onServerPage(url) || onSetupPage(url)) return;
     event.preventDefault();
@@ -173,7 +222,7 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: t('open'), click: showWindow },
     { label: t('changeServer'), click: () => openSetup() },
-    { label: t('checkUpdates'), click: () => checkForUpdate(t, true, window) },
+    { label: t('checkUpdates'), click: () => checkForUpdate(t, true, window, config.server) },
     { type: 'separator' },
     { label: t('quit'), click: () => { app.isQuitting = true; app.quit(); } },
   ]));
@@ -182,7 +231,7 @@ function createTray() {
 ipcMain.on('is-server-origin', (event, origin) => { event.returnValue = !!config.server && origin === config.server && onServerPage(event.senderFrame?.url); });
 ipcMain.on('show-window', event => { if (onServerPage(event.senderFrame?.url)) showWindow(); });
 ipcMain.on('app-version', event => { event.returnValue = app.getVersion(); });
-ipcMain.on('check-updates', event => { if (onServerPage(event.senderFrame?.url)) checkForUpdate(t, true, window); });
+ipcMain.on('check-updates', event => { if (onServerPage(event.senderFrame?.url)) checkForUpdate(t, true, window, config.server); });
 ipcMain.on('notify', (event, message) => { if (onServerPage(event.senderFrame?.url)) notify(message); });
 ipcMain.on('set-theme', (event, light) => { if (onServerPage(event.senderFrame?.url) && typeof light === 'boolean') applyTheme(light); });
 ipcMain.on('set-unread', (event, count) => { if (onServerPage(event.senderFrame?.url)) showUnread(count); });
@@ -210,7 +259,9 @@ ipcMain.handle('setup-connect', async (event, input) => {
     await applyProxy(config.proxy);
     return { error: t('noServer') };
   }
-  config = { ...config, server, proxy };
+  // Another server has another key, so its addresses are learned afresh.
+  const sameServer = (config.addresses || []).includes(server);
+  config = { ...config, server, proxy, ...(sameServer ? {} : { addresses: [], addressKey: '' }) };
   saveConfig();
   openPage();
   return {};
@@ -232,8 +283,8 @@ else {
     createTray();
     // The app can stay open in the tray for weeks, so one check at startup is not enough.
     if (app.isPackaged) {
-      checkForUpdate(t, false, window);
-      setInterval(() => checkForUpdate(t, false, window), 6 * 3600_000);
+      checkForUpdate(t, false, window, config.server);
+      setInterval(() => checkForUpdate(t, false, window, config.server), 6 * 3600_000);
     }
   });
 }

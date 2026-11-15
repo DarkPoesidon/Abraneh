@@ -22,6 +22,8 @@ import { handleManagement } from './management.js';
 import { publicSecurity, handleSecurity, enforceSecondFactor } from './security.js';
 import { publicSecure, handleSecure, scheduledSecure } from './secure.js';
 import { publicDiscovery, handleDiscovery } from './discovery.js';
+import { appsResponse } from './apps.js';
+import { handleAddresses } from './addresses.js';
 export { ChatRoom } from "./chatRoom.js";
 
 const PAGE_HEADERS = {
@@ -72,7 +74,13 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
       return errorResponse('کلید امنیتی سرور تنظیم نشده است؛ JWT_SECRET باید حداقل ۳۲ بایت باشد.', 503);
     }
 
+    if(url.pathname.startsWith('/apps/')&&request.method==='GET'){
+      // Each file can be 115 MiB of this account's traffic, so one address gets a bounded share.
+      if(!await allowRequest(env,'apps',request.headers.get('CF-Connecting-IP')||'unknown',60,3600_000))return new Response('Too many downloads; try again later.',{status:429});
+      const apps=await appsResponse(url);if(apps)return apps;
+    }
     const discoveryPublic=await publicDiscovery(request,env);if(discoveryPublic)return discoveryPublic;
+    if(url.pathname==='/api/addresses'){const addresses=await handleAddresses(request,env);if(addresses)return addresses;}
     if(url.pathname==='/api/app/version'&&request.method==='GET')return jsonResponse({version:APP_VERSION});
     if (url.pathname === '/api/health' && request.method === 'GET') {
       try {
@@ -258,6 +266,7 @@ async function applicationFetch(request:Request,env:Env,ctx:ExecutionContext):Pr
           return errorResponse("احراز هویت نشده‌اید.", 401);
         }
         const callResponse=await handleCallRequests(request,env,auth);if(callResponse)return callResponse;
+        const addresses=await handleAddresses(request,env,auth);if(addresses)return addresses;
         const media=await handleMedia(request,env,auth);if(media)return media;
         const backup=await handleBackup(request,env,auth);if(backup)return backup;
         const channels=await handleChannels(request,env,auth);if(channels)return channels;
